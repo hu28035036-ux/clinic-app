@@ -1,0 +1,3425 @@
+:root {
+  /* ═══════════════════════════════════════════════════════
+     공식 디자인 토큰 (프로젝트 표준 명명)
+     네이비 헤더/탭 + 밝은 본문 + 가독성 개선
+     ═══════════════════════════════════════════════════════ */
+
+  /* 기본 배경/구조 */
+  --bg-page:      #F4F7FB;
+  --bg-card:      #FFFFFF;
+  --bg-input:     #FFFFFF;
+
+  /* 상단/탭/네비게이션 (어두운 네이비) */
+  --nav-bg:         #1F2A37;
+  --tab-bg:         #243447;
+  --tab-hover:      #2D425A;
+  --tab-active:     #1E88C8;
+  --tab-text:       #FFFFFF;
+  --tab-text-muted: #E8EEF5;
+
+  /* 경계 */
+  --border-color:   #D9E2EC;
+  --divider-color:  #E6EDF3;
+
+  /* 텍스트 (가독성 한 단계 ↑ — 흰 배경 위 연한 글씨가 또렷이 보이도록) */
+  --text-main:   #25313C;
+  --text-sub:    #5F6B76;
+  --text-muted:  #6E7A86;   /* 사용자 원안 #7E8A97 → 한 단계 진하게 (가독성 보강) */
+  --text-title:  #1F2A37;
+
+  /* 포인트/버튼 */
+  --primary:        #1E9CD7;
+  --primary-hover:  #1687BC;
+  --secondary:      #22B8CF;
+
+  /* 상태색 */
+  --success: #22A06B;
+  --warning: #F0A43A;
+  --danger:  #E45858;
+  --info:    #4A90E2;
+
+  /* 표 */
+  --table-head:         #F7FAFC;
+  --table-row-hover:    #F2F8FD;
+  --table-row-selected: #EAF4FB;
+
+  /* 서브 박스 제목줄 — 메인 네이비보다 한 단계 밝은 블루-슬레이트 */
+  --subhead-bg:    #5B7A99;
+  --subhead-text:  #F8FBFF;
+  --subhead-hover: #6786A5;
+
+
+  /* ═══════════════════════════════════════════════════════
+     하위 호환 매핑 (기존 3000줄 CSS 가 새 팔레트로 자동 전환)
+     — 새 변수를 참조만 하므로 값 변경 시 자동 반영
+     ═══════════════════════════════════════════════════════ */
+
+  /* 배경/카드 */
+  --bg:        var(--bg-page);
+  --bg-tint:   #EAF0F7;
+  --card:      var(--bg-card);
+  --card-tint: #FAFBFD;
+  --line:      var(--border-color);
+  --line-soft: var(--divider-color);
+
+  /* 텍스트 (기존 변수명 → 새 토큰 연결) */
+  --ink:        var(--text-main);
+  --ink-soft:   var(--text-sub);
+  --muted-ink:  var(--text-muted);
+
+  /* 헤더/탭 (이전 리비전 변수명 → 새 토큰 연결) */
+  --header-bg:          var(--nav-bg);
+  --tab-bg-hover:       var(--tab-hover);
+  --tab-text-inactive:  var(--tab-text-muted);
+
+  /* 블루 팔레트 (primary 로 매핑 + 옅은 단계 유지) */
+  --sky-50:  #F2F8FD;
+  --sky-100: #EAF4FB;
+  --sky-200: var(--border-color);
+  --sky-400: var(--info);
+  --sky-500: var(--primary);
+  --sky-600: var(--primary-hover);
+  --sky-700: var(--text-title);
+
+  /* 서브 포인트 — 소프트 퍼플 (유지) */
+  --purple-50:#F2EFFA; --purple-100:#E3DCF3; --purple-200:#C8B9E5;
+  --purple-400:#9477C0; --purple-500:#7957AC; --purple-600:#5F4391;
+
+  /* 성공 — 민트 */
+  --mint-50:#EBF6F1;  --mint-100:#D4EBDF; --mint-200:#AFDCC6;
+  --mint-500: var(--success); --mint-600:#1A8755;
+
+  /* 위험 — 코랄 */
+  --coral-50:#FAF1F0; --coral-100:#F6DBD8; --coral-200:#EBB6B1;
+  --coral-500: var(--danger); --coral-600:#C94848;
+
+  /* 회색 (하위 호환 — 새 텍스트 토큰으로 재매핑) */
+  --gray-50:  #F7FAFC;
+  --gray-100: var(--divider-color);
+  --gray-200: var(--border-color);
+  --gray-500: var(--text-sub);
+  --gray-700: var(--text-main);
+  --gray-900: var(--text-title);
+
+  /* 상태/표 (이전 리비전에서 추가된 신규 변수명 → 새 토큰 연결) */
+  --state-success: var(--success);
+  --state-warn:    var(--warning);
+  --state-danger:  var(--danger);
+  --state-info:    var(--info);
+  --th-bg:         var(--table-head);
+  --row-hover:     var(--table-row-hover);
+  --row-selected:  var(--table-row-selected);
+}
+* { box-sizing: border-box; }
+body { font-family:'Pretendard','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+       margin:0; background:var(--bg); color:var(--ink);
+       -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+       letter-spacing:-0.01em; }
+h1,h2,h3,h4,h5 { letter-spacing:-0.02em; }
+
+.topbar { display:flex; align-items:center; justify-content:space-between;
+  padding:14px 24px; background:#fff; border-bottom:1px solid var(--sky-100); }
+.topbar .brand { font-weight:700; font-size:18px; color:var(--sky-700); }
+.topbar nav a { color:var(--gray-700); margin-left:18px; text-decoration:none; font-size:14px; }
+.topbar nav a:hover { color:var(--sky-600); }
+.home-btn {
+  display:inline-block;
+  margin-left:10px;
+  padding:3px 9px;
+  font-size:13px;
+  color:var(--sky-700);
+  background:var(--sky-50);
+  border:1px solid var(--sky-200);
+  border-radius:6px;
+  text-decoration:none;
+  vertical-align:middle;
+  font-weight:400;
+  transition:background .15s;
+}
+.home-btn:hover { background:var(--sky-100); }
+main { padding:0; }
+
+.topbar-info { background:var(--sky-50); padding:10px 24px;
+  border-bottom:1px solid var(--sky-100);
+  display:flex; gap:14px; align-items:center; font-size:13px; color:var(--gray-700); }
+.topbar-info code { background:#fff; padding:2px 8px; border-radius:4px;
+  border:1px solid var(--sky-200); color:var(--sky-700); }
+.mini { padding:5px 12px; font-size:12px; border:1px solid var(--sky-200);
+  background:#fff; color:var(--sky-700); border-radius:6px; cursor:pointer; }
+.mini:hover { background:var(--sky-50); }
+
+/* 사이드바 상한(미니캘린더 커지는 것 방지), 메인은 min-width:0 으로 축소 허용 */
+.layout { display:grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap:0; min-height:calc(100vh - 105px); }
+.sidebar { background:var(--sky-50); border-right:1px solid var(--sky-100);
+  padding:20px; display:flex; flex-direction:column; gap:20px;
+  /* PC 창 축소 시 사이드바가 과하게 넓어지지 않도록 상한 */
+  max-width: 300px; min-width: 240px; box-sizing: border-box; }
+/* 예약현황 영역: 그리드 자식이 축소될 수 있게 min-width:0, 내부는 가로 스크롤 허용
+   v1.2.11+: flex column 으로 만들어 예약 보드(#day-board)가 남은 수직 공간 채우도록 */
+.main-cal { padding:20px 24px; background:#fff; min-width: 0;
+  display:flex; flex-direction:column; }
+/* 예약 보드 컨테이너 — 검색 패널/헤더 빼고 남은 세로 공간 꽉 채움 */
+.main-cal > #day-board { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cal-header { display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom:14px; }
+.cal-header h2 { margin:0; color:var(--gray-900); font-size:18px; }
+
+.btn-create { width:100%; padding:14px; background:var(--sky-500); color:#fff;
+  border:none; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer;
+  box-shadow:0 2px 6px rgba(14,165,233,.25); transition:all .15s; }
+.btn-create:hover { background:var(--sky-600); transform:translateY(-1px);
+  box-shadow:0 4px 10px rgba(14,165,233,.35); }
+
+.mini-cal-wrap, .legend-box { background:#fff; padding:14px;
+  border-radius:10px; border:1px solid var(--sky-100); }
+.mini-cal-wrap h3, .legend-box h3 { margin:0 0 10px; font-size:13px;
+  color:var(--gray-500); font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+.lg-item { font-size:13px; padding:5px 0; color:var(--gray-700); }
+.dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px;
+  vertical-align:middle; }
+
+.fc { font-family:inherit; }
+.fc .fc-toolbar-title { font-size:16px; color:var(--gray-900); }
+.fc .fc-button { background:#fff; border:1px solid var(--sky-200);
+  color:var(--sky-700); box-shadow:none; }
+.fc .fc-button:hover { background:var(--sky-50); border-color:var(--sky-400); }
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active { background:var(--sky-500);
+  border-color:var(--sky-500); color:#fff; }
+.fc .fc-today-button { background:var(--sky-50); }
+.fc-day-today { background:var(--sky-50) !important; }
+.fc-event { border:none !important; padding:2px 4px; font-size:12px;
+  border-radius:4px; cursor:pointer; }
+#month-cal .fc-toolbar { margin-bottom:6px; }
+#month-cal .fc-toolbar-title { font-size:14px; }
+#month-cal .fc-daygrid-day-number { font-size:11px; padding:2px; }
+#month-cal .fc-col-header-cell-cushion { font-size:11px; padding:4px 0; }
+#month-cal .fc-button { padding:2px 6px; font-size:11px; }
+.fc-timegrid-slot { height:32px; }
+.fc-scrollgrid { border-color:var(--sky-100) !important; }
+.fc-theme-standard td, .fc-theme-standard th { border-color:var(--sky-100) !important; }
+
+/* 금일 예약 환자 */
+.today-list { background:var(--sky-50); border:1px solid var(--sky-100);
+  border-radius:10px; padding:14px 18px; margin-bottom:16px; }
+.today-header { display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom:10px; }
+.today-header h3 { margin:0; font-size:14px; color:var(--sky-700); }
+.today-date { font-size:13px; color:var(--gray-500); font-weight:500; }
+.today-items { display:flex; flex-direction:column; gap:6px; max-height:420px; overflow-y:auto; }
+.today-row { display:grid; grid-template-columns:80px 80px 1fr auto;
+  align-items:center; gap:12px; padding:7px 10px; background:#fff;
+  border:1px solid var(--sky-100); border-radius:7px; font-size:13px;
+  transition:all .12s; }
+.today-row:hover { border-color:var(--sky-400); background:var(--sky-50); }
+.t-time { font-weight:600; color:var(--gray-900); }
+.t-chart { color:var(--gray-500); font-size:12px; }
+.t-name { color:var(--gray-900); font-weight:500; }
+.ther-tag { display:inline-block; padding:3px 10px; border-radius:10px;
+  font-size:11px; color:#fff; font-weight:500; white-space:nowrap; }
+
+/* 모달 */
+.modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.4);
+  display:flex; align-items:center; justify-content:center; z-index:1000;
+  backdrop-filter:blur(2px); }
+.modal { background:#fff; border-radius:14px; padding:28px; width:520px;
+  max-width:90vw; max-height:85vh; overflow-y:auto;
+  box-shadow:0 20px 50px rgba(0,0,0,.15);
+  display:flex; flex-direction:column; }
+.modal h3 { margin-top:0; color:var(--gray-900); }
+.modal h4 { margin:14px 0 8px; color:var(--gray-700); font-size:14px; }
+.modal label { display:block; margin:10px 0; font-size:13px; color:var(--gray-700); }
+.modal input:not([type="checkbox"]):not([type="radio"]),
+.modal select,
+.modal textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--sky-200);
+  border-radius: 7px;
+  margin-top: 4px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.modal input:not([type="checkbox"]):not([type="radio"]):focus,
+.modal select:focus,
+.modal textarea:focus {
+  outline: none;
+  border-color: var(--sky-500);
+  box-shadow: 0 0 0 3px rgba(14,165,233,.15);
+}
+.modal-actions { margin-top:18px; padding-top:14px;
+  border-top:1px solid var(--sky-100);
+  display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+.modal-actions button { padding:9px 18px;
+  border:1px solid var(--gray-200); background:#fff; border-radius:7px;
+  cursor:pointer; font-size:14px; margin:0; }
+.modal-actions button:hover { background:var(--gray-50); }
+.modal-actions button.primary { background:var(--sky-500); color:#fff !important;
+  border-color:var(--sky-500); font-weight:500; }
+.modal-actions button.primary:hover { background:var(--sky-600); }
+button.primary, .primary { background:var(--sky-500); color:#fff !important;
+  border:1px solid var(--sky-500); padding:9px 18px; border-radius:7px;
+  cursor:pointer; font-size:14px; }
+button.primary:hover { background:var(--sky-600); border-color:var(--sky-600); }
+button.danger { background:#fff; color:#dc2626; border:1px solid #fecaca;
+  padding:7px 14px; border-radius:7px; cursor:pointer; margin-top:6px; }
+button.danger:hover { background:#fef2f2; }
+
+.approval-section { border:1px solid var(--sky-100); padding:14px;
+  border-radius:10px; margin:12px 0; background:#fff; }
+.approval-section.disabled { opacity:.5; background:var(--gray-50); }
+.approval-section.done { background:#F0FDF4; border-color:#86EFAC; }
+.approval-section.active { background:#FFFBEB; border-color:#FCD34D; }
+.approval-section button.primary.orange { background:#F59E0B; border-color:#F59E0B; color:#fff !important; }
+.approval-section button.primary.green { background:#10B981; border-color:#10B981; color:#fff !important; }
+
+.badge { display:inline-block; padding:3px 10px; border-radius:12px;
+  font-size:12px; margin-left:6px; font-weight:500; }
+.badge.gray { background:var(--gray-100); color:var(--gray-700); }
+.badge.orange { background:#FED7AA; color:#9A3412; }
+.badge.green { background:#BBF7D0; color:#166534; }
+.badge.red { background:#FECACA; color:#991B1B; }
+
+.data-table { width:100%; border-collapse:collapse; margin-top:12px; font-size:13px; }
+.data-table th, .data-table td { padding:10px; border-bottom:1px solid var(--sky-100); text-align:left; }
+.data-table th { background:var(--sky-50); font-weight:600; color:var(--gray-700); }
+.color-dot { display:inline-block; width:12px; height:12px; border-radius:50%;
+  margin-right:6px; vertical-align:middle; border:1px solid var(--gray-200); }
+button.mini.danger { color:#dc2626; border-color:#fca5a5; }
+
+.setup-wrap { max-width:880px; margin:40px auto; background:#fff;
+  padding:36px; border-radius:14px; border:1px solid var(--sky-100); }
+.setup-wrap h1 { margin-top:0; color:var(--sky-700); }
+.muted { color:var(--gray-500); }
+.mode-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:24px 0; }
+.mode-card { border:2px solid var(--sky-100); border-radius:12px; padding:22px;
+  cursor:pointer; transition:all .15s; background:#fff; }
+.mode-card:hover { border-color:var(--sky-400); }
+.mode-card.active { border-color:var(--sky-500); background:var(--sky-50); }
+.mode-card h2 { margin:0 0 8px; color:var(--gray-900); }
+.actions { text-align:right; margin-top:16px; }
+.hint { margin-top:16px; color:var(--gray-500); }
+.hint code { background:var(--sky-50); padding:2px 6px; border-radius:4px; color:var(--sky-700); }
+
+/* ── 일일 보드 ── */
+.board-header { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+.board-date { margin:0 0 0 12px; font-size:18px; color:var(--gray-900); }
+/* v1.2.11+: max-height 제거 → 부모(#day-board) 공간을 flex 로 채움
+   창이 커지면 표도 같이 커지고, 창이 작아지면 내부 스크롤 */
+.board-wrap { overflow:auto; flex: 1; min-height: 0; border:1px solid var(--sky-100);
+  border-radius:8px; background:#fff; }
+.board-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+.board-table th { position:sticky; top:0; background:#fff; padding:10px 4px;
+  font-size:13px; font-weight:600; text-align:center; color:var(--gray-900);
+  border-bottom:2px solid var(--sky-100); z-index:2; }
+.board-table .time-col { width:70px; background:var(--sky-50);
+  position:sticky; left:0; z-index:3; }
+.board-table .ther-col { min-width:120px; }
+.board-table td { border:1px solid var(--sky-100); height:36px; padding:0;
+  text-align:center; vertical-align:top; }
+.board-table .time-cell { background:var(--sky-50); color:var(--gray-700);
+  font-size:12px; font-weight:500; position:sticky; left:0; z-index:2;
+  box-shadow: 1px 0 0 var(--sky-100); }
+.board-table .empty-cell { cursor:pointer; transition:background .1s; }
+.board-table .empty-cell:hover { background:var(--sky-50); }
+.board-table .appt-cell { cursor:pointer; color:#fff; padding:6px 4px;
+  font-size:12px; line-height:1.3; transition:transform .1s; }
+.board-table .appt-cell:hover { transform:scale(1.02); box-shadow:0 2px 6px rgba(0,0,0,.15); }
+.appt-mark { font-size:14px; }
+.appt-name { font-weight:600; font-size:13px; }
+.appt-chart { font-size:11px; opacity:.85; }
+
+/* ─────── v5 추가 스타일 ─────── */
+
+/* 탭 네비게이션 */
+.tabs-nav {
+  display: flex; gap: 4px; padding: 0 20px;
+  background: #fff; border-bottom: 2px solid var(--sky-200);
+  margin-bottom: 16px; overflow-x: auto;
+}
+.tab-btn {
+  background: transparent; border: none; padding: 12px 20px;
+  font-size: 15px; font-weight: 500; color: var(--gray-500);
+  cursor: pointer; border-bottom: 3px solid transparent;
+  margin-bottom: -2px; white-space: nowrap;
+}
+.tab-btn:hover { color: var(--sky-700); background: var(--sky-50); }
+.tab-btn.active {
+  color: var(--sky-700); border-bottom-color: var(--sky-500);
+  background: var(--sky-50);
+}
+.tab-pane { display: none; padding: 0 20px; }
+.tab-pane.active { display: block; }
+
+/* 서브 탭 */
+.sub-tabs {
+  display: flex; gap: 8px; margin-bottom: 16px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--sky-100);
+}
+.sub-tab {
+  background: var(--sky-50); border: 1px solid var(--sky-200);
+  padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  font-size: 14px; color: var(--gray-700);
+}
+.sub-tab:hover { background: var(--sky-100); }
+.sub-tab.active {
+  background: var(--sky-500); color: #fff; border-color: var(--sky-500);
+  font-weight: 600;
+}
+
+/* 시트 */
+.sheet {
+  background: #fff; border: 1px solid var(--sky-200);
+  border-radius: 12px; padding: 20px; margin-bottom: 20px;
+}
+.sheet-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--sky-100);
+  flex-wrap: wrap; gap: 12px;
+}
+.sheet-head h2 { margin: 0; font-size: 18px; }
+.sheet-toolbar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.sheet-toolbar input, .sheet-toolbar select {
+  padding: 7px 10px; border: 1px solid var(--sky-200);
+  border-radius: 6px; font-size: 14px; background: #fff;
+}
+
+/* 관리자 패널 */
+.admin-pane { display: none; }
+.admin-pane.active { display: block; }
+
+/* 통계 차트 */
+.stat-bar-row {
+  display: flex; align-items: stretch; margin-bottom: 12px;
+  background: #f9fafb; border-radius: 8px; padding: 8px;
+}
+.stat-bar-label {
+  width: 120px; flex-shrink: 0; padding: 8px;
+  font-size: 13px; font-weight: 500;
+  display: flex; align-items: center; gap: 6px;
+}
+.stat-bars {
+  flex: 1; display: flex; align-items: flex-end;
+  gap: 2px; height: 80px; padding: 0 4px;
+}
+.stat-bar {
+  flex: 1; min-width: 4px; opacity: 0.8;
+  border-radius: 2px 2px 0 0; transition: opacity 0.2s;
+}
+.stat-bar:hover { opacity: 1; }
+
+/* 문자 발송 테이블 */
+.sms-body {
+  font-size: 12px; color: var(--gray-700);
+  max-width: 350px; line-height: 1.4;
+}
+
+/* 환자 시트의 환자 기록 컬럼 */
+.data-table td.muted { color: var(--gray-500); font-style: italic; }
+
+/* ─────── v5 폰트/박스 균형 보정 ─────── */
+
+/* 예약 블록 - 치료항목 축약 표시 (누락분 복구) */
+.appt-tx {
+  font-size: 10px; font-weight: 600;
+  background: rgba(0,0,0,0.25); color: #fff;
+  display: inline-block; padding: 1px 6px;
+  border-radius: 3px; margin-top: 2px;
+  line-height: 1.3;
+}
+
+/* 예약 블록 안 글자 크기 조정 (좁은 셀에 잘 들어가게) */
+.board-table .appt-cell {
+  padding: 4px 5px !important;
+  min-height: 50px;
+}
+.appt-mark { font-size: 11px !important; opacity: 0.95; }
+.appt-name {
+  font-size: 12px !important; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin: 1px 0;
+}
+
+/* 보드 행 높이 살짝 키움 (블록 4줄 들어가게) */
+.board-table td { height: 44px !important; }
+.board-table .ther-col { min-width: 110px; }
+.board-table .time-cell { font-size: 11px !important; }
+
+/* 사이드바 금일 예약 - 더 컴팩트 */
+.today-row {
+  font-size: 12px !important;
+  padding: 5px 8px !important;
+  gap: 6px !important;
+}
+.t-time { font-weight: 600; min-width: 56px; font-size: 11px; }
+.t-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ther-tag { font-size: 10px !important; padding: 2px 6px; }
+
+/* 치료사 그룹 헤더 */
+.ther-group-head { font-size: 11px !important; padding: 4px 9px; }
+
+/* 탭 버튼 - 좁은 화면에서도 잘 보이게 */
+.tab-btn { padding: 10px 14px !important; font-size: 14px !important; }
+.sub-tab { padding: 7px 13px !important; font-size: 13px !important; }
+
+/* 시트 헤더 */
+.sheet { padding: 16px 18px !important; }
+.sheet-head h2 { font-size: 16px !important; }
+
+/* 데이터 테이블 - 환자/치료사 시트 */
+.data-table { font-size: 13px !important; }
+.data-table th {
+  font-size: 12px !important; padding: 8px 10px !important;
+  background: var(--sky-50); color: var(--gray-700); font-weight: 600;
+  text-align: left; border-bottom: 2px solid var(--sky-200);
+}
+.data-table td { padding: 8px 10px !important; border-bottom: 1px solid var(--sky-100); }
+.data-table tr:hover td { background: #fafbfc; }
+
+/* 모달 입력창 - 라벨이 잘 보이게 */
+.modal label { font-size: 13px !important; margin: 8px 0 !important; }
+.modal input, .modal select, .modal textarea {
+  font-size: 14px !important; padding: 8px 10px !important;
+}
+
+/* 검색 결과 박스 (환자 검색) */
+.pid-results { font-size: 13px; }
+.pid-row { padding: 7px 10px !important; }
+
+/* 환자 검색 (예약 모달 내) - selected 표시 */
+.pid-selected { font-size: 13px; padding: 8px 10px; }
+
+/* 문자 발송 표 - 메시지 본문 줄바꿈 허용 */
+.sms-body {
+  white-space: normal !important;
+  word-break: break-word;
+  font-size: 11px !important;
+  max-width: 320px;
+  line-height: 1.4;
+}
+
+/* 통계 표 */
+.stat-bar-label { font-size: 12px !important; width: 100px !important; }
+.stat-bars { height: 70px !important; }
+
+/* 미니 캘린더 폰트 보정 */
+#month-cal .day-count-badge {
+  font-size: 9px !important; padding: 1px 4px !important;
+}
+
+/* 모바일/좁은 화면 대응 —
+   첫 화면: 사이드바(달력/금일 예약), 옆으로 스와이프: 예약현황.
+   브레이크포인트를 720px 로 낮춰 PC 창 축소 시에도 나란히 유지 */
+@media (max-width: 720px) {
+  /* .layout: 가로 스와이프 + 스냅 컨테이너 */
+  .layout {
+    display: flex;
+    flex-direction: row;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overflow-y: visible;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .layout::-webkit-scrollbar { display: none; }
+
+  /* 사이드바(첫 화면) · 예약현황(다음 화면) 각각 100% 폭으로 스냅 */
+  .sidebar, .main-cal {
+    flex: 0 0 100%;
+    width: 100% !important;
+    min-width: 0;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    max-height: none;
+  }
+  .sidebar { order: 1; }     /* 사이드바 먼저 (첫 화면) */
+  .main-cal { order: 2; }    /* 예약현황 다음 (옆으로 이동) */
+
+  /* 예약현황표 내부: 가로 스크롤바 없이 스와이프 스냅 */
+  .board-wrap {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .board-wrap::-webkit-scrollbar { display: none; }
+  /* 치료사 열마다 스냅 (시간 열은 sticky로 항상 보임) */
+  .board-table .ther-col {
+    min-width: 120px;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
+  .tab-btn { padding: 9px 10px !important; font-size: 13px !important; }
+}
+
+/* ─────── [Step 1] 모바일 세로(≤640px) — 상단바 · 정보바 · 탭 네비게이션 ─────── */
+@media (max-width: 640px) {
+  /* 상단바: 여백/로고 축소 */
+  .topbar { padding: 10px 14px !important; }
+  .topbar .brand { font-size: 16px !important; }
+
+  /* 정보바: 가로 한 줄 유지 + 넘치면 좌우 스크롤 */
+  .topbar-info {
+    padding: 8px 12px !important;
+    gap: 10px !important;
+    font-size: 12px !important;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 정보바 내부 항목이 줄어들지 않게 */
+  .topbar-info > * { flex-shrink: 0; }
+
+  /* 탭 네비게이션: 가로 스크롤 부드럽게 */
+  .tabs-nav {
+    padding: 0 8px;
+    gap: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 탭 버튼: 터치 영역 44px 이상 확보 */
+  .tab-btn {
+    padding: 12px 14px !important;
+    font-size: 14px !important;
+    min-height: 44px;
+  }
+
+  /* 탭 내용 좌우 여백 축소 (화면 폭 확보) */
+  .tab-pane { padding: 0 12px; }
+
+  /* 시트·박스 여백 축소 (화면 폭 확보) */
+  .sheet { padding: 12px !important; }
+  .emp-box { padding: 12px !important; min-height: 0 !important; }
+
+  /* 환자/직원/통계/치료항목 테이블 — 가로 한 줄 유지, 넘치면 좌우 스크롤 */
+  #pm-results, #tm-results, #stats-results, #sms-results,
+  #emp-doctor-list, #emp-therapist-list, #treatments-list {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #pm-results .data-table th, #pm-results .data-table td,
+  #tm-results .data-table th, #tm-results .data-table td,
+  #stats-results .data-table th, #stats-results .data-table td,
+  #treatments-list .data-table th, #treatments-list .data-table td,
+  .emp-table th, .emp-table td {
+    white-space: nowrap;
+  }
+
+  /* 시트 상단 툴바 — 가로 유지, 넘치면 좌우 스크롤 */
+  .sheet-head {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 10px;
+  }
+  .sheet-head > * { flex-shrink: 0; }
+  .sheet-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: visible;
+  }
+  .sheet-toolbar > * { flex-shrink: 0; }
+
+  /* 직원 박스 헤더(🩺 의사 + [신규 의사] 버튼) — 한 줄 유지, 넘치면 스크롤 */
+  .emp-box-head {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px;
+  }
+  .emp-box-head > * { flex-shrink: 0; }
+
+  /* 직원 카드 상단(이름 + 상태 + 액션) — 가로 유지 */
+  .emp-card-head {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .emp-card-head > * { flex-shrink: 0; }
+
+  /* 하위 탭 (직원/관리자 서브탭) — 글자 한 줄 유지, 터치 영역 확보 */
+  .sub-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sub-tabs > * { flex-shrink: 0; }
+  .sub-tab {
+    padding: 10px 14px !important;
+    min-height: 40px;
+    white-space: nowrap;
+  }
+}
+
+/* ─────── v5 최종 - 폰트/박스 일관성 정리 ─────── */
+
+/* 모달 제목 크기 통일 */
+.modal h3 { font-size: 17px !important; margin: 0 0 14px !important; color: var(--sky-700); }
+.modal h4 { font-size: 14px !important; margin: 14px 0 8px !important; color: var(--gray-700); }
+.modal { padding: 22px 24px !important; max-width: 560px; }
+
+/* 버튼 일관성 */
+button {
+  font-size: 14px;
+  padding: 7px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  border: 1px solid var(--sky-200);
+  background: #fff;
+  color: var(--gray-700);
+  transition: all 0.15s;
+}
+button:hover { background: var(--sky-50); }
+button.primary {
+  background: var(--sky-500); color: #fff;
+  border-color: var(--sky-500); font-weight: 500;
+}
+button.primary:hover { background: var(--sky-700); border-color: var(--sky-700); }
+button.danger {
+  background: #fff; color: #DC2626; border-color: #FCA5A5;
+}
+button.danger:hover { background: #FEF2F2; }
+button.mini {
+  font-size: 12px !important;
+  padding: 5px 11px !important;
+}
+button.mini.danger { color: #DC2626; }
+
+/* 모달 액션 버튼 영역 */
+.modal-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+  margin-top: 18px; padding-top: 14px;
+  border-top: 1px solid var(--sky-100);
+}
+
+/* 새 예약 큰 버튼 */
+.btn-create {
+  width: 100%; padding: 14px;
+  font-size: 15px; font-weight: 600;
+  background: linear-gradient(135deg, var(--sky-500), var(--sky-700));
+  color: #fff; border: none; border-radius: 10px;
+  cursor: pointer; margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(14,165,233,0.25);
+}
+.btn-create:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(14,165,233,0.35); }
+
+/* 치료항목 체크리스트 폰트 통일 */
+.chk-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;            /* 체크박스↔글자 간격 ≒ 1cm 가깝게 */
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  line-height: 1;
+  margin: 0 !important;
+}
+
+.chk-item input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  flex: 0 0 16px;
+  align-self: center;
+  vertical-align: middle;
+  accent-color: var(--sky-500);
+}
+
+.chk-item span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.chk-item em {
+  font-size: 11px;
+  color: var(--gray-500);
+  font-style: normal;
+  margin-left: 4px;
+  line-height: 1;
+}
+
+.modal .chk-item {
+  margin: 0 !important;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gray-700);
+  gap: 10px !important;
+}
+
+.modal .chk-item span {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.modal .chk-item em {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.modal .chk-item input[type="checkbox"] {
+  margin-top: 0 !important;
+}
+
+.modal .chk-item span,
+.modal .chk-item .leave-name-text {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0 !important;
+}
+
+.leave-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.leave-row .chk-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.leave-row .chk-item > span {
+  min-width: 0;
+}
+
+.leave-row .leave-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+/* 치료항목 체크리스트 */
+.chk-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+/* 휴무자 모달 전용 */
+.leave-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.leave-row .chk-item {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.leave-row .chk-item span {
+  min-width: 0;
+}
+
+.leave-row .chk-item .leave-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leave-type-sel {
+  flex: 0 0 110px;
+  width: 110px;
+}
+
+.leave-ther-chk {
+  margin: 0;
+}
+
+/* 배지 (badge) 크기 일관성 */
+.badge {
+  font-size: 11px; padding: 3px 9px;
+  border-radius: 10px; font-weight: 500;
+  display: inline-block;
+}
+.badge.gray { background: #E5E7EB; color: #4B5563; }
+.badge.green { background: #D1FAE5; color: #065F46; }
+.badge.orange { background: #FED7AA; color: #9A3412; }
+.badge.red { background: #FEE2E2; color: #991B1B; }
+
+/* 색상 닷 (치료사) */
+.color-dot {
+  display: inline-block; width: 12px; height: 12px;
+  border-radius: 50%; margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* 데이터 테이블 - 환자/치료사 시트 가로 스크롤 대응 */
+#pm-results, #tm-results, #stats-results, #sms-results {
+  overflow-x: auto;
+}
+.data-table {
+  min-width: 700px;   /* 최소 너비 보장 - 좁아도 가로 스크롤 */
+}
+
+/* 환자 시트 컬럼 너비 힌트 */
+#pm-results .data-table th:nth-child(1) { width: 90px; }    /* 차트번호 */
+#pm-results .data-table th:nth-child(2) { width: 80px; }    /* 이름 */
+#pm-results .data-table th:nth-child(3) { width: 110px; }   /* 연락처 */
+#pm-results .data-table th:nth-child(4) { width: 100px; }   /* 생년월일 */
+#pm-results .data-table th:nth-child(6) { width: 80px; }    /* 치료횟수 */
+#pm-results .data-table th:nth-child(7) { width: 100px; }   /* 마지막 예약 */
+#pm-results .data-table th:nth-child(8) { width: 180px; }   /* 관리 */
+
+/* 치료사 시트 컬럼 */
+#tm-results .data-table th:nth-child(1) { width: 130px; }   /* 이름 */
+#tm-results .data-table th:nth-child(2) { width: 110px; }   /* 생년월일 */
+#tm-results .data-table th:nth-child(3) { width: 130px; }   /* 연락처 */
+#tm-results .data-table th:nth-child(5) { width: 80px; }    /* 상태 */
+#tm-results .data-table th:nth-child(6) { width: 140px; }   /* 관리 */
+
+/* 입력창 글자 색상 진하게 */
+input, select, textarea {
+  color: var(--gray-900);
+}
+input::placeholder, textarea::placeholder {
+  color: #9CA3AF; font-size: 13px;
+}
+
+/* 헤더 상단바 폰트 */
+.topbar { padding: 12px 24px; }
+.topbar .brand { font-size: 17px !important; }
+.topbar-info { font-size: 12px !important; padding: 8px 24px; }
+.topbar-info code {
+  background: #F3F4F6; padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; color: var(--gray-700);
+}
+
+/* 시트 최대 너비 (너무 넓어지지 않게) */
+.sheet { max-width: 1400px; margin: 0 auto 20px; }
+.tab-pane { max-width: 1500px; margin: 0 auto; }
+/* v1.2.14: 예약 탭은 1500px 제한 해제 — 메인 표가 모니터 끝까지 늘어나도록 */
+#tab-reserve.tab-pane { max-width: none; margin: 0; }
+
+/* 예약 블록 - 텍스트 잘림 방지 + 가독성 */
+.appt-cell { line-height: 1.25; }
+.appt-name {
+  font-size: 12px !important;
+  white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.appt-tx {
+  font-size: 10px; font-weight: 600;
+  background: rgba(0,0,0,0.28); color: #fff;
+  display: inline-block; padding: 1px 6px;
+  border-radius: 3px; margin-top: 2px;
+  line-height: 1.3; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 보드 헤더 (날짜 이동) */
+.board-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; background: #fff;
+  border: 1px solid var(--sky-100); border-radius: 8px;
+  margin-bottom: 12px;
+}
+.board-header .board-date { font-size: 16px !important; margin: 0 0 0 14px !important; }
+
+/* 환자 검색 (예약 모달) */
+.patient-picker { position: relative; margin: 12px 0; }
+.patient-picker label { margin-bottom: 6px !important; }
+#f-pid-search {
+  width: 100%; padding: 10px 12px;
+  border: 1px solid var(--sky-200); border-radius: 7px;
+  font-size: 14px;
+}
+.pid-selected {
+  margin-top: 8px; padding: 10px 12px;
+  background: var(--sky-50); border: 1px solid var(--sky-200);
+  border-radius: 7px; font-size: 13px;
+}
+
+/* 폼 row-3 (3열 배치) */
+.row-3 {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px; margin: 10px 0; align-items: start;
+}
+.row-3 > label { margin: 0 !important; }
+
+/* 승인 섹션 (예약 상세) */
+.approval-section {
+  border: 1px solid var(--sky-200); border-radius: 8px;
+  padding: 12px 14px; margin: 10px 0;
+}
+.approval-section.active { background: var(--sky-50); border-color: var(--sky-400); }
+.approval-section.done { background: #F0FDF4; border-color: #86EFAC; }
+.approval-section.disabled { background: #F9FAFB; opacity: 0.7; }
+.approval-section h4 { margin: 0 0 10px !important; font-size: 13px !important; }
+
+/* 좁은 화면에서 row-3 → 1열 */
+@media (max-width: 700px) {
+  .row-3 { grid-template-columns: 1fr; }
+  .modal { padding: 18px !important; max-width: 95vw; }
+  .sheet { padding: 12px !important; }
+  .sheet-toolbar { width: 100%; }
+  .sheet-toolbar input, .sheet-toolbar select { flex: 1; min-width: 0; }
+}
+
+#system-form .data-table {
+  min-width: 520px;
+}
+
+#system-form h4 {
+  margin-top: 20px;
+}
+
+/* 예약 상세 - 예약 정보 수정 영역 간결화 */
+.compact-edit-row {
+  grid-template-columns: 1.2fr 1fr 0.9fr !important;
+  gap: 8px !important;
+  margin: 8px 0 6px !important;
+}
+
+.compact-edit-row label {
+  margin: 0 !important;
+}
+
+.compact-edit-row input,
+.compact-edit-row select {
+  padding: 7px 9px !important;
+  font-size: 13px !important;
+}
+
+.compact-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.compact-edit-actions .primary {
+  min-width: 140px;
+}
+
+/* 예약 상세 모달 자체 조금 더 컴팩트 */
+#modal-body .approval-section {
+  padding: 7px 10px !important;
+  margin: 5px 0 !important;
+}
+
+#modal-body .approval-section h4 {
+  margin-bottom: 5px !important;
+  font-size: 13px !important;
+}
+
+#modal-body p {
+  margin: 5px 0;
+}
+
+/* 예약 상세 팝업 textarea 높이 축소 */
+#modal-body textarea {
+  min-height: 52px !important;
+  height: 52px !important;
+  resize: vertical;
+}
+@media (max-width: 700px) {
+  .compact-edit-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .compact-edit-actions {
+    justify-content: stretch;
+  }
+
+  .compact-edit-actions .primary {
+    width: 100%;
+  }
+}
+
+/* 예약 상세 팝업 버튼 크기 축소 (modal-body 전용) */
+#modal-body .modal-actions button {
+  padding: 5px 12px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+}
+
+#modal-body .modal-actions {
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+  gap: 6px !important;
+}
+
+#modal-body button.danger {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  margin-top: 3px !important;
+}
+
+#modal-body .approval-section button {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+}
+
+#modal-body .approval-section button.primary {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+}
+
+/* 치료 탭 단일 시간표 줄형 표시 */
+.treatment-line {
+  border-radius: 8px !important;
+  padding: 6px 8px !important;
+}
+
+/* 가로 1/8 배치(.tx-row-wrap) 안에서는 세로 마진 제거 - flex 가로 배치 우선 */
+.tx-row-wrap .treatment-line + .treatment-line {
+  margin-top: 0 !important;
+}
+
+/* (.tx-row-wrap 밖에서만 세로 stacking 유지) */
+.treatment-line + .treatment-line {
+  margin-top: 6px;
+}
+
+/* 휴무일 관리 캘린더 */
+#leave-calendar {
+  background:#fff;
+  border:1px solid var(--sky-100);
+  border-radius:10px;
+  padding:10px;
+}
+
+#leave-calendar .fc-event {
+  font-size:11px !important;
+  padding:2px 4px !important;
+}
+
+/* 미니캘린더 휴무 이름 배지 */
+.leave-count-badge {
+  display: block;
+  margin-top: 2px;
+  padding: 1px 4px;
+  font-size: 9px;
+  line-height: 1.2;
+  border-radius: 6px;
+  background: #E5E7EB;
+  color: #4B5563;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.leave-cell {
+  background: #E5E7EB !important;
+  color: #6B7280;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  vertical-align: middle;
+  cursor: not-allowed;
+}
+
+#leave-calendar .fc-event {
+  font-size: 11px !important;
+  line-height: 1.2;
+  white-space: normal !important;
+  word-break: keep-all;
+}
+
+.ther-leave-head {
+  background: #F3F4F6;
+  color: #6B7280;
+}
+
+.leave-cell-large {
+  background: #E5E7EB !important;
+  color: #6B7280;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+  cursor: not-allowed;
+  padding: 0 !important;
+}
+.leave-cell-center {
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 미니캘린더 환자수 배지 */
+.day-count-badge.center-badge {
+  display: block;
+  width: fit-content;
+  margin: 4px auto 2px auto;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.3;
+  border-radius: 10px;
+  background: #DBEAFE;
+  color: #1D4ED8;
+  text-align: center;
+}
+
+/* 미니캘린더 휴무 이름 목록 */
+.leave-name-list {
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.leave-name-item {
+  display: block;
+  padding: 1px 4px;
+  font-size: 9px;
+  line-height: 1.2;
+  border-radius: 6px;
+  background: #E5E7EB;
+  color: #4B5563;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 치료 탭: 예약 셀 1/8 너비, 첫 셀 중앙 배치, 이후 오른쪽으로 추가 ── */
+.tx-row-td {
+  padding: 4px !important;
+  vertical-align: middle;
+}
+
+.tx-row-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  /* 첫 셀의 중심이 부모 가운데에 오도록:
+     50% - (셀너비 12.5%)/2 = 43.75% */
+  padding-left: 43.75%;
+  overflow-x: auto;
+  min-height: 56px;
+}
+
+.tx-row-wrap > .appt-cell {
+  flex: 0 0 calc(12.5% - 4px);   /* 1/8 너비 (gap 보정) */
+  margin: 0 !important;
+  margin-top: 0 !important;
+  box-sizing: border-box;
+  min-width: 90px;               /* 너무 좁아져 글자가 끼이는 것 방지 */
+  max-width: calc(12.5% - 4px);
+}
+
+/* ─────────── 직원 관리 (의사/치료사 박스 2열) ─────────── */
+.emp-boxes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 16px;
+}
+
+.emp-box {
+  background: #fff;
+  border: 1px solid var(--sky-100, #E0F2FE);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  min-height: 200px;
+}
+
+.emp-box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--sky-100, #E0F2FE);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+.emp-box-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gray-700, #374151);
+}
+
+.emp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.emp-card {
+  background: #F9FAFB;
+  border-radius: 10px;
+  padding: 12px 14px;
+  border-left: 4px solid #9CA3AF;
+  transition: background 0.12s;
+}
+.emp-card:hover { background: #F3F4F6; }
+
+.emp-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.emp-card-head b {
+  flex: 1;
+  font-size: 15px;
+  color: var(--gray-700, #374151);
+}
+
+.emp-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.emp-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.emp-row .muted {
+  min-width: 60px;
+  font-size: 12px;
+}
+
+.emp-card-foot {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  border-top: 1px dashed #E5E7EB;
+  padding-top: 8px;
+}
+
+.badge.gray {
+  background: #E5E7EB;
+  color: #4B5563;
+}
+
+/* 모바일: 의사/치료사 박스 세로 스택 */
+@media (max-width: 768px) {
+  .emp-boxes {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .emp-box { padding: 12px; }
+  .emp-card-head { flex-wrap: wrap; }
+}
+
+/* ─────────── 경고 오버레이 (모달 중앙, 예약창 위) ─────────── */
+.warn-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+.warn-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px 28px;
+  max-width: 400px;
+  min-width: 280px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+.warn-icon {
+  font-size: 36px;
+  margin-bottom: 10px;
+}
+.warn-msg {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--gray-700, #374151);
+  margin-bottom: 18px;
+}
+.warn-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+.warn-actions button {
+  min-width: 80px;
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #D1D5DB;
+  background: #fff;
+  cursor: pointer;
+}
+.warn-actions button.primary {
+  background: var(--sky-500, #0EA5E9);
+  color: #fff;
+  border-color: var(--sky-500, #0EA5E9);
+}
+
+/* disabled option 회색 표시 */
+select option:disabled {
+  color: #9CA3AF;
+  background: #F3F4F6;
+}
+
+@media (max-width: 480px) {
+  .warn-box {
+    min-width: 240px;
+    padding: 20px;
+    margin: 0 16px;
+  }
+}
+
+/* ─────────── 예약 현황 표 (4단계 재구성) ─────────── */
+/* td 자체는 table-cell 그대로 유지하고 vertical-align: middle 로
+   셀 안의 .appt-line 묶음을 세로 중앙에 배치.
+   여러 예약이 있으면 .appt-line 들이 block 처럼 쌓이되,
+   한 덩어리로서 셀 중앙 정렬되므로 위/아래 균형 잡힘.
+   rowspan 이 걸린 셀(예약 길이 > 1슬롯)도 동일하게 중앙 정렬. */
+.appt-cell-stack {
+  padding: 2px !important;
+  vertical-align: middle;
+  min-width: 120px;
+}
+.appt-cell-stack .appt-line + .appt-line { margin-top: 2px; }
+
+.appt-line {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;           /* 시간 줄이 다음 줄로 내려오도록 */
+  gap: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  border-radius: 4px;
+  cursor: pointer;
+  /* 이름이 길어도 '...'로 자르지 않고 줄바꿈 허용 */
+  white-space: normal;
+  overflow: visible;
+  word-break: keep-all;
+  transition: transform 0.08s;
+  user-select: none;
+}
+.appt-line:hover { transform: translateY(-1px); filter: brightness(1.08); }
+.appt-line-mark { font-size: 11px; opacity: 0.95; flex-shrink: 0; }
+.appt-line-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;       /* 본문 줄바꿈 허용 */
+  overflow: visible;
+}
+.appt-line-time { flex-basis: 100%; }  /* 시간은 항상 다음 줄로 */
+
+/* 고정 공용 열 헤더 시각 구분 */
+.board-table th.fixed-col {
+  background: #F9FAFB;
+  font-size: 13px;
+}
+.board-table td.fixed-col-cell {
+  background: rgba(249, 250, 251, 0.5);
+}
+.board-table td.empty-fixed {
+  background: rgba(249, 250, 251, 0.5);
+  cursor: default;
+}
+
+/* 모바일 예약 표 — 가로 스크롤 + 폰트 축소 */
+@media (max-width: 768px) {
+  .board-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .board-table {
+    min-width: 720px;
+    font-size: 12px;
+  }
+  .appt-line {
+    font-size: 11px;
+    padding: 2px 5px;
+  }
+  .appt-cell-stack { min-width: 90px; }
+}
+
+/* 범례 박스 크기 조정 */
+.legend-box .lg-item {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ─────────── 드래그앤드롭 시각 피드백 ─────────── */
+/* 체외충격파 / 도수치료(미배정) 라인은 그랩 커서.
+   도수치료는 data-is-manual 속성으로 판정 → 새 시간항목(manual80/90 등) 자동 반영. */
+.appt-line[data-code="eswt"] {
+  cursor: grab;
+}
+.appt-line[data-is-manual] {
+  cursor: default;
+}
+.fixed-col-cell .appt-line[data-is-manual] {
+  cursor: grab;
+}
+.sortable-ghost {
+  opacity: 0.4;
+  background: #FCD34D !important;
+}
+.sortable-drag {
+  opacity: 0.9;
+  transform: scale(1.05);
+}
+.drag-handle {
+  cursor: grab;
+  color: var(--gray-400);
+  font-size: 16px;
+  padding: 0 6px !important;
+  text-align: center;
+  user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
+
+/* 치료항목 뱃지 (예약 상세 모달) */
+.tx-badges { margin: 6px 0; }
+.tx-badge {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #E0E7FF;
+  color: #3730A3;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+.badge.red {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
+/* 빈 셀도 드롭 타겟으로 충분한 최소 높이 */
+.empty-cell {
+  min-height: 28px;
+}
+
+/* ─────────── 환자 관리 (6단계: 아코디언 + 항목별 카운트) ─────────── */
+.pm-row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.pm-row:hover { background: #F9FAFB; }
+.pm-row.open {
+  background: #EFF6FF;
+  font-weight: 500;
+}
+
+.tx-done-compact {
+  font-size: 12px;
+  color: var(--gray-700, #374151);
+  white-space: nowrap;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
+.pm-history-row td {
+  background: #F9FAFB;
+  padding: 0 !important;
+  border-top: 0;
+}
+.pm-history-box {
+  padding: 14px 18px;
+  border-left: 4px solid #0EA5E9;
+  background: #fff;
+  margin: 4px 12px 10px 12px;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.03);
+}
+.pm-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.pm-history-line {
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #F9FAFB;
+  border-left: 2px solid #E5E7EB;
+}
+.pm-history-line:hover { background: #F3F4F6; }
+.pm-history-line b {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  color: #0369A1;
+  margin-right: 4px;
+}
+
+.pm-history-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #E5E7EB;
+  font-size: 12px;
+}
+
+/* 환자 편집 모달 항목별 카운트 그리드 */
+.rx-grid-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-700, #374151);
+  margin: 10px 0 4px;
+}
+.rx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.rx-grid label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 2px;
+}
+.rx-grid input {
+  padding: 6px 8px;
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .rx-grid { grid-template-columns: repeat(2, 1fr); }
+  .tx-done-compact { font-size: 11px; }
+  .pm-history-box { margin: 4px 4px 8px 4px; padding: 10px 12px; }
+  .pm-history-line { font-size: 12px; }
+}
+/* ─────────── 버튼 정렬 통일 패치 ─────────── */
+
+/* [수정 1] danger 버튼 margin-top 제거
+   — 같은 줄의 다른 버튼과 기준선이 맞지 않는 원인 */
+button.danger {
+  margin-top: 0 !important;
+}
+
+/* [수정 2] 툴바(.sheet-toolbar) 안 입력창·드롭다운·버튼 높이 통일 (36px)
+   — select/input/button 높이가 미묘하게 달라서 기준선 어긋나는 현상 해결 */
+.sheet-toolbar input,
+.sheet-toolbar select,
+.sheet-toolbar button {
+  height: 36px;
+  box-sizing: border-box;
+}
+
+/* 기간 프리셋용 작은 보조 버튼 (v1.2.9+ 집계/통계 탭) */
+.sheet-toolbar button.small {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  background: #F3F4F6;
+  color: #374151;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.sheet-toolbar button.small:hover {
+  background: #E5E7EB;
+  color: #111827;
+}
+
+/* [수정 3] 툴바 안 텍스트(span)도 세로 중앙 기준 맞추기
+   — 통계 탭의 "년" 텍스트가 위아래로 떠 있던 현상 해결 */
+.sheet-toolbar > span {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  font-size: 14px;
+}
+
+/* [수정 4] 모달 하단 버튼들 세로 기준선 통일 */
+.modal-actions {
+  align-items: center !important;
+}
+/* ─────────── 관리자 시스템 카드 레이아웃 (7단계) ─────────── */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.settings-card {
+  background: #fff;
+  border: 1px solid #E0F2FE;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  overflow: hidden;
+}
+.settings-card-wide { grid-column: 1 / -1; }   /* 문자 템플릿 전체 폭 */
+
+.settings-card-head {
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #F0F9FF, #E0F2FE);
+  border-bottom: 1px solid #BAE6FD;
+}
+.settings-card-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0369A1;
+}
+.settings-card-head small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.settings-card-body {
+  padding: 14px 16px;
+}
+
+/* 라벨 왼쪽 정렬 + 입력박스 그 옆 (아이디 / API키 등) */
+.sf-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.sf-label {
+  flex: 0 0 110px;           /* 고정 라벨 너비 → 왼쪽 정렬 */
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-700, #374151);
+  text-align: right;
+}
+.sf-row input,
+.sf-row select,
+.sf-row textarea {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 14px;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+}
+.sf-row input[type="number"] { max-width: 100px; }
+.sf-row input[type="time"] { max-width: 140px; }
+.sf-suffix {
+  font-size: 13px;
+  color: var(--gray-500, #6B7280);
+}
+.sf-sep {
+  border: none;
+  border-top: 1px dashed #E5E7EB;
+  margin: 12px 0;
+}
+.sf-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.settings-card-body textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+/* 문자 변수 칩 */
+.sms-variables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.8;
+  padding: 6px 0;
+}
+.sms-variables code {
+  background: #F3F4F6;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #374151;
+  cursor: default;
+}
+.sms-variables .muted { width: 100%; margin-bottom: 2px; }
+
+/* 개별 문자 발송 */
+.sms-single label {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+}
+.sms-single textarea {
+  width: 100%;
+  padding: 10px;
+  font-size: 14px;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  box-sizing: border-box;
+  margin-top: 4px;
+}
+
+/* 모바일 */
+@media (max-width: 640px) {
+  .settings-grid { grid-template-columns: 1fr; }
+  .sf-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .sf-label {
+    text-align: left;
+    flex: 0 0 auto;
+  }
+  .sf-row input,
+  .sf-row select { width: 100%; max-width: none; }
+}
+
+/* ─────────── 관리자 > 치료항목 카드 ─────────── */
+.tx-badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-right: 2px;
+  font-weight: 500;
+}
+.tx-badge-doctor { background: #FEE2E2; color: #991B1B; }
+.tx-badge-therapist { background: #DBEAFE; color: #1E40AF; }
+.tx-badge-on { background: #D1FAE5; color: #065F46; }
+.tx-badge-off { background: #F3F4F6; color: #6B7280; }
+
+.role-radios {
+  display: flex; gap: 12px; padding: 6px 0;
+}
+.role-radios label {
+  display: flex; align-items: center; gap: 4px;
+  font-weight: normal; cursor: pointer;
+}
+
+.chk-label-inline {
+  display: flex; align-items: center; gap: 6px;
+  padding-top: 22px;
+  font-weight: normal;
+  cursor: pointer;
+}
+.chk-label-inline input[type="checkbox"] {
+  width: 18px; height: 18px; cursor: pointer;
+}
+
+/* ── 치료항목 수정 팝업 정렬 개선 ── */
+.t-role-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  padding: 4px 0;
+}
+.t-field-label {
+  font-size: 13px;
+  color: var(--gray-700);
+  white-space: nowrap;
+  font-weight: 500;
+  min-width: 38px;
+}
+.t-checks-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin: 6px 0 2px;
+}
+.t-checks-row .chk-label-inline {
+  padding-top: 0 !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.t-checks-row .chk-label-inline input[type="checkbox"] {
+  flex-shrink: 0;
+  align-self: center;
+  margin: 0;
+  position: relative;
+  top: 0;
+}
+.t-checks-row .chk-label-inline span {
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.tx-ref-list {
+  max-height: 260px;
+  overflow-y: auto;
+  background: #FEF2F2;
+  border: 1px solid #FCA5A5;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.tx-ref-line {
+  padding: 3px 0;
+  border-bottom: 1px dashed #FECACA;
+}
+.tx-ref-line:last-child { border-bottom: none; }
+
+/* ─────────── 단계 B: UI 디테일 ─────────── */
+
+/* 예약 표 셀 — 검정 텍스트 + 창 폭 유동 (v1.2.10+)
+   넓은 창: 치료사 열 늘어나 가득 찬다 · 좁은 창: min-width 까지 축소 후 스크롤 */
+.board-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  /* v1.2.13: 테이블이 컨테이너 폭을 확실히 채우도록 width:100% 강제,
+     콘텐츠가 더 필요하면 min-width:max-content 가 컨테이너 넘어 늘어나게 함.
+     - 창 넓음: width:100% → 테이블이 컨테이너 꽉 채움, 열이 150 이상으로 분배
+     - 창 좁음: min-width:max-content → 테이블이 자연 폭까지 늘어남, board-wrap 스크롤 */
+  table-layout: auto;
+  width: 100% !important;
+  min-width: max-content;
+  height: 100%;
+}
+.board-table .time-col {
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+  background: #F9FAFB;
+  font-weight: 600;
+  text-align: center;
+}
+.board-table .ther-col,
+.board-table th.fixed-col {
+  /* v1.2.12: 셀 최소 폭 150px 보장
+     - 치료사 많아 컨테이너에 안 들어갈 때 셀이 쪼그라들지 않고 테이블이 옆으로 늘어남
+     - 공간 남으면 각 열이 150px 이상으로 균등 확장 */
+  min-width: 150px;
+  white-space: nowrap;          /* 헤더 줄바꿈 방지 */
+  color: #111827;               /* 헤더 글씨 검정 */
+  font-weight: 600;
+}
+.board-table td.appt-cell-stack,
+.board-table td.empty-cell {
+  /* 셀도 동일 최소 폭 150px */
+  min-width: 150px;
+  vertical-align: middle;
+}
+.board-table td.time-cell {
+  background: #FAFAFA;
+  color: #111827;
+  font-weight: 500;
+  text-align: center;
+}
+.board-wrap {
+  overflow-x: auto;             /* 치료사 늘면 가로 스크롤 */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 셀 안 텍스트 검정 + 라인 디자인 (단계 B) */
+.appt-line {
+  color: #111827 !important;
+  font-weight: 500;
+}
+.appt-line:hover {
+  filter: brightness(0.95);
+  transform: translateX(2px);
+}
+.appt-line-mark { font-size: 11px; opacity: 0.8; }
+
+/* 빈 셀 호버 (예약 가능 표시) */
+.board-table td.empty-cell:hover {
+  background: #FEF3C7 !important;
+  cursor: pointer;
+}
+.board-table td.empty-fixed:hover {
+  background: #DBEAFE !important;
+}
+
+/* #5: 미니캘린더 일요일 빨강 */
+.fc .fc-day-sun .fc-daygrid-day-number,
+.fc .fc-col-header-cell.fc-day-sun a,
+.fc-day-sun a {
+  color: #DC2626 !important;
+}
+.fc .fc-day-sat .fc-daygrid-day-number,
+.fc .fc-col-header-cell.fc-day-sat a,
+.fc-day-sat a {
+  color: #2563EB;
+}
+/* 미니캘린더 글씨 전체 검정 톤다운 */
+.fc, .fc table, .fc-daygrid-day-number {
+  color: #111827;
+}
+
+/* #11: 모든 mini 버튼 크기 통일 */
+button.mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 5px;
+  white-space: nowrap;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+button.mini.danger {
+  border-color: #FCA5A5;
+  color: #B91C1C;
+}
+
+/* #17: 관리자 비밀번호 카드 입력 box-sizing */
+.settings-card-body input,
+.settings-card-body select,
+.settings-card-body textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+.settings-card-body input[type="password"],
+.settings-card-body input[type="text"],
+.settings-card-body input[type="time"],
+.settings-card-body input[type="number"] {
+  box-sizing: border-box;
+}
+.sf-row input[type="password"] {
+  width: 100%;
+  flex: 1;
+  min-width: 0;                 /* flex 자식이 부모 넘는 것 방지 */
+}
+.sf-row {
+  min-width: 0;
+}
+
+/* #4: 휴무 셀 통합 디자인 (rowspan 시) */
+.leave-cell-large {
+  background: repeating-linear-gradient(
+    45deg, #F3F4F6, #F3F4F6 8px, #E5E7EB 8px, #E5E7EB 16px
+  );
+}
+.leave-cell-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-weight: 600;
+  color: #6B7280;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+.leave-cell {
+  background: repeating-linear-gradient(
+    45deg, #F9FAFB, #F9FAFB 6px, #F3F4F6 6px, #F3F4F6 12px
+  );
+  color: #6B7280;
+  font-size: 12px;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* 휴무 헤더 표시 */
+.ther-leave-head {
+  opacity: 0.65;
+  font-style: italic;
+}
+
+/* 반일 휴무 통합 셀 (rowspan) */
+.leave-cell-merged {
+  background: repeating-linear-gradient(
+    45deg, #FEF3C7, #FEF3C7 8px, #FDE68A 8px, #FDE68A 16px
+  );
+  color: #92400E;
+}
+.leave-cell-merged .leave-cell-center {
+  color: #92400E;
+  font-weight: 600;
+}
+
+/* 점심시간 가로 병합 셀 (colspan + rowspan) */
+.lunch-cell {
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%) !important;
+  border: 2px dashed #F59E0B !important;
+  text-align: center;
+  vertical-align: middle;
+  cursor: not-allowed;
+  padding: 0 !important;
+}
+.lunch-cell-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #92400E;
+  letter-spacing: 1px;
+}
+.lunch-row .time-cell {
+  color: #92400E;
+  font-weight: 600;
+}
+
+/* ─────────── 단계 D: 예약 플로우 ─────────── */
+
+/* #1: 환자 검색 패널 (예약 표 위) */
+.patient-quick-search {
+  background: linear-gradient(135deg, #F0F9FF, #E0F2FE);
+  border: 1px solid #BAE6FD;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  position: relative;
+}
+.pqs-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.pqs-row input[type="text"] {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #BAE6FD;
+  border-radius: 6px;
+  background: #fff;
+}
+.pqs-row select {
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid #BAE6FD;
+  border-radius: 6px;
+  background: #fff;
+  min-width: 110px;
+}
+.pqs-results {
+  margin-top: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+}
+.pqs-row-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px dashed #E5E7EB;
+}
+.pqs-row-item:last-child { border-bottom: none; }
+.pqs-row-item:hover { background: #F9FAFB; }
+.pqs-info {
+  font-size: 13px;
+  color: #111827;
+}
+.pqs-empty {
+  padding: 16px;
+  text-align: center;
+  color: #6B7280;
+  font-size: 13px;
+}
+.pqs-empty a {
+  color: #0369A1;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+/* #8: 금일 예약 박스 1.5배 + 그룹화 디자인 */
+.today-list {
+  max-height: 480px;
+  /* overflow-y는 today-items에서만 처리 */
+}
+.today-canceled {
+  max-height: 280px;
+}
+.ther-group {
+  margin-bottom: 8px;
+  border-radius: 8px;
+  overflow: visible;            /* hidden → visible: 내부 스크롤 허용 */
+  background: #fff;
+  border: 1px solid #E5E7EB;
+}
+.ther-group-head {
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;                  /* 배경색 위 흰 글씨로 가독성 개선 */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 8px 8px 0 0;   /* 헤더 상단만 둥글게 */
+  filter: brightness(0.92);
+}
+.ther-group-head span {
+  background: rgba(255,255,255,0.3);
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #fff;
+}
+/* ▼ 새로 추가: 환자 목록 내부 스크롤 영역 */
+.ther-group-body {
+  max-height: 120px;            /* 환자 약 4~5명 표시 후 스크롤 */
+  overflow-y: auto;
+  border-radius: 0 0 8px 8px;   /* 하단만 둥글게 */
+}
+.today-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  color: #111827;
+  cursor: pointer;
+  border-bottom: 1px dashed #F3F4F6;
+}
+.today-row:last-child { border-bottom: none; }
+.today-row:hover { background: #F9FAFB; }
+.today-row.canceled {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+.t-time {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-weight: 600;
+  color: #0369A1;
+  min-width: 56px;
+}
+.t-name {
+  flex: 1;
+  font-weight: 500;
+}
+.t-tx {
+  font-size: 11.5px;
+  color: #6B7280;
+  font-weight: 500;
+}
+
+/* ─────────── 단계 E #10: 직원 관리 테이블형 + 위아래 배치 ─────────── */
+.emp-boxes {
+  display: flex;
+  flex-direction: column;        /* 위아래 배치 (기존 가로 → 세로) */
+  gap: 16px;
+}
+.emp-box {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.emp-box-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #F0F9FF, #E0F2FE);
+  border-bottom: 1px solid #BAE6FD;
+}
+.emp-box-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0369A1;
+}
+.emp-box-head button {
+  font-size: 13px;
+  padding: 6px 14px;
+}
+.emp-list {
+  padding: 0;
+}
+.emp-table {
+  margin: 0;
+  width: 100%;
+  border-collapse: collapse;
+}
+.emp-table th {
+  background: #F9FAFB;
+  font-size: 12px;
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #E5E7EB;
+  color: #4B5563;
+}
+.emp-table td {
+  padding: 8px 10px;
+  border-bottom: 1px dashed #F3F4F6;
+  font-size: 13px;
+  vertical-align: middle;
+}
+.emp-table tbody tr:hover {
+  background: #FAFBFC;
+}
+.emp-cap-chip {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-right: 4px;
+}
+.emp-cap-chip.on {
+  background: #D1FAE5;
+  color: #065F46;
+}
+.emp-cap-chip.off {
+  background: #F3F4F6;
+  color: #9CA3AF;
+  text-decoration: line-through;
+}
+
+@media (max-width: 640px) {
+  .emp-table th:nth-child(2),
+  .emp-table td:nth-child(2) { display: none; }   /* 생년월일 숨김 */
+}
+
+/* ─────────── 단계 F: 문자 탭 ─────────── */
+
+/* #14: 개별 발송 박스 3개 분리 */
+.sms-single-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.sms-mini-box {
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sms-mini-head {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4B5563;
+  margin-bottom: 2px;
+}
+.sms-mini-box input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  font-size: 13px;
+  border: 1px solid #D1D5DB;
+  border-radius: 5px;
+}
+.sms-mini-box small {
+  font-size: 11px;
+  color: #6B7280;
+}
+.sms-mini-box .pid-results {
+  margin-top: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 5px;
+  position: absolute;
+  z-index: 100;
+  width: calc(100% - 24px);
+}
+.sms-mini-box .pid-selected {
+  padding: 8px;
+  background: #fff;
+  border: 1px dashed #D1D5DB;
+  border-radius: 5px;
+  font-size: 13px;
+  min-height: 18px;
+}
+
+/* 본문 섹션 */
+.sms-body-section {
+  margin-top: 4px;
+}
+.sms-body-section textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  margin-top: 4px;
+  resize: vertical;
+}
+.sms-tpl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.sms-tpl-row select {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #D1D5DB;
+  border-radius: 5px;
+  min-width: 200px;
+}
+.sms-tpl-row .sf-label {
+  flex: 0 0 auto;
+  text-align: left;
+  margin: 0;
+}
+
+/* #15: 템플릿 관리 카드 */
+.sms-tpl-item {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+.sms-tpl-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.sms-tpl-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #DBEAFE;
+  color: #1E40AF;
+  border-radius: 50%;
+}
+.sms-tpl-body {
+  background: #F9FAFB;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  white-space: pre-wrap;
+  border-radius: 5px;
+  color: #374151;
+  margin: 0;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .sms-single-grid { grid-template-columns: 1fr; }
+}
+
+/* ─────────── 단계 F: 예약문자 탭 ─────────── */
+
+/* #14: 개별 문자 발송 — 환자 검색 / 연락처 / 환자 정보 박스 분리 */
+.sms-single-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 768px) {
+  .sms-single-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.sms-mini-box {
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 12px;
+  position: relative;
+}
+.sms-mini-box .sms-mini-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4B5563;
+  margin-bottom: 8px;
+  letter-spacing: 0.3px;
+}
+.sms-mini-box input[type="text"],
+.sms-mini-box input[type="tel"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  font-size: 13px;
+  border: 1px solid #D1D5DB;
+  border-radius: 5px;
+  background: #fff;
+}
+.sms-mini-box small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+}
+.sms-mini-box .pid-selected {
+  font-size: 13px;
+  padding: 4px 0;
+  min-height: 24px;
+}
+
+/* 본문 섹션 */
+.sms-body-section {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 14px;
+}
+.sms-body-section textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  margin-top: 4px;
+  resize: vertical;
+}
+
+/* 템플릿 선택 행 */
+.sms-tpl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.sms-tpl-row .sf-label {
+  flex: 0 0 auto;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+.sms-tpl-row select {
+  flex: 0 1 auto;
+  padding: 7px 10px;
+  font-size: 13px;
+  border: 1px solid #D1D5DB;
+  border-radius: 5px;
+  min-width: 180px;
+}
+.sms-tpl-row button {
+  font-size: 13px;
+}
+
+/* #15: 템플릿 관리 카드 */
+.sms-tpl-item {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.sms-tpl-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #F0F9FF, #E0F2FE);
+  border-bottom: 1px solid #BAE6FD;
+  font-size: 13px;
+}
+.sms-tpl-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: #0369A1;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sms-tpl-body {
+  margin: 0;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  color: #4B5563;
+  background: #FAFBFC;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* ─────────── 단계 G #18: 자동 백업 카드 ─────────── */
+.bk-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 0 8px;
+}
+.bk-list {
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  padding: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.bk-item {
+  display: grid;
+  grid-template-columns: 30px 160px 70px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-bottom: 1px dashed #E5E7EB;
+}
+.bk-item:last-child { border-bottom: none; }
+.bk-item:hover { background: #fff; }
+.bk-num {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #DBEAFE;
+  color: #1E40AF;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bk-time {
+  font-family: ui-monospace, monospace;
+  color: #0369A1;
+  font-weight: 500;
+}
+.bk-size {
+  text-align: right;
+  color: #6B7280;
+  font-size: 11px;
+}
+.bk-name {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .bk-item {
+    grid-template-columns: 24px 1fr;
+    grid-template-rows: auto auto;
+  }
+  .bk-time { grid-column: 2; grid-row: 1; }
+  .bk-size { grid-column: 2; grid-row: 2; text-align: left; }
+  .bk-name { grid-column: 1 / -1; grid-row: 3; padding-left: 32px; }
+}
+/* ── 문자 템플릿 수정/삭제 버튼 줄맞춤 수정 ── */
+.sms-tpl-item-head button.mini {
+  margin-top: 0 !important;
+  vertical-align: middle;
+}
+/* ───── 통계 탭 개선 ───── */
+
+/* 상단 카드 hover 효과 */
+.stats-card {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  padding: 16px 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  cursor: default;
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+.stats-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+  transform: translateY(-2px);
+}
+
+/* 차트 박스 높이 통일 */
+.stats-chart-box {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+}
+
+/* 차트 박스 내부 제목 */
+.stats-chart-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1F2937;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #E5E7EB;
+}
+
+/* 분석 섹션 제목 강조 */
+.stats-section-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #111827;
+  font-weight: 700;
+  padding-left: 10px;
+  border-left: 4px solid #0EA5E9;
+  line-height: 1.4;
+}
+
+/* ── 통계 탭 전용 레이아웃 개선 ─────────────────── */
+
+/* 섹션 간격 통일 */
+.stats-section {
+  margin-bottom: 24px;
+}
+.stats-section:last-child {
+  margin-bottom: 0;
+}
+
+/* 상단 카드 그리드 */
+.stats-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+@media (max-width: 900px) {
+  .stats-cards-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* 카드 최소 높이 고정 (줄 맞춤) */
+.stats-card {
+  min-height: 110px;
+}
+
+/* 분석 헤더 (제목 + 토글 나란히) */
+.stats-analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+/* 토글 그룹 (알약 모양) */
+.stats-toggle-group {
+  display: flex;
+  border: 1.5px solid #0EA5E9;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* 토글 버튼 개별 */
+.stats-toggle-btn {
+  padding: 5px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  background: #fff;
+  color: #6B7280;
+  transition: background 0.18s, color 0.18s;
+  line-height: 1.6;
+}
+.stats-toggle-btn:first-child {
+  border-radius: 18px 0 0 18px;
+}
+.stats-toggle-btn:last-child {
+  border-radius: 0 18px 18px 0;
+}
+.stats-toggle-btn.active {
+  background: #0EA5E9;
+  color: #fff;
+}
+/* ── 치료항목 필터 바 ── */
+.stats-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #F8FAFC;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+}
+.stats-filter-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1.5px solid #D1D5DB;
+  border-radius: 20px;
+  background: #fff;
+  color: #6B7280;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.stats-filter-btn:hover {
+  border-color: #0EA5E9;
+  color: #0EA5E9;
+}
+.stats-filter-btn.active {
+  background: #0EA5E9;
+  border-color: #0EA5E9;
+  color: #fff;
+}
+/* 분석 차트 그리드 (4개 박스) */
+.stats-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+/* 차트 박스 높이 통일 */
+.stats-chart-box {
+  min-height: 300px;
+}
+
+/* ===== 색상 선택기 공통 스타일 ===== */
+.color-picker-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.color-swatch:hover {
+  transform: scale(1.18);
+}
+.color-swatch.selected {
+  border-color: #111827;
+  transform: scale(1.18);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #111827;
+}
+.color-detail-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 2px dashed #9CA3AF;
+  background: #F9FAFB;
+  cursor: pointer;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+}
+.color-detail-btn:hover {
+  border-color: #6B7280;
+  background: #F3F4F6;
+}
+.color-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #6B7280;
+}
+.color-preview-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid #E5E7EB;
+  display: inline-block;
+  flex-shrink: 0;
+}
+/* 숨겨진 실제 컬러인풋 - 팔레트 버튼 아래에 위치 고정 */
+.color-hidden-input {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: none;
+  padding: 0;
+}
+
+/* 팔레트 버튼 + 숨긴 인풋 묶음 컨테이너 */
+.color-detail-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 의사/치료사 편집 팝업 2열 레이아웃 */
+.edit-two-col {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  margin: 10px 0;
+  align-items: start;
+}
+
+/* 왼쪽: 생년월일 + 연락처 세로 배치 */
+.edit-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.edit-left-col > label {
+  margin: 0 !important;
+}
+
+/* 좁은 화면에서 1열로 변경 */
+@media (max-width: 700px) {
+  .edit-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== 의사/치료사 편집 팝업 전용 스타일 ===== */
+
+/* 생년월일 / 연락처 2열 나란히 */
+.emp-row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 10px 0;
+}
+.emp-row2 > label { margin: 0 !important; }
+
+/* 치료가능항목 섹션 */
+.caps-section {
+  margin: 12px 0 4px;
+}
+.caps-section-label {
+  font-size: 12px;
+  color: #6B7280;
+  font-weight: 600;
+  margin-bottom: 6px;
+  letter-spacing: 0.01em;
+}
+.caps-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+}
+.caps-row .chk-item { margin: 0 !important; }
+
+/* 색상 섹션 - 구분선 포함, 맨 아래 */
+.emp-color-section {
+  border-top: 1px solid #E5E7EB;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+.emp-color-label {
+  font-size: 12px;
+  color: #6B7280;
+  font-weight: 600;
+  margin-bottom: 8px;
+  letter-spacing: 0.01em;
+}
+
+/* 팔레트 버튼 + 숨긴 인풋 묶음 */
+.color-detail-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 숨긴 컬러 인풋 - 팔레트 버튼 아래 위치 고정 */
+.color-hidden-input {
+  position: absolute !important;
+  left: 0 !important;
+  top: 100% !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  border: none !important;
+  padding: 0 !important;
+  display: block !important;
+}
+
+/* 좁은 화면 대응 */
+@media (max-width: 700px) {
+  .emp-row2 { grid-template-columns: 1fr; }
+  .caps-row { gap: 10px; }
+}
+/* ===== 의사/치료사 편집 팝업 전용 스타일 끝 ===== */
+
+/* ──────────────────────────────────────────────────────────────
+   파스텔 병원 테마 정리 (v20260418) — 디자인 토큰으로 통일
+   기존 규칙을 덮어쓰지 않고, 시각적으로 튀는 포인트만 부드럽게 재조정.
+   ────────────────────────────────────────────────────────────── */
+
+/* 상단바 — 어두운 네이비 + 흰 글씨 (색상 리디자인) */
+.topbar { background: var(--header-bg); border-bottom: 1px solid var(--header-bg); color: var(--tab-text); }
+.topbar .brand { color: var(--tab-text); letter-spacing: -0.02em; }
+.topbar nav a { color: var(--tab-text-inactive); }
+.topbar nav a:hover { color: var(--tab-active); }
+.topbar-info { background: var(--tab-bg); color: var(--tab-text-inactive);
+  border-bottom: 1px solid var(--header-bg); }
+.topbar-info code { background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.18); color: var(--tab-text); }
+.home-btn { background: var(--tab-bg); border-color: var(--tab-bg-hover); color: var(--tab-text); }
+.home-btn:hover { background: var(--tab-bg-hover); }
+
+/* 탭 네비 — 어두운 배경 + 활성 탭은 포인트 블루 하단선 */
+.tabs-nav { background: var(--header-bg); border-bottom: 1px solid var(--header-bg); }
+.tab-btn { color: var(--tab-text-inactive); background: transparent;
+  font-weight: 500; letter-spacing: -0.01em; border-bottom: 3px solid transparent; }
+.tab-btn:hover { color: var(--tab-text); background: var(--tab-bg-hover); }
+.tab-btn.active {
+  color: var(--tab-text); background: var(--tab-bg-hover);
+  border-bottom-color: var(--tab-active);
+}
+
+/* 서브탭 — 민트/퍼플 살짝 섞지 않고 단일 블루 파스텔로 */
+.sub-tabs { border-bottom-color: var(--line); }
+.sub-tab { background: var(--card-tint); border: 1px solid var(--line);
+  color: var(--ink-soft); border-radius: 10px; }
+.sub-tab:hover { background: var(--sky-50); border-color: var(--sky-200); }
+.sub-tab.active { background: var(--sky-500); border-color: var(--sky-500); color: #fff; }
+
+/* 시트(카드) — 흰색 + 얇은 선 + 은은한 그림자 */
+.sheet { background: var(--card); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: 0 1px 2px rgba(31,41,55,.03),
+  0 1px 3px rgba(31,41,55,.04); }
+.sheet-head { border-bottom-color: var(--line-soft); }
+.sheet-head h2 { color: var(--ink); font-weight: 600; }
+
+/* 사이드바 + 오늘 목록 — 블루 틴트로 정리 */
+.sidebar { background: var(--bg-tint); border-right-color: var(--line); }
+.mini-cal-wrap, .legend-box { background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 1px 2px rgba(31,41,55,.03); }
+.today-list { background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 1px 2px rgba(31,41,55,.03); }
+.today-header h3 { color: var(--sky-700); font-weight: 600; letter-spacing: -0.01em; }
+.today-row { background: var(--card); border: 1px solid var(--line-soft); border-radius: 9px; }
+.today-row:hover { border-color: var(--sky-200); background: var(--sky-50); }
+
+/* 취소 목록은 코랄 파스텔로 구분 */
+.today-list.today-canceled .today-header h3 { color: var(--coral-600); }
+
+/* 기본 메인 버튼 — 맑은 블루, 그림자 살짝 */
+.btn-create, button.primary, .primary {
+  background: var(--sky-500); border: 1px solid var(--sky-500);
+  color: #fff !important; border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(47,134,203,.18);
+  transition: background .15s, box-shadow .15s, transform .08s;
+}
+.btn-create:hover, button.primary:hover, .primary:hover {
+  background: var(--sky-600); border-color: var(--sky-600);
+  box-shadow: 0 2px 5px rgba(47,134,203,.25);
+}
+button.mini { border-color: var(--line); color: var(--sky-700); border-radius: 8px; }
+button.mini:hover { background: var(--sky-50); border-color: var(--sky-200); }
+button.danger { color: var(--coral-600); border-color: var(--coral-200); border-radius: 8px; }
+button.danger:hover { background: var(--coral-50); }
+
+/* 입력 요소 — 경계선·포커스 톤 통일 */
+.modal input:not([type="checkbox"]):not([type="radio"]),
+.modal select, .modal textarea,
+.sheet-toolbar input, .sheet-toolbar select {
+  border-color: var(--line); border-radius: 9px;
+  background: var(--card); color: var(--ink);
+}
+.modal input:not([type="checkbox"]):not([type="radio"]):focus,
+.modal select:focus, .modal textarea:focus {
+  border-color: var(--sky-400);
+  box-shadow: 0 0 0 3px rgba(47,134,203,.15);
+}
+
+/* 표 헤더 — 블루~퍼플 계열 아주 연한 톤 */
+.data-table { border-spacing: 0; }
+.data-table th { background: linear-gradient(180deg, var(--sky-50) 0%, var(--purple-50) 100%);
+  color: var(--ink-soft); font-weight: 600;
+  border-bottom: 1px solid var(--line); letter-spacing: -0.01em; }
+.data-table td { border-bottom-color: var(--line-soft); color: var(--ink); }
+
+/* 뱃지 — 파스텔로 재조정 */
+.badge.gray   { background: var(--gray-100);   color: var(--ink-soft); }
+.badge.orange { background: var(--coral-100);  color: var(--coral-600); }
+.badge.green  { background: var(--mint-100);   color: var(--mint-600); }
+.badge.red    { background: var(--coral-100);  color: var(--coral-600); }
+
+/* 승인/신환/취소 박스 — 파스텔 테두리 */
+.approval-section { border-color: var(--line); background: var(--card); }
+.approval-section.done   { background: var(--mint-50);   border-color: var(--mint-200); }
+.approval-section.active { background: var(--purple-50); border-color: var(--purple-200); }
+
+/* 분석 카드 — 카드 느낌으로 흰 배경 + 얇은 선 */
+.stats-chart-box, .stats-card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: 0 1px 2px rgba(31,41,55,.03);
+}
+.stats-section-title, .stats-chart-title {
+  color: var(--ink); font-weight: 600; letter-spacing: -0.02em;
+}
+
+/* 보드 — 라운드·파스텔 라인 */
+.board-wrap { border-color: var(--line); border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(31,41,55,.03); }
+
+/* 모달 — 라운드/그림자 정리 */
+.modal { border-radius: 16px; box-shadow: 0 24px 60px rgba(31,41,55,.18); }
+
+/* 텍스트 보조 색 */
+.muted { color: var(--muted-ink); }
+
+/* ── 생년월일 + 성별 배치 (환자 편집/신규등록 모달) ── */
+.row-birth-sex {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;     /* 입력칸 기준선 맞춤 */
+  flex-wrap: wrap;           /* 좁은 폭에서 성별 묶음이 자연스럽게 다음줄 */
+  margin: 10px 0;
+}
+.row-birth-sex > label {     /* 생년월일 라벨 */
+  margin: 0 !important;      /* 기본 .modal label margin 제거 */
+}
+.sex-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card-tint);
+  height: 38px;              /* 인접 input 높이와 유사하게 */
+  flex: 0 0 auto;
+}
+.sex-group-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-weight: 500;
+  margin-right: 2px;
+}
+.sex-radio {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  margin: 0 !important;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+.sex-radio input[type="radio"] {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--sky-500);
+  cursor: pointer;
+}
+
+/* 환자 표 성별 뱃지 (M=파랑 / F=핑크) */
+.gender-tag {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  border-radius: 10px;
+  line-height: 1.5;
+}
+.gender-tag.m { background: #DCEAF7; color: #1F6DAC; }
+.gender-tag.f { background: #FAE2EC; color: #B13768; }
+
+
+/* ── 가독성 보강 (v20260423 · 색상 리디자인 기준) — 연한 배경 위 연한 글씨 한 단계 진하게 ── */
+/* 입력칸 placeholder — 기본 브라우저값은 너무 연함 */
+::placeholder { color:#6A7683 !important; opacity:1; }
+input::placeholder, textarea::placeholder, select::placeholder { color:#6A7683; }
+
+/* 표 안 회색 텍스트 보강 (inline style=\"color:#9CA3AF\" / #6B7280 은 overrides 불가하지만
+   class .muted 와 table 내부 td.muted / .stats-card 같은 컨테이너 안 연한 텍스트는 여기서 보강) */
+.data-table td .muted,
+.data-table th .muted,
+.pm-history-foot .muted,
+.stats-card .muted,
+.stats-chart-box .muted,
+.approval-section .muted,
+.sheet .muted,
+.sidebar .muted,
+.today-list .muted { color: #52606D; }
+
+/* 환자기록·통계 카드 안에 자주 쓰이는 작은 글씨 */
+.pm-history-foot { color:#52606D; }
+.stats-card > div[style*="color:#6B7280"],
+.stats-card > div[style*="color:#9CA3AF"] { color:#52606D !important; }
+
+/* 치료이력 한 줄 — 날짜/시간 강조는 유지, 본문은 진하게 */
+.pm-history-line { color: var(--ink); }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   서브 박스 제목줄 (v20260423) — 메인 탭 네이비보다 한 단계 밝은
+   블루-슬레이트 띠로 구분. 상자 본문은 흰색 유지.
+   적용 대상:
+     · 좌측 사이드 — 달력/금일 예약/취소/범례 헤더
+     · 관리자 탭 각 시트 헤더 (.sheet-head)
+     · 관리자 시스템 설정 카드 헤더 (.settings-card-head)
+   원칙: 구조·배치 변경 없이 색상+작은 내부 여백만 최소 추가.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1) 좌측 사이드 서브 박스 제목 (미니캘린더 · 범례) ── */
+.mini-cal-wrap > h3,
+.legend-box > h3 {
+  background: var(--subhead-bg);
+  color: var(--subhead-text) !important;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 0 0 10px;
+  /* 기존 font-size/font-weight/letter-spacing 유지 */
+}
+
+/* ── 2) 금일 예약 환자 / 금일 예약 취소 헤더 바 ── */
+.today-header {
+  background: var(--subhead-bg);
+  color: var(--subhead-text);
+  padding: 6px 12px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  /* 기존 display:flex / justify-content:space-between / align-items 유지 */
+}
+.today-header h3,
+.today-header .today-date,
+.today-list.today-canceled .today-header h3 {
+  color: var(--subhead-text) !important;
+}
+.today-header .today-date { opacity: 0.82; }
+/* 취소 목록은 살짝 다른 변형 (톤 차이 미세하게) */
+.today-list.today-canceled .today-header {
+  background: var(--subhead-hover);
+}
+
+/* ── 3) 관리자 탭 각 시트(sheet) 헤더 ── */
+.sheet-head {
+  background: var(--subhead-bg);
+  color: var(--subhead-text);
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  border-bottom: none;  /* 배경 띠가 생기므로 기존 밑줄 제거 */
+  /* 기존 display:flex / justify-content:space-between / align-items:center 유지 */
+}
+.sheet-head h2,
+.sheet-head h2 small,
+.sheet-head .muted,
+.sheet-head small {
+  color: var(--subhead-text) !important;
+}
+.sheet-head small,
+.sheet-head .muted { opacity: 0.82; }
+/* 헤더 안 우측 툴바의 input/button 은 기존 스타일 유지 (반전되지 않도록) */
+.sheet-head .sheet-toolbar input,
+.sheet-head .sheet-toolbar select,
+.sheet-head .sheet-toolbar button {
+  color: var(--ink);
+}
+
+/* ── 4) 관리자 시스템 설정 카드 헤더 ── */
+/* .settings-card 는 overflow:hidden + border-radius:12px 이라
+   헤더가 자동으로 카드 상단 모서리에 fit. 음수 margin 불필요. */
+.settings-card-head {
+  background: var(--subhead-bg);
+  border-bottom: none;
+  /* 기존 padding: 12px 16px 그대로 유지 */
+}
+.settings-card-head h3,
+.settings-card-head small {
+  color: var(--subhead-text) !important;
+}
+.settings-card-head small { opacity: 0.82; }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   예약 보드 — 마지막 행(운영 종료 시각) 시각 구분 (v1.2.5+)
+   운영시간 끝 시각까지 30분 라벨을 보이되, 그 행은 예약 대상 아님
+   ═══════════════════════════════════════════════════════════════ */
+.closing-row td {
+  background: var(--divider-color);
+  opacity: 0.55;
+  pointer-events: none;   /* 드래그 드롭 차단 */
+  cursor: not-allowed;
+}
+.closing-row .time-cell {
+  font-style: italic;
+  color: var(--text-sub);
+  pointer-events: auto;   /* 시각 라벨은 클릭 가능 (하지만 아무 영향 없음) */
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   topbar-info 주소 칩 (v1.2.5+) — 메인/서브 접속 주소 표시
+   ═══════════════════════════════════════════════════════════════ */
+.topbar-info { flex-wrap: wrap; row-gap: 4px; }
+.topbar-info .addr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.topbar-info .addr-chip code {
+  font-size: 12px;
+  padding: 2px 6px;
+  /* 기존 code 스타일 유지 (배경·테두리·색은 상위 .topbar-info code 에서) */
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   가독성·오버플로우 보강 (v20260423 · 색상 리디자인 이후 조정)
+   — 박스/카드/모달 안 글자가 밖으로 넘치지 않도록
+   — 한글은 단어 단위 자연 줄바꿈, 영문은 필요 시 어디서든 잘림
+   — 너무 긴 제목/설명문은 폰트 크기 한 단계 축소 + line-height 확보
+   원칙: 구조/배치/색상 변경 없음 · 가독성 속성만 추가
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 전역 기본 — 모든 헤딩/텍스트에 한글 친화 줄바꿈 */
+h1, h2, h3, h4, h5,
+p, label, span, small, div {
+  word-break: keep-all;       /* 한글 단어 단위 줄바꿈 */
+  overflow-wrap: anywhere;    /* 영문/URL 등 긴 연속 문자 강제 줄바꿈 */
+}
+
+/* ── 관리자 시스템 설정 카드 헤더 — 제목+설명 세로 스택 ──
+   기존에 h3 옆에 <small> 이 붙어 한 줄로 끌려가다 박스 밖으로 넘치던 현상 해결.
+   flex column 으로 강제 스택 + 크기 한 단계 축소. */
+.settings-card-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+.settings-card-head h3 {
+  font-size: 14.5px;
+  line-height: 1.35;
+  max-width: 100%;
+}
+.settings-card-head small {
+  font-size: 11.5px;
+  line-height: 1.45;
+  font-weight: 400;
+  display: block;
+  max-width: 100%;
+}
+
+/* ── 시트 헤더 — 제목+툴바 자동 줄바꿈 허용 ── */
+.sheet-head {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  min-width: 0;
+}
+.sheet-head h2 {
+  line-height: 1.3;
+  max-width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sheet-head h2 small,
+.sheet-head small {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ── 금일 예약 헤더 (제목+날짜) — 좁을 때 wrap ── */
+.today-header {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  column-gap: 8px;
+}
+.today-header h3 { line-height: 1.3; }
+
+/* ── 모달 제목/설명문 ── */
+.modal h3 { line-height: 1.35; }
+.modal h4 { line-height: 1.35; }
+.modal label {
+  line-height: 1.5;
+}
+.modal small { font-size: 12px; line-height: 1.45; }
+
+/* ── 폼 행 안 라벨/보조 설명문 ── */
+.sf-row {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.sf-row .sf-label {
+  min-width: 0;
+}
+.sf-row small,
+.sf-row .muted,
+.sf-suffix {
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* ── 카드/시트/사이드 박스 — 자식 글자가 밖으로 못 나가게 ── */
+.sheet,
+.settings-card,
+.settings-card-body,
+.today-list,
+.today-list .today-items,
+.mini-cal-wrap,
+.legend-box,
+.stats-card,
+.r-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── 버튼 안 긴 텍스트 — 큰 버튼은 줄바꿈 허용, 미니 버튼은 유지 ── */
+.btn-primary, .btn-secondary, .btn-danger,
+button.primary, button.danger {
+  white-space: normal;
+  line-height: 1.35;
+}
+.mini { white-space: nowrap; }   /* 작은 버튼은 한 줄 유지 */
+
+/* ── 치료항목·통계 카드 안 작은 안내문 ── */
+.stats-card .sub,
+.stats-card .muted,
+.data-table caption,
+.data-table td .muted,
+.data-table th .muted {
+  line-height: 1.5;
+}
+
+/* ── 표(table) 헤더/셀 안 긴 단어도 안전하게 ── */
+.data-table th,
+.data-table td {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* ── 화면 폭 좁을 때 추가 보강 (600px 이하 — 태블릿/모바일) ── */
+@media (max-width: 600px) {
+  .settings-card-head h3 { font-size: 14px; }
+  .settings-card-head small { font-size: 11px; }
+  .sheet-head h2 { font-size: 15px !important; }
+  .today-header h3 { font-size: 13px; }
+}

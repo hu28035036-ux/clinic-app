@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec.bak
+
+# Distribution archives
+*.zip
+*.tar.gz
+*.7z
+
+# Local backup of past versions (already on GitHub Releases)
+versions/v*/
+
+# Test data (large dummy dataset, not part of source)
+*.xlsx
+
+# IDE / editor
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Cloud sync temp folders
+.tmp.driveupload/
+.tmp.drivedownload/
+
+# Local config / secrets (defensive)
+.env
+.env.local
+config.json
+*.local.json
+
+# SQLite databases (DB lives in %APPDATA%\도수치료예약\, but block any stray copies)
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log

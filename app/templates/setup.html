@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="setup-wrap" x-data="setupApp()">
+  <h1>실행 모드를 선택하세요</h1>
+  <p class="muted">모든 PC가 자체 데이터베이스를 가집니다. <b>메인 서버가 꺼져도 서브에서 계속 사용 가능</b>하며, 메인이 복구되면 자동 동기화됩니다.</p>
+
+  <div class="mode-grid">
+    <div class="mode-card" :class="{active: mode==='main'}" @click="mode='main'">
+      <h2>🖥️ 메인 서버</h2>
+      <p>대표 데이터 보관소. 보통 원무과 PC를 메인으로 지정합니다.</p>
+      <ul><li>0.0.0.0:8000 바인딩</li><li>서브 노드들의 sync 수신</li></ul>
+    </div>
+    <div class="mode-card" :class="{active: mode==='sub'}" @click="mode='sub'">
+      <h2>💻 서브 노드</h2>
+      <p>로컬 DB로 독립 동작 + 메인과 자동 sync (15초마다).</p>
+      <label>메인 서버 주소</label>
+      <input type="text" x-model="mainUrl" placeholder="예: http://192.168.0.10:8000" />
+      <small class="muted">메인이 꺼져있어도 OK — 복구되면 알아서 동기화됨.</small>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="primary" :disabled="!ok()" @click="submit()">저장하고 시작</button>
+  </div>
+
+  <div class="hint"><small>이 PC IP 후보:
+    {% for ip in local_ips %}<code>{{ ip }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+  </small></div>
+</div>
+<script>
+function setupApp(){return{
+  mode:{{ (config.mode or 'null')|tojson }},
+  mainUrl:{{ (config.main_url or '')|tojson }},
+  ok(){ return this.mode==='main' || (this.mode==='sub' && this.mainUrl.trim()); },
+  async submit(){
+    const body={mode:this.mode}; if(this.mode==='sub') body.main_url=this.mainUrl.trim();
+    const r=await fetch('/api/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){ alert('저장 실패'); return; }
+    location.href='/';
+  }
+}}
+</script>
+{% endblock %}
