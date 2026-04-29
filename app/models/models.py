@@ -270,3 +270,50 @@ class SmsTemplate(Base):
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AiSetting(Base):
+    """AI 기능 관리자 설정 (v1.3 단계 1).
+
+    Provider 선택형 — openai / anthropic / local(v2 보류).
+    기본값은 enabled=False — AI 가 켜질 때까지 기능 동작 X.
+
+    api_key 는 DB 평문 저장 (Windows 단독 실행형, %APPDATA% 보호 영역).
+    응답 직렬화 시에는 반드시 마스킹 — SmsSetting.munjanara_key 패턴 참조.
+    """
+    __tablename__ = "ai_settings"
+    id = Column(Integer, primary_key=True, default=1)
+    enabled = Column(Boolean, default=False)
+    provider = Column(String(20), default="openai")  # openai | anthropic | local
+    model = Column(String(100), default="")          # 예: gpt-4o-mini, claude-haiku-4-5
+    api_key = Column(String(500), default="")
+    base_url = Column(String(500), default="")       # 사설 엔드포인트(옵션)
+    max_tokens = Column(Integer, default=512)
+    temperature = Column(Float, default=0.3)
+    # 외부 LLM 으로 PII (전화번호/생년월일/차트번호/메모) 전송 차단 스위치.
+    # 기본 True — 끄려면 명시적으로 False 로 설정해야 함 (관리자 책임).
+    pii_guard_enabled = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AiUsageLog(Base):
+    """AI 호출 사용량/감사 로그.
+
+    의도: 비용 추적 + PII 누출 사고 시 추적 가능하도록 어떤 feature 가 어떤
+    프롬프트 길이로 호출됐는지 기록. 프롬프트/응답 본문 자체는 저장하지
+    않음 (저장하면 그 자체가 PII 저장소가 되어버림).
+    """
+    __tablename__ = "ai_usage_logs"
+    id = Column(String(32), primary_key=True, default=uid)
+    ts = Column(DateTime, default=datetime.utcnow, index=True)
+    provider = Column(String(20))
+    model = Column(String(100))
+    feature = Column(String(50))                 # 예: sms_suggest, chat
+    prompt_chars = Column(Integer, default=0)
+    completion_chars = Column(Integer, default=0)
+    prompt_tokens = Column(Integer, default=0)   # provider 가 알려주면 기록
+    completion_tokens = Column(Integer, default=0)
+    latency_ms = Column(Integer, default=0)
+    status = Column(String(20))                  # ok | error | blocked
+    error_kind = Column(String(50), default="")  # 차단/실패 이유 분류
+    actor = Column(String(50), default="")

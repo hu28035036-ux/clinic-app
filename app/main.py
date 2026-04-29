@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import resource_path
 from .database import init_db
-from .routers import pages, api
+from .routers import pages, api, ai as ai_router
 from .services.sync import start_sync_worker
 from .services.backup import start_auto_backup
 
@@ -17,6 +17,7 @@ def create_app() -> FastAPI:
               name="static")
     app.include_router(pages.router)
     app.include_router(api.router)
+    app.include_router(ai_router.router)   # v1.3: AI/RAG 라우터 (/api/ai/*)
     start_sync_worker()
     start_auto_backup()   # 단계 G #18: 시작 시 1회 + 타이머
     return app

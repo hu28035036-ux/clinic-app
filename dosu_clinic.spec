@@ -16,10 +16,18 @@ for m in ('uvicorn', 'uvicorn.protocols', 'uvicorn.lifespan', 'uvicorn.loops',
 
 hidden += [
     'app', 'app.main', 'app.config', 'app.database',
-    'app.routers.pages', 'app.routers.api',
+    'app.routers.pages', 'app.routers.api', 'app.routers.ai',
     'app.models.models', 'app.models.schemas', 'app.models.constants',
     'app.services.sync', 'app.services.auth',
     'app.services.backup', 'app.services.seed',
+    # AI/RAG 서비스 (v1.3 단계 1+2) — 라우터에서 import 되므로 명시
+    'app.services.ai',
+    'app.services.ai.provider',
+    'app.services.ai.openai_client',
+    'app.services.ai.anthropic_client',
+    'app.services.ai.pii',
+    'app.services.ai.prompts',
+    'app.services.ai.validators',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     'app.migrations',
     'app.migrations.m001_baseline',
@@ -28,6 +36,7 @@ hidden += [
     'app.migrations.m004_add_indexes',
     'app.migrations.m005_treatment_price_incentive',
     'app.migrations.m006_manual_counts',
+    'app.migrations.m007_ai_settings',
     # DB 점검 도구
     'app.tools', 'app.tools.db_check',
     # SQLAlchemy는 sqlite 드라이버를 동적으로 불러오므로 반드시 포함
@@ -39,6 +48,10 @@ hidden += [
     'multipart', 'multipart.multipart',
     # openpyxl 의 의존 라이브러리 et_xmlfile (lazy import 라 놓침)
     'et_xmlfile',
+    # ⚠ openai / anthropic SDK 는 아직 requirements.txt 에 없음.
+    # 실제 LLM 호출 기능을 켜는 단계에서 (a) requirements.txt 에 추가하고
+    # (b) 여기 hiddenimports 에 'openai' / 'anthropic' (또는 collect_submodules)
+    # 둘 다 등록해야 함.
 ]
 
 # --- 포함할 리소스 파일 (템플릿 / CSS / 업데이터) ---
