@@ -1,0 +1,11 @@
+# Windows cmd.exe 는 LF-only .bat 의 라벨/변수를 제대로 파싱하지 못함.
+# 이 프로젝트의 모든 .bat 파일은 무조건 CRLF 로 보존.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 그 외 Python / Markdown / 설정은 LF 로 통일 (Windows 에서도 잘 동작).
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.txt text eol=lf
