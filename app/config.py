@@ -18,7 +18,13 @@ def get_appdata_dir() -> Path:
         path = Path.home() / f".{APP_NAME}"
     path.mkdir(parents=True, exist_ok=True); return path
 
-def get_db_path() -> Path:    return get_appdata_dir() / "clinic.db"
+def get_db_path() -> Path:
+    # 테스트/하네스 override — DOSU_DB_PATH 환경변수가 있으면 그 경로 사용.
+    # 운영 환경은 환경변수 없이 그대로 %APPDATA%\도수치료예약\clinic.db.
+    p = os.environ.get("DOSU_DB_PATH")
+    if p:
+        return Path(p)
+    return get_appdata_dir() / "clinic.db"
 def get_config_path() -> Path: return get_appdata_dir() / "config.json"
 def get_backup_dir() -> Path:
     p = get_appdata_dir() / "backups"; p.mkdir(parents=True, exist_ok=True); return p

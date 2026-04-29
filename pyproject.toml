@@ -1,0 +1,28 @@
+# 본 파일은 Ruff 설정 전용. 빌드/패키징 메타데이터는 의도적으로 두지 않음.
+# 빌드는 PyInstaller (dosu_clinic.spec) 가 담당.
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [
+    "venv",
+    "build",
+    "dist",
+    "tests/temp",
+    "versions",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501"]
+
+# 기존 app/ 코드는 다양한 스타일 — 대규모 포맷팅 회피를 위해 lint 면제.
+# 새 코드(tests/, scripts/) 만 실제 검사 대상.
+# ⚠ 이 설정을 풀지 말 것 — CLAUDE.md 작업 규칙 참조.
+[tool.ruff.lint.per-file-ignores]
+"app/**/*.py" = ["E", "F", "I", "B"]
+"run.py" = ["E", "F", "I", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
