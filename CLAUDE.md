@@ -1,5 +1,40 @@
 # 도수치료예약 — 작업 규칙 (CLAUDE.md)
 
+## 🛡️ 작업 규칙 (하네스)
+
+이 프로젝트는 안정성 하네스(`tests/`, `docs/specs/`, `run_check.bat`)가 적용되어 있다.
+Claude Code 가 이 프로젝트의 코드를 수정할 때는 아래 규칙을 반드시 지킬 것.
+
+### 절대 금지
+
+- 실제 운영 DB `%APPDATA%\도수치료예약\clinic.db` 를 테스트에 사용하지 않는다.
+- 요청받지 않은 파일을 대규모로 리팩토링하지 않는다.
+- DB 컬럼명을 임의로 변경하지 않는다.
+- API 경로를 임의로 바꾸지 않는다.
+- 예약 / 통계 / 권한 로직을 UI 만 수정하고 끝내지 않는다.
+- 프론트에서 막는 기능은 반드시 백엔드에서도 검증한다.
+- 기능 수정과 디자인 수정을 한 번에 섞지 않는다.
+- 하네스 적용 작업 중 업종 변경, 용어 변경, 브랜딩 변경을 하지 않는다.
+- `pyproject.toml` 의 `app/**` lint 면제(per-file-ignores)를 풀지 않는다 — 의도적으로 둔 것이며, 이를 풀면 대규모 포맷팅이 발생한다.
+- `manual60` 을 다시 `count_increment=2` 로 되돌리지 않는다 (`manual60` = 1카운트 정책).
+
+### 작업 전 필수
+
+- 관련 `docs/specs/*.md` 문서를 먼저 읽는다.
+- 수정 대상 파일을 먼저 읽고 현재 흐름을 요약한다.
+- 변경 범위를 최소화한다.
+- 실제 DB 를 사용하지 않는지 확인한다 (`run_check.bat` 의 DB 경로 안전 검사).
+
+### 작업 후 필수
+
+- `run_check.bat` 한 방으로 pytest + ruff + DB 경로 안전검사 실행.
+- 또는 개별로:
+  - `venv\Scripts\python.exe -m pytest tests -v`
+  - `venv\Scripts\python.exe -m ruff check app tests`
+  - `venv\Scripts\python.exe scripts/check_db_path.py`
+- 실패 시 어떤 규칙이 깨졌는지 한국어로 설명한다.
+- 자세한 절차는 `docs/CHANGE_RULES.md` 참조.
+
 ## 🚨 배포 규칙 (중요)
 
 **GitHub 에 배포하기 전에 반드시 사용자에게 확인 받기.**
