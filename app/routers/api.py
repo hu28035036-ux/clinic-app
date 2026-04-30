@@ -37,6 +37,30 @@ def require_admin(x_admin_token: str = Header(default="")):
     return True
 
 
+def require_admin_or_sync_token(
+    x_admin_token: str = Header(default=""),
+    x_sync_token: str = Header(default=""),
+):
+    """관리자 세션 토큰 또는 노드 간 동기화 토큰 둘 중 하나로 인증.
+
+    sync pull/push 는 외부 무인 노드(다른 PC) 가 자동으로 호출하는 엔드포인트라
+    관리자 세션 토큰만으로는 인증할 수 없음. 그러나 인증을 풀면 같은 네트워크에서
+    누구든 SyncOp 큐를 노출/주입할 수 있어 위험.
+
+    해결: config 의 sync_secret 과 X-Sync-Token 헤더를 비교 (constant-time).
+    페어링된 노드끼리는 같은 sync_secret 을 공유해야 함.
+    """
+    if auth.is_valid(x_admin_token):
+        return True
+    cfg = load_config()
+    secret = (cfg.get("sync_secret") or "").strip()
+    if secret and x_sync_token:
+        import hmac
+        if hmac.compare_digest(x_sync_token, secret):
+            return True
+    raise HTTPException(401, "관리자 인증 또는 X-Sync-Token 헤더가 필요합니다.")
+
+
 def _lunch_window():
     """현재 config 의 점심시간을 (start_min, end_min, start_str, end_str) 로 반환.
     lunch_enabled=False 이거나 형식이 이상하거나 end<=start 면 None (=차단 비활성).
@@ -510,25 +534,66 @@ def apply_update(_: bool = Depends(require_admin)):
 
     # ── 업데이트 직전 DB 자동 백업 (안전망) ──
     backup_result = _backup_db_before_update()
+    # 백업 실패 시 업데이트 중단 — 백업 없는 채로 강제 진행하면 롤백 수단이 없어짐.
+    # 이전 코드는 backup_result.ok 를 검사 안 해 디스크 부족/권한 오류 상황에서도 진행했음.
+    if not backup_result.get("ok"):
+        raise HTTPException(500,
+            f"업데이트 직전 DB 백업이 실패했습니다 — 안전을 위해 업데이트를 중단합니다. "
+            f"사유: {backup_result.get('error') or '알 수 없음'}. "
+            f"디스크 여유 공간과 권한을 확인 후 다시 시도하세요.")
 
-    # detached 모드로 새 콘솔 띄워 실행 (부모 프로세스 종료돼도 살아남음)
-    # Windows: CREATE_NEW_CONSOLE | DETACHED_PROCESS
-    CREATE_NEW_CONSOLE = 0x00000010
+    # 부모(GUI exe, console=False)와 완전히 분리해서 실행.
+    # CREATE_NEW_CONSOLE 단독은 PyInstaller console=False 환경에서
+    # 부모가 os._exit(0) 으로 죽을 때 자식 cmd 도 같이 잡힐 수 있어,
+    # DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP + CREATE_BREAKAWAY_FROM_JOB 으로 변경.
+    # 자식 콘솔 가시성은 updater.bat 내부에서 자체 콘솔로 재실행해 확보.
+    #
+    # cmd 의 두 번째 단계는 /c (not /k):
+    #   /k 였을 때는 updater.bat 가 정상 종료(exit /b 0) 한 뒤에도 콘솔이 그대로 남아
+    #   사용자가 직접 닫아야 했음. /c 로 바꾸면 성공 경로는 자동 종료되고,
+    #   실패(rollback) 경로는 updater.bat 안의 `pause` 가 사용자 입력을 기다림.
     DETACHED_PROCESS = 0x00000008
+    CREATE_NEW_PROCESS_GROUP = 0x00000200
+    CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+    flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB
     try:
         subprocess.Popen(
-            ["cmd", "/c", str(updater)],
+            ["cmd", "/c", "start", "", "cmd", "/c", str(updater)],
             cwd=str(app_folder),
-            creationflags=CREATE_NEW_CONSOLE,
+            creationflags=flags,
             close_fds=True,
         )
     except Exception as e:
         raise HTTPException(500, f"updater 실행 실패: {e}")
 
-    # 본체 종료 예약 — 응답 돌려준 직후 kill
+    # ⚠ 이전엔 proc.poll() 로 "즉시 종료 검증" 을 시도했으나 의미가 없었음:
+    #   여기서 proc 는 `start` 를 호출하는 중간 cmd /c 셸이고, start 가 실제 updater
+    #   윈도우를 띄운 직후 그 셸은 자기 임무를 마치고 곧바로 returncode=0 으로 종료됨.
+    #   따라서 poll() 결과는 updater 의 생존 여부와 무관하다.
+    #   updater 자체가 안 떴는지 확인하려면 _get_updater_log_path() 의 로그 파일 mtime 을
+    #   별도로 검사해야 하는데, 이는 프론트의 30초/60초 진단 UX 가 이미 다루고 있음.
+
+    # 본체 종료 예약 — 3초 후 종료.
+    # PyInstaller _internal/ 의 .pyd / .dll 파일이 OS 에서 unlock 되기까지 시간 필요.
+    # 1.5초였을 때 updater.bat 의 rename 단계에서 잠금 충돌 발생 사례 있음.
+    #
+    # 또한 backup/sync worker daemon thread 를 graceful 하게 정지시켜
+    # 진행 중인 shutil.copy2 / sync_with_peer 가 mid-operation 에서 끊기지 않게 함.
+    # (정지 못 시키면 부분 백업 파일 / 부분 적용된 sync op 가 잔존할 수 있음)
+    try:
+        from ..services.backup import stop_auto_backup
+        stop_auto_backup()
+    except Exception:
+        pass
+    try:
+        from ..services.sync import stop_sync_worker
+        stop_sync_worker(timeout=2.0)
+    except Exception:
+        pass
+
     def _delayed_exit():
         import time as _t
-        _t.sleep(1.5)
+        _t.sleep(3.0)
         _os._exit(0)  # uvicorn / threads 전부 즉시 종료
     threading.Thread(target=_delayed_exit, daemon=True).start()
 
@@ -536,13 +601,74 @@ def apply_update(_: bool = Depends(require_admin)):
         "ok": True,
         "message": "업데이터 실행 완료. 프로그램이 곧 재시작됩니다.",
         "backup": backup_result,   # 프론트에서 "백업 파일명/크기" 안내에 사용
+        "updater_log_path": _get_updater_log_path(),  # 사용자가 멈춤 시 직접 확인 가능
     }
+
+
+def _get_updater_log_path() -> str:
+    """updater.bat 이 기록하는 로그 파일 경로 (%TEMP%\\도수치료예약_updater.log).
+
+    Python 의 tempfile.gettempdir() 는 Windows 의 %TEMP% 와 동일하게 결정됨.
+    """
+    import tempfile
+    from pathlib import Path
+    return str(Path(tempfile.gettempdir()) / "도수치료예약_updater.log")
+
+
+@router.get("/about/update-log")
+def get_update_log(_: bool = Depends(require_admin), tail: int = Query(200, ge=1, le=2000)):
+    """업데이터 실행 로그 조회 — 자동 업데이트가 멈췄을 때 진단용.
+
+    프론트의 "업데이트 진행 중" 화면에서 30~60초 이상 응답이 없을 때 호출,
+    어느 단계에서 실패/지연되고 있는지 사용자가 직접 확인할 수 있게 한다.
+
+    반환:
+      - exists: 로그 파일 존재 여부
+      - path: 절대경로 (사용자에게 "직접 열어보세요" 안내용)
+      - lines: 마지막 N 줄 (기본 200, 최대 2000)
+      - mtime: 마지막 수정 시각 (ISO)
+      - size_bytes: 파일 크기
+    """
+    from pathlib import Path
+
+    log_path = Path(_get_updater_log_path())
+    base = {"path": str(log_path)}
+    if not log_path.exists():
+        return {**base, "exists": False, "lines": [], "mtime": None, "size_bytes": 0}
+
+    try:
+        size = log_path.stat().st_size
+        mtime = datetime.fromtimestamp(log_path.stat().st_mtime).isoformat()
+        # cp949 / utf-8 둘 다 시도 (bat 출력 인코딩 환경 의존)
+        raw = log_path.read_bytes()
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("cp949", errors="replace")
+        all_lines = text.splitlines()
+        lines = all_lines[-tail:] if len(all_lines) > tail else all_lines
+        return {
+            **base,
+            "exists": True,
+            "lines": lines,
+            "total_lines": len(all_lines),
+            "mtime": mtime,
+            "size_bytes": size,
+        }
+    except Exception as e:
+        return {**base, "exists": True, "error": f"로그 읽기 실패: {e}", "lines": []}
 
 
 # ──────────────── 설정 / 모드 ────────────────
 
 @router.get("/config")
 def get_config():
+    """공개 가능한 config 만 반환.
+
+    ⚠ 비밀 값은 반드시 제거: admin_password_hash, sync_secret.
+       sync_secret 이 노출되면 누구나 X-Sync-Token 으로 sync pull/push 를 호출할 수 있어
+       sync 인증이 무력화됨. 별도 관리자 전용 엔드포인트(/config/sync-secret)에서만 조회 가능.
+    """
     cfg = dict(load_config())
     cfg.setdefault("leave_am_until", "14:00")
     cfg.setdefault("leave_pm_from", "13:00")
@@ -550,12 +676,42 @@ def get_config():
     cfg.setdefault("lunch_start", "12:30")
     cfg.setdefault("lunch_end", "13:30")
     cfg.pop("admin_password_hash", None)
+    cfg.pop("sync_secret", None)
     return cfg
+
+
+@router.get("/config/sync-secret")
+def get_sync_secret(_: bool = Depends(require_admin)):
+    """관리자 전용 — peer 노드 페어링에 쓸 sync_secret 원문 조회.
+
+    이 값을 다른 노드의 config.json `sync_secret` 에 동일하게 입력하면
+    페어링이 완료되어 양 방향 sync pull/push 가 통과함.
+    """
+    cfg = load_config()
+    return {"sync_secret": cfg.get("sync_secret") or ""}
+
+
+@router.post("/config/regenerate-sync-secret")
+def regenerate_sync_secret(_: bool = Depends(require_admin)):
+    """관리자 전용 — sync_secret 을 새 랜덤값으로 재생성.
+
+    재생성 후엔 페어링된 다른 노드들도 같은 값으로 갱신해줘야 sync 가 다시 통함.
+    """
+    import secrets as _secrets
+    cfg = load_config()
+    cfg["sync_secret"] = _secrets.token_urlsafe(32)
+    save_config(cfg)
+    return {"ok": True, "sync_secret": cfg["sync_secret"]}
 
 
 @router.post("/config")
 def update_config(payload: dict, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
-    cfg = load_config(); cfg.update(payload or {})
+    # ⚠ 일반 config 갱신 경로로 sync_secret 을 덮어쓰지 못하게 차단.
+    #    실수로 빈 값을 보내면 인증이 망가지므로 — 갱신은 전용 regenerate 엔드포인트로만.
+    payload = dict(payload or {})
+    payload.pop("sync_secret", None)
+    payload.pop("admin_password_hash", None)
+    cfg = load_config(); cfg.update(payload)
     # 점심시간 검증 (lunch_enabled=true 일 때만 형식/범위 강제)
     if cfg.get("lunch_enabled"):
         try:
@@ -573,14 +729,24 @@ def update_config(payload: dict, db: Session = Depends(get_db), _: bool = Depend
             raise HTTPException(400, "점심 종료 시간은 시작 시간보다 뒤여야 합니다.")
     save_config(cfg)
     audit(db, "config.update", "", str(payload)); db.commit()
-    return cfg
+    # 응답에서 비밀 값 제거 — admin 이라도 일반 config 응답에 secret echo 안 시킴.
+    out = dict(cfg)
+    out.pop("sync_secret", None)
+    out.pop("admin_password_hash", None)
+    return out
 
 
 @router.post("/mode")
 def set_mode(p: schemas.ModeSelect, x_admin_token: str = Header(default="")):
-    cfg = load_config()
-    if cfg.get("mode") and not auth.is_valid(x_admin_token):
+    """노드 모드(main/sub) 변경.
+
+    인증 정책: 항상 관리자 인증 필요.
+    이전 코드는 cfg.get("mode") 가 None 일 때(첫 실행) 인증 없이 변경 허용했지만,
+    이는 외부에서 누구나 main↔sub 전환을 트리거할 수 있어 위험.
+    """
+    if not auth.is_valid(x_admin_token):
         raise HTTPException(401, "모드 변경은 관리자 인증이 필요합니다.")
+    cfg = load_config()
     if p.mode not in ("main", "sub"):
         raise HTTPException(400, "mode must be 'main' or 'sub'")
     cfg["mode"] = p.mode
@@ -1911,7 +2077,8 @@ def system_settings_set(payload: dict, db: Session = Depends(get_db)):
 
 @router.get("/sync/pull")
 def sync_pull(since: str = Query(...), exclude_node: str = Query(""),
-              db: Session = Depends(get_db)):
+              db: Session = Depends(get_db),
+              _: bool = Depends(require_admin_or_sync_token)):
     ts = datetime.fromisoformat(since)
     q = db.query(models.SyncOp).filter(models.SyncOp.ts > ts)
     if exclude_node:
@@ -1925,20 +2092,37 @@ def sync_pull(since: str = Query(...), exclude_node: str = Query(""),
 
 
 @router.post("/sync/push")
-def sync_push(batch: schemas.SyncBatch, db: Session = Depends(get_db)):
+def sync_push(batch: schemas.SyncBatch, db: Session = Depends(get_db),
+              _: bool = Depends(require_admin_or_sync_token)):
+    """다른 노드에서 보낸 op 묶음 적용.
+
+    트랜잭션 정책: 각 op 를 개별 try/except 로 보호 — 한 op 가 깨지더라도
+    나머지 op 가 적용되도록 하되, 실패 op 는 별도 카운트로 응답.
+    이전 코드는 apply_op 가 raise 시 루프 자체가 깨져 db.commit() 미호출 → 부분 상태 잔존 위험.
+    """
     from ..services.sync import apply_op
-    n = 0
+    applied = 0
+    failed = 0
+    failures = []
     for op in batch.ops:
         if isinstance(op.get("payload"), str):
             try: op["payload"] = json.loads(op["payload"])
             except Exception: op["payload"] = {}
-        if apply_op(db, op): n += 1
+        try:
+            if apply_op(db, op):
+                applied += 1
+        except Exception as e:
+            failed += 1
+            db.rollback()
+            failures.append({"op_id": op.get("id"), "entity": op.get("entity"), "error": str(e)[:200]})
+            # rollback 후에도 같은 세션을 계속 쓰려면 다음 op 부터 새로 시작
+            continue
     db.commit()
-    return {"applied": n}
+    return {"applied": applied, "failed": failed, "failures": failures}
 
 
 @router.post("/sync/now")
-def sync_now():
+def sync_now(_: bool = Depends(require_admin)):
     from ..services.sync import sync_with_peer
     cfg = load_config(); results = {}
     targets = []
@@ -1953,7 +2137,7 @@ def sync_now():
 # ──────────────── 백업 / 복원 ────────────────
 
 @router.get("/backup")
-def backup_now():
+def backup_now(_: bool = Depends(require_admin)):
     src = get_db_path()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dst = get_backup_dir() / f"clinic_{ts}.db"
@@ -1962,14 +2146,92 @@ def backup_now():
 
 
 @router.post("/restore")
-def restore(file: UploadFile = File(...), db: Session = Depends(get_db),
-            _: bool = Depends(require_admin)):
-    dst = get_db_path()
+def restore(file: UploadFile = File(...), _: bool = Depends(require_admin)):
+    """업로드된 DB 파일로 복원.
+
+    정책: 임시 경로에 받아 SQLite integrity check 통과한 경우에만 실제 DB 위치로 atomic rename.
+
+    Windows 안전성:
+      - 이전엔 db: Session = Depends(get_db) 로 세션을 잡고 들어와 SQLAlchemy 가 운영 DB
+        파일을 lock 해 tmp.replace(dst) 가 PermissionError 로 실패할 가능성이 있었음.
+      - 이제 db dependency 를 제거하고, 파일 교체 직전 engine.dispose() 로 connection pool
+        을 모두 닫음. 교체 후 새 SessionLocal() 로 audit log 만 새 DB 에 기록.
+
+    감사 로그 폴백:
+      - 새 DB 에 audit_logs 테이블이 없거나 호환성 문제가 있어 audit 호출이 실패하면
+        backup 폴더의 restore_audit.log 파일에 평문으로 한 줄 기록.
+    """
+    import os as _os, sqlite3, tempfile
+    from pathlib import Path
+
+    from ..database import SessionLocal, engine
+
+    dst = Path(get_db_path())
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     shutil.copy2(dst, get_backup_dir() / f"clinic_before_restore_{ts}.db")
-    with open(dst, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    audit(db, "db.restore", "", f"file={file.filename}"); db.commit()
+
+    filename = file.filename or "(이름없음)"
+
+    # 1) 임시 파일에 업로드 받기 (실패해도 운영 DB 영향 없음).
+    #    mkstemp 의 fd 는 즉시 닫는다 — 안 닫으면 Windows 에서 파일 잠금 잔존 가능.
+    fd, tmp_path = tempfile.mkstemp(prefix="clinic_restore_", suffix=".db",
+                                    dir=str(dst.parent))
+    _os.close(fd)
+    tmp = Path(tmp_path)
+    try:
+        with open(tmp, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+
+        # 2) 무결성 검증 — SQLite 가 읽고 PRAGMA integrity_check 통과해야 함
+        try:
+            con = sqlite3.connect(str(tmp))
+            try:
+                row = con.execute("PRAGMA integrity_check").fetchone()
+            finally:
+                con.close()
+        except Exception as e:
+            raise HTTPException(400, f"업로드 파일이 SQLite DB 가 아니거나 손상되었습니다: {e}")
+        if not row or row[0] != "ok":
+            raise HTTPException(400,
+                f"무결성 검사 실패 (결과={row[0] if row else 'None'}). 복원 중단.")
+
+        # 3) 파일 교체 직전: SQLAlchemy connection pool 의 모든 connection 을 닫음.
+        #    Windows 에서 SQLite 가 dst 파일을 lock 한 상태에서 tmp.replace 하면 실패함.
+        try:
+            engine.dispose()
+        except Exception:
+            pass
+
+        # 4) atomic 교체 — Path.replace 는 Windows 에서도 atomic
+        tmp.replace(dst)
+        tmp = None  # rename 성공 후 finally 에서 unlink 안 하도록
+    finally:
+        if tmp is not None and tmp.exists():
+            try: tmp.unlink()
+            except Exception: pass
+
+    # 5) 감사 로그 — 새 SessionLocal() 로 (복원된) 새 DB 에 기록.
+    #    엔진은 dispose 후 자동으로 lazy-reconnect 하므로 같은 DB_URL 로 새 파일 열림.
+    audit_recorded = False
+    try:
+        new_db = SessionLocal()
+        try:
+            audit(new_db, "db.restore", "", f"file={filename}")
+            new_db.commit()
+            audit_recorded = True
+        finally:
+            new_db.close()
+    except Exception:
+        # audit 테이블이 없거나 신규 DB 가 호환 안 될 수 있음 — 파일 로그 폴백
+        pass
+    if not audit_recorded:
+        try:
+            log_path = get_backup_dir() / "restore_audit.log"
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"[{ts}] db.restore file={filename} (audit 테이블 미존재 폴백)\n")
+        except Exception:
+            pass
+
     return {"ok": True, "msg": "복원 완료. 프로그램을 재시작하세요."}
 
 
@@ -2875,6 +3137,29 @@ def _sms_log(line: str):
         pass
 
 
+def _sms_sanitize(text: str, secrets: list) -> str:
+    """SMS 관련 텍스트(예외 메시지/서버 응답)에 평문 비밀이 섞여 있어도 마스킹.
+
+    적용 대상:
+      - urllib / socket 예외 메시지에 요청 body 일부가 끼어 들어오는 경우
+      - SMS 서버가 요청 echo 형태로 응답해 passwd/key 값을 그대로 돌려보내는 경우
+
+    secrets 인자는 마스킹할 비밀 문자열들의 리스트. 빈 값/None 은 스킵.
+    """
+    if not text:
+        return text
+    out = str(text)
+    for s in secrets:
+        if not s:
+            continue
+        s = str(s)
+        # 너무 짧은 비밀은 마스킹 시 의미없는 치환 폭증 → 4자 미만은 스킵
+        if len(s) < 4:
+            continue
+        out = out.replace(s, "***")
+    return out
+
+
 def _smart_decode_response(resp_or_headers, raw_bytes: bytes) -> str:
     """HTTP 응답 본문을 한글 안전하게 디코딩.
 
@@ -2947,6 +3232,10 @@ def sms_send(payload: dict, db: Session = Depends(get_db)):
     sender_digits = _normalize_phone_for_sms(setting.sender_phone)
     results = []
 
+    # 로깅/DB 저장 시 평문 비밀이 섞여 있으면 마스킹할 대상.
+    # urllib 예외 메시지 / 서버 echo 응답에 password/key 가 끼어들어가는 사고를 차단.
+    _secrets = [getattr(setting, "munjanara_key", None), getattr(setting, "munjanara_pw", None)]
+
     _sms_log(f"── 발송 요청 시작 · 대상 {len(items)}건 · URL={api_url}")
 
     for it in items:
@@ -3016,6 +3305,8 @@ def sms_send(payload: dict, db: Session = Depends(get_db)):
                     status_code = r.status
                     _raw = r.read()
                     resp_text = _smart_decode_response(r, _raw)
+                # 서버 echo 에 passwd/key 평문이 섞여있을 가능성 차단 — 디코딩 직후 마스킹.
+                resp_text = _sms_sanitize(resp_text, _secrets)
             except urllib.error.HTTPError as he:
                 # 404 / 500 등 HTTP 에러도 응답 본문은 읽을 수 있음
                 status_code = he.code
@@ -3024,6 +3315,7 @@ def sms_send(payload: dict, db: Session = Depends(get_db)):
                     resp_text = _smart_decode_response(he, _raw)
                 except Exception:
                     resp_text = ""
+                resp_text = _sms_sanitize(resp_text, _secrets)
                 if he.code == 404:
                     kind = "url_not_found"
                     detail = (f"HTTP 404 — 문자나라 연동 주소 확인 필요. "
@@ -3043,8 +3335,10 @@ def sms_send(payload: dict, db: Session = Depends(get_db)):
                 continue
             except urllib.error.URLError as ue:
                 kind = "network_error"
-                detail = f"네트워크 오류: {ue.reason}"
-                _sms_log(f"  [NET-ERR] 번호={masked} · {ue.reason}")
+                # ue.reason 이 socket/SSL 객체일 수도, 문자열일 수도 — 일단 str 변환 후 마스킹.
+                reason_safe = _sms_sanitize(str(ue.reason), _secrets)
+                detail = f"네트워크 오류: {reason_safe}"
+                _sms_log(f"  [NET-ERR] 번호={masked} · {reason_safe}")
                 db.add(models.SmsLog(patient_id=it.get("patient_id"),
                     phone=raw_phone, body=it.get("body", ""),
                     result="fail", detail=f"[{kind}] {detail}"))
@@ -3112,7 +3406,9 @@ def sms_send(payload: dict, db: Session = Depends(get_db)):
                 "kind": kind, "status_code": status_code, "detail": detail})
         except Exception as e:
             kind = "exception"
-            detail = f"예외: {e}"
+            # 예외 메시지(특히 UnicodeError / 일부 socket error 류) 에 요청 body 일부가
+            # 그대로 끼어 들어올 수 있어 마스킹 — passwd/key 평문이 stderr 와 DB 양쪽에 남는 사고 방지.
+            detail = _sms_sanitize(f"예외: {e}", _secrets)
             _sms_log(f"  [EX] 번호={masked} · {detail}")
             db.add(models.SmsLog(patient_id=it.get("patient_id"),
                 phone=raw_phone, body=it.get("body", ""),

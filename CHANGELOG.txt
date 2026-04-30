@@ -3,6 +3,75 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
+━━━━ v1.3.1  (2026-04-30) ━━━━
+
+🛡️ 보안 + 안정성 패치 (v1.3.0 후속)
+
+▸ 자동 업데이트 hang 수정
+  - 증상: "지금 설치" 클릭 후 화면은 "업데이트 중" 으로 바뀌지만 몇 분 기다려도
+    반응이 없고, 새로고침하면 서버가 꺼져 있는 상태.
+  - updater.bat: _internal/exe rename 5회 재시도 (안티바이러스/Windows 인덱싱
+    잠금 해제 대기). 본체 종료 후 3초 추가 대기로 .pyd/.dll unlock 시간 확보.
+    powershell Expand-Archive 에 -ExecutionPolicy Bypass 명시 (병원 GPO 환경).
+    rollback 콘솔은 timeout 자동 닫힘 → pause 로 변경 (오류 메시지 가시성).
+  - apply_update creationflags: CREATE_NEW_CONSOLE 단독 → DETACHED_PROCESS |
+    CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB (부모 종료 시 자식
+    잡힘 방지). 자식 콘솔 cmd /k → /c — 정상 종료 후 콘솔 자동 닫힘.
+    종료 sleep 1.5초 → 3초 (PyInstaller _internal/ 의 DLL 잠금 해제 시간).
+  - 신규 GET /api/about/update-log — %TEMP%\도수치료예약_updater.log 진단 조회.
+  - 프론트: 30/60초/6분 단계별 안내 박스 + 로그 모달 + 새 서버 health-check
+    폴링 + 자동 새로고침. 사용자가 "어디서 멈췄는지" 화면에서 확인 가능.
+
+▸ 인증 누수 회귀 수정 (HIGH)
+  - /api/sync/pull, /api/sync/push, /api/sync/now, /api/backup 에 require_admin
+    누락 — 같은 네트워크에서 누구나 DB 파일/sync 큐를 노출/주입 가능했음.
+  - /api/mode 첫 실행 시(mode=None) 인증 우회 가능했던 결함 수정.
+  - sync pull/push 듀얼 인증 도입: 관리자 토큰 OR X-Sync-Token 헤더.
+    · config.sync_secret 자동 생성 (load_config 시 secrets.token_urlsafe(32)).
+    · sync_with_peer 가 자동으로 X-Sync-Token 헤더 동봉.
+    · GET /api/config/sync-secret + POST /api/config/regenerate-sync-secret
+      (관리자 전용 — peer 페어링용).
+  - GET /api/config 응답에서 sync_secret 자동 제거 (admin_password_hash 와 동일).
+    · 이전 회귀: 누구나 GET /api/config 로 secret 획득 → 인증 무력화 가능했음.
+
+▸ DB 복원 안전성 (POST /api/restore)
+  - 임시 파일 → SQLite PRAGMA integrity_check → atomic 교체 (이전: dst 직접
+    덮어쓰기 → 업로드 도중 끊기면 운영 DB 부분 손상 위험).
+  - SQLAlchemy db: Session 의존성 제거 + 교체 직전 engine.dispose() — Windows
+    파일 잠금으로 replace 실패하던 위험 제거.
+  - audit log 는 새 SessionLocal 로 새 DB 에 기록 (실패 시 file log 폴백).
+
+▸ apply_update 안전성
+  - DB 백업 실패 시 업데이트 중단 (이전: 백업 결과 검사 안 해 디스크 부족 시에도 진행).
+  - sync/backup worker graceful 정지 (mid-operation shutil.copy2 / sync_with_peer
+    가 끊겨 부분 백업 파일/부분 적용 op 가 잔존하던 위험 제거).
+
+▸ SMS 발송 — 비밀 노출 차단
+  - SMS 서버 echo 응답 / urllib 예외 메시지에 평문 passwd/key 가 stderr / DB
+    (SmsLog.detail) 에 남던 사고 방지.
+  - _sms_sanitize 헬퍼로 자동 마스킹 (response, HTTPError, URLError, Exception
+    네 경로 모두).
+
+▸ UX
+  - 데이터 변환(엑셀 → 환자) 적용 시 spinner + 버튼 비활성화 + 90초 AbortController
+    타임아웃. 중복 클릭 / 무한 응답대기 사고 방지.
+  - 모달 액션 버튼(.modal-actions) sticky — 긴 모달에서 스크롤 시 항상 가시.
+
+▸ 빌드 인프라
+  - PyInstaller spec 의 마이그레이션 hiddenimports 자동 글롭 (m*_*.py 패턴).
+    새 마이그레이션 추가 시 spec 등록 깜빡으로 빌드본에서 마이그레이션 실패하던
+    위험 제거. 빌드 시점에 모듈이 0개면 RuntimeError 로 빌드 중단.
+
+▸ 회귀 방지 테스트 (총 +45건)
+  - test_admin_auth_required (인증 누수 + sync 듀얼 인증 + secret 노출 회귀)
+  - test_db_restore_safety (손상 업로드 운영 DB 무변경 + atomic 교체)
+  - test_graceful_shutdown (sync/backup worker 정지 신호)
+  - test_migration_spec_discovery (마이그레이션 자동 등록)
+  - test_sms_secret_masking (응답 echo / 예외 마스킹)
+  - test_update_log (진단 엔드포인트)
+  - test_updater_invocation (/k 안 씀 + proc.poll 재도입 차단 + bat pause 위치)
+
+
 ━━━━ v1.3.0  (2026-04-30) ━━━━
 
 ✨ 업무 매뉴얼 Q&A — AI 도우미 탭 추가 (단계 5)

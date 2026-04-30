@@ -49,6 +49,12 @@ goto waitloop
 echo       완료
 echo [%date% %time%] 본체 종료 확인 >> "%LOGFILE%"
 
+rem 본체가 종료되었어도 PyInstaller 의 _internal/*.pyd / *.dll 파일이
+rem OS 측에서 unlock 되기까지 약간의 시간이 더 필요함 (안티바이러스/인덱싱 영향).
+rem 이 대기를 안 주면 다음 단계의 ren 이 잠금 충돌로 실패하고 rollback 됨.
+echo       파일 잠금 해제 대기 (3초)...
+timeout /t 3 /nobreak > nul
+
 rem ───── [2/5] 이전 .old 잔재 정리 ─────
 echo [2/5] 이전 백업 정리...
 if exist "_internal.old" (
@@ -60,23 +66,46 @@ if exist "도수치료예약.exe.old" (
 echo       완료
 
 rem ───── [3/5] 기존 파일 .old 로 보존 (롤백용) ─────
+rem 안티바이러스/Windows 인덱싱/백업 SW 가 파일을 잠그고 있으면 단발 ren 은 실패.
+rem 5회 재시도(2초 간격)로 잠금 해제를 기다림.
+rem ⚠ batch 의 label 은 if (...) 블록 안에 두면 안 됨 → 평탄화한 형태로 작성.
 echo [3/5] 현재 버전 백업...
-if exist "_internal" (
-    ren "_internal" "_internal.old" >> "%LOGFILE%" 2>&1
-    if errorlevel 1 (
-        echo       [오류] _internal rename 실패 — 파일이 사용 중일 수 있습니다.
-        echo [ERROR] _internal rename failed >> "%LOGFILE%"
-        goto rollback
-    )
+
+if not exist "_internal" goto skip_internal_rename
+set /a TRY=0
+:retry_internal
+ren "_internal" "_internal.old" >> "%LOGFILE%" 2>&1
+if not errorlevel 1 goto internal_renamed
+set /a TRY+=1
+if !TRY! geq 5 (
+    echo       [오류] _internal rename 5회 실패 — 파일 잠금 지속.
+    echo [ERROR] _internal rename failed after 5 retries >> "%LOGFILE%"
+    goto rollback
 )
-if exist "도수치료예약.exe" (
-    ren "도수치료예약.exe" "도수치료예약.exe.old" >> "%LOGFILE%" 2>&1
-    if errorlevel 1 (
-        echo       [오류] exe rename 실패
-        echo [ERROR] exe rename failed >> "%LOGFILE%"
-        goto rollback
-    )
+echo       _internal 잠금 대기 중... (재시도 !TRY!/5)
+echo [WARN] _internal rename retry !TRY! >> "%LOGFILE%"
+timeout /t 2 /nobreak > nul
+goto retry_internal
+:internal_renamed
+:skip_internal_rename
+
+if not exist "도수치료예약.exe" goto skip_exe_rename
+set /a TRY=0
+:retry_exe
+ren "도수치료예약.exe" "도수치료예약.exe.old" >> "%LOGFILE%" 2>&1
+if not errorlevel 1 goto exe_renamed
+set /a TRY+=1
+if !TRY! geq 5 (
+    echo       [오류] exe rename 5회 실패.
+    echo [ERROR] exe rename failed after 5 retries >> "%LOGFILE%"
+    goto rollback
 )
+echo       exe 잠금 대기 중... (재시도 !TRY!/5)
+echo [WARN] exe rename retry !TRY! >> "%LOGFILE%"
+timeout /t 2 /nobreak > nul
+goto retry_exe
+:exe_renamed
+:skip_exe_rename
 echo       완료
 
 rem ───── [4/5] 압축 해제 ─────
@@ -87,7 +116,8 @@ if not exist ".update\new.zip" (
     echo [ERROR] new.zip not found >> "%LOGFILE%"
     goto rollback
 )
-powershell -NoProfile -Command "Expand-Archive -Path '.update\new.zip' -DestinationPath '.update\extracted' -Force" >> "%LOGFILE%" 2>&1
+rem 일부 환경(GPO/그룹정책 잠긴 PC)에서 PowerShell 실행 정책 차단 방지 — Bypass 명시.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '.update\new.zip' -DestinationPath '.update\extracted' -Force" >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
     echo       [오류] 압축 해제 실패
     echo [ERROR] Expand-Archive failed >> "%LOGFILE%"
@@ -133,9 +163,9 @@ echo   업데이트 완료 - 프로그램을 다시 시작합니다
 echo ═══════════════════════════════════════════════════════════════════
 echo [%date% %time%] 업데이트 성공 >> "%LOGFILE%"
 
-rem 재시작
+rem 재시작 — 새 exe 가 포트 점유까지 여유를 두기 위해 5초 대기 후 종료.
 start "" "도수치료예약.exe"
-timeout /t 2 /nobreak > nul
+timeout /t 5 /nobreak > nul
 exit /b 0
 
 rem ═══════════════════════════════════════════════════════════════════
@@ -166,6 +196,12 @@ echo 이전 버전으로 재시작 중...
 start "" "도수치료예약.exe"
 echo [%date% %time%] 롤백 완료 >> "%LOGFILE%"
 echo.
-echo (이 창은 10초 후 자동 닫힙니다)
-timeout /t 10 /nobreak > nul
+echo ───────────────────────────────────────────────────────────────────
+echo  실패 원인을 위 로그에서 확인하시고, 같은 증상이 계속되면
+echo  로그 파일을 캡처해서 문의해 주세요:
+echo    %LOGFILE%
+echo ───────────────────────────────────────────────────────────────────
+echo.
+rem 사용자가 메시지를 끝까지 읽고 직접 닫게 — 자동 종료 안 함.
+pause
 exit /b 1

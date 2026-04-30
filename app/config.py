@@ -1,5 +1,5 @@
 """애플리케이션 경로 및 설정 관리"""
-import os, sys, json, uuid
+import os, sys, json, uuid, secrets
 from pathlib import Path
 
 APP_NAME = "도수치료예약"
@@ -7,7 +7,7 @@ APP_NAME = "도수치료예약"
 # ─── 앱 버전 (배포 시 업데이트) ───
 # 이 값은 프로그램 폴더에 포함되어 교체됨. %APPDATA%\도수치료예약\ 은 유지.
 # 빌드 규칙: MAJOR.MINOR.PATCH (예: 1.2.3)
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 APP_BUILD_DATE = "2026-04-30"
 
 def get_appdata_dir() -> Path:
@@ -45,17 +45,31 @@ DEFAULT_CONFIG = {
     "update_manifest_url": "",
     # 마지막으로 사용자에게 보여준 원격 버전 (안내 배너 중복 방지용)
     "update_last_seen_version": "",
+    # ─── peer 노드 간 sync 인증 토큰 ───
+    # /api/sync/pull, /api/sync/push 는 외부 노드가 호출하므로 관리자 세션 토큰만으론
+    # 인증 못함 → X-Sync-Token 헤더 비교용 공유 비밀.
+    # 비어있으면 load_config() 가 노드별 안전한 랜덤값을 자동 생성/저장.
+    # 다른 노드와 페어링하려면 양쪽 config.json 의 sync_secret 값을 동일하게 맞춰야 함.
+    "sync_secret": "",
 }
 
 def load_config() -> dict:
     p = get_config_path()
     if not p.exists():
-        cfg = dict(DEFAULT_CONFIG); cfg["node_id"] = uuid.uuid4().hex[:12]
+        cfg = dict(DEFAULT_CONFIG)
+        cfg["node_id"] = uuid.uuid4().hex[:12]
+        cfg["sync_secret"] = secrets.token_urlsafe(32)
         save_config(cfg); return cfg
     with open(p, "r", encoding="utf-8") as f: cfg = json.load(f)
     for k, v in DEFAULT_CONFIG.items(): cfg.setdefault(k, v)
+    # node_id / sync_secret 자동 채움 — 둘 중 하나라도 비어있으면 생성 후 저장.
+    dirty = False
     if not cfg.get("node_id"):
-        cfg["node_id"] = uuid.uuid4().hex[:12]; save_config(cfg)
+        cfg["node_id"] = uuid.uuid4().hex[:12]; dirty = True
+    if not cfg.get("sync_secret"):
+        cfg["sync_secret"] = secrets.token_urlsafe(32); dirty = True
+    if dirty:
+        save_config(cfg)
     return cfg
 
 def save_config(cfg: dict) -> None:

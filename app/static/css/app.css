@@ -251,7 +251,14 @@ main { padding:0; }
 }
 .modal-actions { margin-top:18px; padding-top:14px;
   border-top:1px solid var(--sky-100);
-  display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;
+  /* 모달 안에 긴 콘텐츠(메모/긴 폼)가 들어가 max-height:85vh 의 overflow-y:auto 가
+     활성화될 때, 액션 버튼이 화면 밖으로 밀려 사용자가 "저장" 버튼을 못 찾는 사고 방지.
+     sticky 로 항상 모달 바닥에 붙어 보이게 함. */
+  position: sticky; bottom: 0;
+  background: #fff;
+  z-index: 1;
+}
 .modal-actions button { padding:9px 18px;
   border:1px solid var(--gray-200); background:#fff; border-radius:7px;
   cursor:pointer; font-size:14px; margin:0; }

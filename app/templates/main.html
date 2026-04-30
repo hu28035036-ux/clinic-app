@@ -416,7 +416,7 @@
         <div class="sf-row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <label class="sf-label" style="margin:0;">엑셀 파일</label>
           <input id="dc-file" type="file" accept=".xlsx,.xls,.xlsm" style="flex:1;min-width:240px;">
-          <button class="primary" onclick="dcPreview()">분석 (미리보기)</button>
+          <button id="dc-preview-btn" class="primary" onclick="dcPreview()">분석 (미리보기)</button>
           <button class="mini" onclick="dcReset()">초기화</button>
         </div>
         <p class="muted" style="font-size:12px;margin:8px 0 0;line-height:1.5;">
@@ -5592,6 +5592,7 @@ async function applyUpdate(){
     let data = {};
     try { data = await res.json(); } catch(e){}
     const backup = data.backup || {};
+    const updaterLogPath = data.updater_log_path || '%TEMP%\\도수치료예약_updater.log';
 
     // 백업 결과 박스 (성공/실패 모두 노출 — 투명성)
     let backupBox = '';
@@ -5616,21 +5617,132 @@ async function applyUpdate(){
 
     // 업데이트 진행 안내 페이지로 전환 (서버가 곧 꺼지므로 이후 요청은 실패)
     document.body.innerHTML = `
-      <div style="max-width:520px;margin:80px auto;padding:30px;background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.08);font-family:system-ui;text-align:center;">
+      <div style="max-width:560px;margin:60px auto;padding:30px;background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.08);font-family:system-ui;text-align:center;">
         <div style="font-size:48px;margin-bottom:16px;">🔄</div>
         <h2 style="margin:0 0 10px;color:#1F2937;">업데이트 진행 중</h2>
         <p style="color:#6B7280;line-height:1.7;">
           프로그램이 종료되고 업데이트가 적용됩니다.<br>
-          약 <b>15~20초 뒤</b> 자동으로 새 버전이 실행되면<br>
-          이 페이지를 <b>F5</b> 로 새로고침하세요.
+          새 버전이 준비되면 이 페이지가 <b>자동 새로고침</b> 됩니다.
         </p>
         ${backupBox}
         <div style="margin-top:20px;padding:12px;background:#F3F4F6;border-radius:6px;font-size:12px;color:#6B7280;line-height:1.6;">
           화면이 멈춰 보여도 정상입니다.<br>
           업데이터 창이 별도로 떠서 자동으로 닫힙니다.
         </div>
+
+        <!-- 30초 경과 시 표시 -->
+        <div id="upd-warn30" style="display:none;margin-top:16px;padding:12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;font-size:13px;color:#92400E;line-height:1.6;text-align:left;">
+          <div style="font-weight:700;margin-bottom:6px;">⏳ 진행이 평소보다 오래 걸리고 있어요</div>
+          <div>30초가 넘었습니다. 어디서 멈췄는지 업데이터 로그를 확인할 수 있습니다.</div>
+          <button onclick="showUpdateLog()" style="margin-top:8px;padding:6px 14px;background:#F59E0B;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">업데이터 로그 보기</button>
+        </div>
+
+        <!-- 60초 경과 시 표시 -->
+        <div id="upd-warn60" style="display:none;margin-top:12px;padding:12px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;font-size:12px;color:#991B1B;line-height:1.7;text-align:left;">
+          <div style="font-weight:700;margin-bottom:6px;">⚠️ 업데이트가 멈춰 있을 수 있습니다</div>
+          <div>다음을 순서대로 시도하세요:</div>
+          <ol style="margin:6px 0 0 18px;padding:0;">
+            <li>위 "업데이터 로그 보기" 버튼으로 마지막 단계 확인</li>
+            <li>작업표시줄에 "도수치료예약 업데이트 진행 중..." 콘솔 창이 떠 있는지 확인 — 떠 있다면 그 창의 메시지를 따르세요</li>
+            <li>로그 파일을 직접 열기: <code style="font-size:11px;background:#fff;padding:1px 4px;border-radius:3px;">${updaterLogPath}</code></li>
+            <li>여전히 안 되면 작업관리자에서 "도수치료예약" 프로세스를 모두 종료한 뒤, 프로그램 폴더에서 <b>도수치료예약.exe</b> 를 다시 실행하세요. 롤백이 자동 적용되어 이전 버전으로 복구됩니다.</li>
+          </ol>
+        </div>
+
+        <!-- 6분 (자동 폴링 한계) 경과 시 표시 — 자동 새로고침이 더 이상 안 됨을 알려줌 -->
+        <div id="upd-warn-timeout" style="display:none;margin-top:12px;padding:12px;background:#1F2937;color:#F9FAFB;border-radius:8px;font-size:12px;line-height:1.7;text-align:left;">
+          <div style="font-weight:700;margin-bottom:6px;">⏹ 자동 새로고침을 더 이상 시도하지 않습니다 (6분 경과)</div>
+          <div style="color:#D1D5DB;">서버에서 응답이 없습니다. 새 버전이 떴는지 직접 확인이 필요합니다.</div>
+          <div style="margin-top:8px;">
+            <button onclick="window.location.reload()" style="padding:6px 14px;background:#3B82F6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">지금 새로고침</button>
+            <button onclick="showUpdateLog()" style="margin-left:6px;padding:6px 14px;background:transparent;color:#F9FAFB;border:1px solid #6B7280;border-radius:6px;cursor:pointer;">로그 보기</button>
+          </div>
+          <div style="margin-top:8px;color:#9CA3AF;font-size:11px;">
+            ※ 새로고침 후 페이지가 안 열리면 작업관리자에서 "도수치료예약" 프로세스를 모두 종료하고 프로그램 폴더의 <b>도수치료예약.exe</b> 를 다시 실행하세요.
+          </div>
+        </div>
+      </div>
+
+      <!-- 로그 모달 -->
+      <div id="upd-log-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;padding:40px 20px;overflow:auto;">
+        <div style="max-width:760px;margin:0 auto;background:#fff;border-radius:10px;padding:20px;font-family:system-ui;">
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #E5E7EB;padding-bottom:10px;margin-bottom:12px;">
+            <h3 style="margin:0;color:#1F2937;font-size:16px;">업데이터 로그</h3>
+            <button onclick="document.getElementById('upd-log-modal').style.display='none'" style="padding:4px 12px;border:1px solid #D1D5DB;background:#fff;border-radius:6px;cursor:pointer;">닫기</button>
+          </div>
+          <pre id="upd-log-body" style="background:#1F2937;color:#E5E7EB;padding:12px;border-radius:6px;font-size:12px;line-height:1.5;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0;">로그 불러오는 중...</pre>
+        </div>
       </div>
     `;
+
+    // 30초/60초 경과 안내 표시
+    setTimeout(function(){
+      const el = document.getElementById('upd-warn30');
+      if(el) el.style.display = 'block';
+    }, 30000);
+    setTimeout(function(){
+      const el = document.getElementById('upd-warn60');
+      if(el) el.style.display = 'block';
+    }, 60000);
+
+    // 새 서버 health-check 폴링 — 떠오르면 자동 새로고침.
+    // /api/treatments 는 인증 불필요한 가벼운 GET (smoke test 에서도 사용).
+    let healthTries = 0;
+    const healthInterval = setInterval(async function(){
+      healthTries += 1;
+      // 6분 (72회) 후에는 폴링 중단 — 무한 반복 방지.
+      // silent 종료하면 사용자가 무한정 기다리게 되므로 마지막 안내 박스 노출.
+      if(healthTries > 72){
+        clearInterval(healthInterval);
+        const elTimeout = document.getElementById('upd-warn-timeout');
+        if(elTimeout) elTimeout.style.display = 'block';
+        return;
+      }
+      try {
+        const r = await fetch('/api/treatments', { cache: 'no-store' });
+        if(r && (r.ok || r.status === 401 || r.status === 403)){
+          clearInterval(healthInterval);
+          // 잠시 후 새로고침 (응답 직후 reload 하면 새 인스턴스 startup 중일 수 있음)
+          setTimeout(function(){ window.location.reload(); }, 1500);
+        }
+      } catch(e){
+        // 서버가 죽어있는 정상 상태 — 다음 시도 대기
+      }
+    }, 5000);
+
+    // "업데이터 로그 보기" 버튼 핸들러 — window 에 노출 (인라인 onclick 에서 호출)
+    window.showUpdateLog = async function(){
+      const modal = document.getElementById('upd-log-modal');
+      const body = document.getElementById('upd-log-body');
+      if(!modal || !body) return;
+      modal.style.display = 'block';
+      body.textContent = '로그 불러오는 중...';
+      try {
+        const r = await adminFetch('/api/about/update-log');
+        if(!r.ok){
+          body.textContent = '로그 조회 실패 (HTTP ' + r.status + ').\n'
+            + '서버가 이미 종료된 상태일 수 있습니다.\n\n'
+            + '로그 파일을 파일 탐색기에서 직접 열어보세요:\n  ' + updaterLogPath;
+          return;
+        }
+        const j = await r.json();
+        if(!j.exists){
+          body.textContent = '로그 파일이 아직 생성되지 않았습니다.\n경로: ' + (j.path || updaterLogPath) + '\n\n'
+            + 'updater.bat 가 시작 전이거나, 경로가 다를 수 있습니다.';
+          return;
+        }
+        const head = '[파일] ' + j.path
+          + '\n[수정시각] ' + (j.mtime || '-')
+          + '\n[크기] ' + (j.size_bytes || 0) + ' bytes'
+          + '\n[줄 수] ' + (j.total_lines || (j.lines||[]).length)
+          + '\n──────────────────────────────────────────\n';
+        body.textContent = head + (j.lines || []).join('\n');
+      } catch(e){
+        body.textContent = '로그 조회 중 오류: ' + (e.message || e) + '\n\n'
+          + '서버가 이미 종료된 상태일 수 있습니다.\n'
+          + '로그 파일을 파일 탐색기에서 직접 열어보세요:\n  ' + updaterLogPath;
+      }
+    };
   } catch(e){
     alert('업데이트 요청 중 오류: ' + e.message);
   }
@@ -5658,12 +5770,26 @@ async function dcPreview(){
   const file = document.getElementById('dc-file').files[0];
   if(!file){ alert('엑셀 파일을 선택하세요'); return; }
   const result = document.getElementById('dc-result');
-  result.innerHTML = '<p class="muted" style="padding:12px;">분석 중...</p>';
+  const btn = document.getElementById('dc-preview-btn');
+  // 진행 표시: spinner + 버튼 비활성화 (중복 클릭 방지)
+  result.innerHTML = `
+    <div style="padding:14px;display:flex;align-items:center;gap:10px;color:#475569;">
+      <span class="dc-spinner" style="width:16px;height:16px;border:2px solid #E2E8F0;border-top-color:#2F86CB;border-radius:50%;display:inline-block;animation:dc-spin 0.8s linear infinite;"></span>
+      <span>엑셀 파일 분석 중... <span class="muted" style="font-size:12px;">(파일이 크면 수 초 소요)</span></span>
+    </div>
+    <style>@keyframes dc-spin { to { transform: rotate(360deg); } }</style>
+  `;
+  const prevBtnText = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '분석 중...'; btn.style.opacity = '0.6'; btn.style.cursor = 'wait'; }
+
+  // 90초 타임아웃 — 매우 큰 엑셀 + 느린 디스크 IO 도 커버
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 90000);
 
   const fd = new FormData();
   fd.append('file', file);
   try {
-    const r = await adminFetch('/api/data-convert/preview', { method:'POST', body: fd });
+    const r = await adminFetch('/api/data-convert/preview', { method:'POST', body: fd, signal: ac.signal });
     if(!r.ok){
       const t = await r.text();
       result.innerHTML = `<div style="padding:12px;color:#B74841;">분석 실패: ${escapeHtml(t)}</div>`;
@@ -5672,7 +5798,14 @@ async function dcPreview(){
     _DC_STATE = await r.json();
     dcRenderResult();
   } catch(e){
-    result.innerHTML = `<div style="padding:12px;color:#B74841;">오류: ${escapeHtml(e.message)}</div>`;
+    if(e && e.name === 'AbortError'){
+      result.innerHTML = `<div style="padding:12px;color:#B74841;">⏱ 분석 시간 초과(90초). 파일이 너무 크거나 서버 응답이 없습니다. 잠시 후 다시 시도하거나 파일 크기를 줄여 주세요.</div>`;
+    } else {
+      result.innerHTML = `<div style="padding:12px;color:#B74841;">오류: ${escapeHtml(e.message)}</div>`;
+    }
+  } finally {
+    clearTimeout(timer);
+    if(btn){ btn.disabled = false; btn.textContent = prevBtnText || '분석 (미리보기)'; btn.style.opacity = ''; btn.style.cursor = ''; }
   }
 }
 
@@ -5792,7 +5925,7 @@ function dcRenderResult(){
   // 액션
   const actions = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid #EEF2F7;">
-      <button class="primary" onclick="dcApply()" ${s.new_count===0?'disabled style="opacity:.5;cursor:not-allowed;"':''}>
+      <button id="dc-apply-btn" class="primary" onclick="dcApply()" ${s.new_count===0?'disabled style="opacity:.5;cursor:not-allowed;"':''}>
         현재 DB에 적용 (${s.new_count}명)
       </button>
       <button class="mini" onclick="dcExportCsv()" ${s.new_count===0?'disabled':''}>CSV로 내보내기</button>
@@ -5810,12 +5943,26 @@ async function dcApply(){
   if(!confirm(`${n}명을 현재 프로그램 DB에 추가합니다. 계속하시겠습니까?`)) return;
 
   const res = document.getElementById('dc-apply-result');
-  if(res) res.textContent = '적용 중...';
+  const btn = document.getElementById('dc-apply-btn');
+  // 진행 표시: spinner + 버튼 비활성화 (중복 클릭 방지)
+  if(res) res.innerHTML = `
+    <span class="dc-spinner" style="width:14px;height:14px;border:2px solid #E2E8F0;border-top-color:#2F86CB;border-radius:50%;display:inline-block;animation:dc-spin 0.8s linear infinite;vertical-align:middle;margin-right:6px;"></span>
+    <span style="vertical-align:middle;color:#475569;">DB 에 ${n}명 추가 중...</span>
+    <style>@keyframes dc-spin { to { transform: rotate(360deg); } }</style>
+  `;
+  const prevBtnText = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '적용 중...'; btn.style.opacity = '0.6'; btn.style.cursor = 'wait'; }
+
+  // 90초 타임아웃 — 수백 명 import + 느린 DB 라도 커버
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 90000);
+
   try {
     const r = await adminFetch('/api/data-convert/apply', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ items: _DC_STATE.new_patients }),
+      signal: ac.signal,
     });
     if(!r.ok){
       if(res) res.innerHTML = `<span style="color:#B74841;">적용 실패: ${escapeHtml(await r.text())}</span>`;
@@ -5832,7 +5979,19 @@ async function dcApply(){
     // 적용된 목록을 "이번 추가된 환자들" 로 갱신 재렌더
     dcRenderAfterApply(d);
   } catch(e){
-    if(res) res.innerHTML = `<span style="color:#B74841;">오류: ${escapeHtml(e.message)}</span>`;
+    if(e && e.name === 'AbortError'){
+      if(res) res.innerHTML = `<span style="color:#B74841;">⏱ 적용 시간 초과(90초). 서버 응답이 없습니다. <b>중복 적용을 막기 위해 새로고침 전에 환자 목록을 먼저 확인</b>해 주세요.</span>`;
+    } else {
+      if(res) res.innerHTML = `<span style="color:#B74841;">오류: ${escapeHtml(e.message)}</span>`;
+    }
+  } finally {
+    clearTimeout(timer);
+    // 성공 시 dcRenderAfterApply 가 화면을 갈아엎으므로 버튼 자체가 사라짐.
+    // 실패/타임아웃 시는 버튼이 그대로 있으므로 복구.
+    if(btn && document.body.contains(btn)){
+      btn.disabled = false; btn.textContent = prevBtnText || '현재 DB에 적용';
+      btn.style.opacity = ''; btn.style.cursor = '';
+    }
   }
 }
 

@@ -101,18 +101,33 @@ def apply_op(db: Session, op_dict: dict) -> bool:
     return True
 
 
-def _http_json(url: str, payload=None, timeout=4):
+def _http_json(url: str, payload=None, timeout=4, headers=None):
+    """peer HTTP 호출 헬퍼.
+
+    headers: 추가 헤더 딕셔너리. peer 노드 인증용 X-Sync-Token 등을 넣음.
+    """
     data = json.dumps(payload).encode() if payload is not None else None
+    base_headers = {"Content-Type": "application/json"}
+    if headers:
+        base_headers.update(headers)
     req = urllib.request.Request(url, data=data,
-        headers={"Content-Type":"application/json"},
+        headers=base_headers,
         method="POST" if data else "GET")
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
 def sync_with_peer(peer_url: str):
-    """peer 한 곳과 1회 동기화 (push + pull)."""
+    """peer 한 곳과 1회 동기화 (push + pull).
+
+    peer 의 sync_pull/push 엔드포인트는 X-Sync-Token 헤더를 요구함 — 우리 config 의
+    sync_secret 을 헤더로 동봉. 페어링된 노드끼리는 같은 sync_secret 을 공유해야 함.
+    """
     cfg = load_config()
+    auth_headers = {}
+    secret = (cfg.get("sync_secret") or "").strip()
+    if secret:
+        auth_headers["X-Sync-Token"] = secret
     db = SessionLocal()
     try:
         # 1) PULL: 마지막으로 받아본 ts 이후의 op 가져오기
@@ -120,7 +135,8 @@ def sync_with_peer(peer_url: str):
         since = (last[0].isoformat() if last else "1970-01-01T00:00:00")
         try:
             remote_ops = _http_json(
-                f"{peer_url}/api/sync/pull?since={since}&exclude_node={cfg['node_id']}"
+                f"{peer_url}/api/sync/pull?since={since}&exclude_node={cfg['node_id']}",
+                headers=auth_headers,
             )
         except Exception as e:
             return f"PULL fail: {e}"
@@ -137,7 +153,7 @@ def sync_with_peer(peer_url: str):
             {"id":o.id,"node_id":o.node_id,"entity":o.entity,"entity_id":o.entity_id,
              "op":o.op,"payload":o.payload,"ts":o.ts.isoformat()} for o in my_ops]}
         try:
-            _http_json(f"{peer_url}/api/sync/push", payload)
+            _http_json(f"{peer_url}/api/sync/push", payload, headers=auth_headers)
         except Exception as e:
             return f"PUSH fail: {e}"
         return f"OK pulled={len(remote_ops.get('ops',[]))} pushed={len(my_ops)}"
@@ -146,12 +162,23 @@ def sync_with_peer(peer_url: str):
 
 
 _worker_started = False
+_stop_flag = threading.Event()
+_worker_thread = None
+
+
 def start_sync_worker():
-    global _worker_started
+    """동기화 워커를 한 번만 시작.
+
+    apply_update 등에서 graceful shutdown 이 필요할 때 stop_sync_worker() 호출 가능.
+    이전 코드는 while True + 무조건 time.sleep 이라 daemon thread 강제종료 시 진행 중인
+    sync_with_peer 의 HTTP 요청이 중간에 끊겨 잔여 op 가 부분 적용된 상태로 남을 수 있었음.
+    """
+    global _worker_started, _worker_thread
     if _worker_started: return
     _worker_started = True
+    _stop_flag.clear()
     def loop():
-        while True:
+        while not _stop_flag.is_set():
             try:
                 cfg = load_config()
                 interval = max(5, int(cfg.get("sync_interval_sec", 15)))
@@ -160,9 +187,26 @@ def start_sync_worker():
                     peers.append(cfg["main_url"].rstrip("/"))
                 peers += [p.rstrip("/") for p in (cfg.get("peers") or [])]
                 for url in peers:
+                    if _stop_flag.is_set(): break
                     try: sync_with_peer(url)
                     except Exception: pass
-                time.sleep(interval)
+                # 인터럽트 가능한 sleep — stop_flag 가 set 되면 즉시 깸
+                if _stop_flag.wait(interval): break
             except Exception:
-                time.sleep(15)
-    threading.Thread(target=loop, daemon=True).start()
+                if _stop_flag.wait(15): break
+    _worker_thread = threading.Thread(target=loop, daemon=True, name="sync-worker")
+    _worker_thread.start()
+
+
+def stop_sync_worker(timeout: float = 2.0) -> bool:
+    """동기화 워커를 graceful 하게 종료.
+
+    Returns:
+        스레드가 timeout 안에 정상 종료했으면 True, 아니면 False (이 경우 daemon thread 가 강제 종료될 수 있음).
+    """
+    global _worker_started
+    _stop_flag.set()
+    if _worker_thread and _worker_thread.is_alive():
+        _worker_thread.join(timeout=timeout)
+    _worker_started = False
+    return not (_worker_thread and _worker_thread.is_alive())

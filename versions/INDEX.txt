@@ -2,7 +2,26 @@
   도수치료예약 - 배포 버전 기록
 ================================================================
 
-[ v1.3.0 ]  2026-04-30  (최신 · AI/RAG 1차 통합 — AI 도우미 탭 + SMS 초안)
+[ v1.3.1 ]  2026-04-30  (최신 · 보안 + 안정성 패치)
+  위치: versions\v1.3.1\dosu_clinic_v1.3.1_20260430.zip
+  주요 변경 (v1.3.0 → v1.3.1):
+    🛡️ 자동 업데이트 hang 수정
+       · updater.bat: rename 5회 재시도 + ExecutionPolicy Bypass + rollback pause
+       · apply_update: DETACHED_PROCESS, /k→/c, sleep 3초, 백업 실패 시 중단
+       · 신규 GET /api/about/update-log — %TEMP% 로그 진단 조회
+       · 프론트: 30/60초/6분 단계별 안내 + 자동 새로고침 폴링
+    🛡️ 인증 누수 회귀 수정 (HIGH)
+       · /api/sync/pull/push/now/backup, /api/mode 인증 강화
+       · sync pull/push 듀얼 인증 (관리자 토큰 OR X-Sync-Token)
+       · GET /api/config 에서 sync_secret 자동 제거 (이전 회귀 차단)
+       · 관리자 전용: /api/config/sync-secret, /regenerate-sync-secret
+    🛡️ DB 복원 안전성 — 임시파일 + integrity_check + atomic 교체 + engine.dispose
+    🛡️ SMS 비밀 노출 차단 — 응답 echo / 예외 메시지 자동 마스킹
+    ⚙️ UX — 데이터 변환 spinner/타임아웃, 모달 액션 버튼 sticky
+    ⚙️ 빌드 — 마이그레이션 spec hiddenimports 자동 글롭
+    ✅ 회귀 방지 테스트 +45건 (124 passed)
+
+[ v1.3.0 ]  2026-04-30  (AI/RAG 1차 통합 — AI 도우미 탭 + SMS 초안)
   위치: versions\v1.3.0\dosu_clinic_ai_rag_v1.3.0_20260430.zip
   주요 변경 (v1.2.18 → v1.3.0):
     ✨ AI 도우미 탭 — 업무 매뉴얼 자연어 Q&A

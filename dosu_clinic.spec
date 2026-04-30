@@ -43,15 +43,8 @@ hidden += [
     'app.services.rag',
     'app.services.rag.search',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
+    # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
-    'app.migrations.m001_baseline',
-    'app.migrations.m002_add_gender',
-    'app.migrations.m003_add_api_url',
-    'app.migrations.m004_add_indexes',
-    'app.migrations.m005_treatment_price_incentive',
-    'app.migrations.m006_manual_counts',
-    'app.migrations.m007_ai_settings',
-    'app.migrations.m008_ai_usage_log_extended',
     # DB 점검 도구
     'app.tools', 'app.tools.db_check',
     # SQLAlchemy는 sqlite 드라이버를 동적으로 불러오므로 반드시 포함
@@ -65,6 +58,29 @@ hidden += [
     'et_xmlfile',
     # openai / anthropic SDK 는 위 collect_submodules 루프에서 hidden 에 추가됨.
 ]
+
+# --- 마이그레이션 자동 발견 ---
+# app/migrations/m*_*.py 를 글롭으로 찾아서 hidden 에 자동 추가.
+# 이전엔 m001~m008 을 spec 에 일일이 적었는데 새 마이그레이션 추가 시 등록을 깜빡하면
+# 빌드본에서 importlib.import_module 이 실패해 DB 마이그레이션이 안 돌아 사용자 에러 발생.
+# 이제는 파일이 추가되면 자동으로 감지됨.
+import glob as _glob
+_migration_files = sorted(_glob.glob('app/migrations/m*_*.py'))
+_migration_modules = []
+for _path in _migration_files:
+    # 'app/migrations/m007_ai_settings.py' → 'app.migrations.m007_ai_settings'
+    _norm = _path.replace('\\', '/').replace('.py', '').replace('/', '.')
+    _migration_modules.append(_norm)
+    hidden.append(_norm)
+
+# 빌드 시점 안전망: 마이그레이션이 단 1개도 없으면 빌드 중단.
+# (글롭 패턴 오타 / 디렉토리 이동 같은 사고를 즉시 발견)
+if not _migration_modules:
+    raise RuntimeError(
+        "[spec] app/migrations/ 에서 m*_*.py 마이그레이션 파일을 1개도 못 찾았습니다. "
+        "글롭 패턴이나 디렉토리 구조를 확인하세요."
+    )
+print(f"[spec] 마이그레이션 자동 등록: {len(_migration_modules)}개 — {_migration_modules}")
 
 # --- 포함할 리소스 파일 (템플릿 / CSS / 업데이터) ---
 datas = [
