@@ -14,6 +14,14 @@ for m in ('uvicorn', 'uvicorn.protocols', 'uvicorn.lifespan', 'uvicorn.loops',
           'openpyxl'):
     hidden += collect_submodules(m)
 
+# AI SDK — provider 선택형. 둘 다 빌드에 포함해 사용자가 어느 쪽이든 선택 가능하게.
+# 설치 안 돼 있으면 collect_submodules 가 빈 리스트 반환 (안전).
+for m in ('openai', 'anthropic'):
+    try:
+        hidden += collect_submodules(m)
+    except Exception:
+        pass
+
 hidden += [
     'app', 'app.main', 'app.config', 'app.database',
     'app.routers.pages', 'app.routers.api', 'app.routers.ai',
@@ -28,6 +36,12 @@ hidden += [
     'app.services.ai.pii',
     'app.services.ai.prompts',
     'app.services.ai.validators',
+    'app.services.ai.ai_logging',
+    'app.services.ai.sms_draft',
+    'app.services.ai.manual_qa',
+    # RAG 검색 (knowledge/ 키워드 인덱스 로딩)
+    'app.services.rag',
+    'app.services.rag.search',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     'app.migrations',
     'app.migrations.m001_baseline',
@@ -37,6 +51,7 @@ hidden += [
     'app.migrations.m005_treatment_price_incentive',
     'app.migrations.m006_manual_counts',
     'app.migrations.m007_ai_settings',
+    'app.migrations.m008_ai_usage_log_extended',
     # DB 점검 도구
     'app.tools', 'app.tools.db_check',
     # SQLAlchemy는 sqlite 드라이버를 동적으로 불러오므로 반드시 포함
@@ -48,16 +63,15 @@ hidden += [
     'multipart', 'multipart.multipart',
     # openpyxl 의 의존 라이브러리 et_xmlfile (lazy import 라 놓침)
     'et_xmlfile',
-    # ⚠ openai / anthropic SDK 는 아직 requirements.txt 에 없음.
-    # 실제 LLM 호출 기능을 켜는 단계에서 (a) requirements.txt 에 추가하고
-    # (b) 여기 hiddenimports 에 'openai' / 'anthropic' (또는 collect_submodules)
-    # 둘 다 등록해야 함.
+    # openai / anthropic SDK 는 위 collect_submodules 루프에서 hidden 에 추가됨.
 ]
 
 # --- 포함할 리소스 파일 (템플릿 / CSS / 업데이터) ---
 datas = [
     ('app/templates', 'app/templates'),
     ('app/static',    'app/static'),
+    # v1.3: RAG 톤 가이드 + 인덱스. _MEIPASS/knowledge/ 에 그대로 풀림.
+    ('knowledge',     'knowledge'),
     # updater.bat: 자동 업데이트 시 본체 종료 후 파일 교체 담당.
     # '.' 는 COLLECT 루트 = dist/도수치료예약/ — 그 루트에 updater.bat 배치.
     ('updater.bat',   '.'),

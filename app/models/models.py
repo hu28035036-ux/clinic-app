@@ -56,7 +56,7 @@ class Treatment(Base):
     code: 불변 식별자 (영문/숫자, 시드는 'injection' 등 하드코딩, 신규는 'tx_xxxx' 자동)
     name/short: 표시용 (변경 가능, short 는 약자 중복 거부)
     role: doctor | therapist (배타)
-    count_increment: 완료 시 누적 +N (도수60=2, 나머지 1)
+    count_increment: 완료 시 누적 +N (모든 항목 1카운트 — docs/specs/03 참조)
     show_in_patient: 환자 관리 표/편집 모달에 노출 여부
     """
     __tablename__ = "treatments"
@@ -302,18 +302,32 @@ class AiUsageLog(Base):
     의도: 비용 추적 + PII 누출 사고 시 추적 가능하도록 어떤 feature 가 어떤
     프롬프트 길이로 호출됐는지 기록. 프롬프트/응답 본문 자체는 저장하지
     않음 (저장하면 그 자체가 PII 저장소가 되어버림).
+
+    세션 09 확장 컬럼 (m008): outcome/error_detail/prompt_hash/response_hash/
+    pii_filter_hits/hallucination_guard_hits/response_used/sms_sent.
+    기존 status/error_kind 는 그대로 두되 신규 호출지는 outcome/error_detail
+    만 채운다 (이전 호출지가 없으므로 호환 부담 없음).
     """
     __tablename__ = "ai_usage_logs"
     id = Column(String(32), primary_key=True, default=uid)
     ts = Column(DateTime, default=datetime.utcnow, index=True)
     provider = Column(String(20))
     model = Column(String(100))
-    feature = Column(String(50))                 # 예: sms_suggest, chat
+    feature = Column(String(50))                 # 예: sms_validate, sms_draft, manual_search, manual_ask
     prompt_chars = Column(Integer, default=0)
     completion_chars = Column(Integer, default=0)
     prompt_tokens = Column(Integer, default=0)   # provider 가 알려주면 기록
     completion_tokens = Column(Integer, default=0)
     latency_ms = Column(Integer, default=0)
-    status = Column(String(20))                  # ok | error | blocked
-    error_kind = Column(String(50), default="")  # 차단/실패 이유 분류
+    status = Column(String(20))                  # legacy: ok | error | blocked
+    error_kind = Column(String(50), default="")  # legacy: 차단/실패 이유 분류
     actor = Column(String(50), default="")
+    # ── m008 확장 ──
+    outcome = Column(String(20), default="")     # success | error | blocked | warning
+    error_detail = Column(String(500), default="")  # 사유 텍스트 (PII/원문 금지, 500자 컷)
+    prompt_hash = Column(String(64), default="")   # sha256(마스킹 후 prompt). 원문 미저장.
+    response_hash = Column(String(64), default="")  # sha256(마스킹 후 response). 원문 미저장.
+    pii_filter_hits = Column(Integer, default=0)
+    hallucination_guard_hits = Column(Integer, default=0)
+    response_used = Column(Integer, default=0)   # 0=미정, 1=UI 채택 (v2 PATCH 로 갱신 예정)
+    sms_sent = Column(Integer, default=0)        # 항상 0 (AI 직접 발송 금지 정책)

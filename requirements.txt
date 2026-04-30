@@ -6,3 +6,8 @@ python-multipart==0.0.12
 pydantic==2.9.2
 openpyxl==3.1.5
 pyinstaller==6.10.0
+
+# v1.3 — AI 초안/Q&A 기능. provider 선택형이라 둘 다 lazy import.
+# 설치 안 돼 있어도 모듈 import 자체는 통과 — 실제 LLM 호출 시점에만 필요.
+openai>=1.0.0
+anthropic>=0.40.0
