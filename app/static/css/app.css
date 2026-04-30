@@ -846,6 +846,11 @@ button.mini.danger { color: #DC2626; }
   width: 110px;
 }
 
+.leave-kind-sel {
+  flex: 0 0 110px;
+  width: 110px;
+}
+
 .leave-ther-chk {
   margin: 0;
 }
@@ -2496,6 +2501,51 @@ button.mini.danger {
   resize: vertical;
 }
 
+/* 본문 편집 + 변환 예시 미리보기 좌우 배치 */
+.sms-single-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+.sms-single-edit-grid > label {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sms-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sms-preview-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 4px;
+}
+.sms-preview-card {
+  flex: 1 1 auto;
+  background: #F9FAFB;
+  border: 1px dashed #D1D5DB;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #1F2937;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 160px;
+  overflow-y: auto;
+}
+.sms-preview-foot {
+  font-size: 11px;
+  margin-top: 6px;
+}
+@media (max-width: 768px) {
+  .sms-single-edit-grid { grid-template-columns: 1fr; }
+}
+
 /* 템플릿 선택 행 */
 .sms-tpl-row {
   display: flex;
@@ -3429,4 +3479,148 @@ button.primary, button.danger {
   .settings-card-head small { font-size: 11px; }
   .sheet-head h2 { font-size: 15px !important; }
   .today-header h3 { font-size: 13px; }
+}
+
+/* ──────────────── AI 휴무 등록 카드 (세션 14) ──────────────── */
+.ai-leave-card {
+  margin-top: 18px;
+  background: #fff;
+  border: 1px solid #C7D2FE;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 2px rgba(99,102,241,0.06);
+}
+.ai-leave-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.ai-leave-head h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #4338CA;
+}
+.ai-leave-hint {
+  background: #FEF3C7;
+  border: 1px solid #FCD34D;
+  color: #92400E;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+#ai-leave-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid #CBD5E1;
+  border-radius: 8px;
+  resize: vertical;
+  font-family: inherit;
+}
+.ai-leave-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.ai-leave-actions span {
+  margin-right: auto;
+  font-size: 12px;
+}
+.ai-leave-status-ok    { color: #166534; }
+.ai-leave-status-warn  { color: #9A3412; }
+.ai-leave-status-error { color: #991B1B; }
+.ai-leave-status-info  { color: #1E40AF; }
+
+.ai-leave-preview {
+  margin-top: 14px;
+  background: #F8FAFC;
+  border-left: 3px solid #6366F1;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.ai-leave-preview-head {
+  font-weight: 600;
+  font-size: 13px;
+  color: #4338CA;
+  margin-bottom: 10px;
+}
+.ai-leave-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+.ai-leave-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.ai-leave-label {
+  color: #6B7280;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.ai-leave-value {
+  color: #111827;
+  font-weight: 500;
+  word-break: break-all;
+}
+.ai-leave-assumption {
+  background: #FEF3C7;
+  border: 1px solid #F59E0B;
+  color: #92400E;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  margin-bottom: 8px;
+}
+.ai-leave-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.ai-leave-warn {
+  background: #FEF2F2;
+  border: 1px solid #FCA5A5;
+  color: #991B1B;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+.ai-leave-memo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.ai-leave-memo input {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+}
+.ai-leave-overwrite {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #FEF2F2;
+  border: 1px dashed #FCA5A5;
+  color: #991B1B;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .ai-leave-preview-grid { grid-template-columns: 1fr; }
 }

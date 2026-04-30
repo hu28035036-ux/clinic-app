@@ -157,6 +157,50 @@
       <div id="leave-calendar"></div>
       <div id="leave-summary" style="margin-top:16px"></div>
     </div>
+
+    <!-- ──────────────── AI 휴무 등록 (세션 14) ──────────────── -->
+    <div class="ai-leave-card" id="ai-leave-card">
+      <div class="ai-leave-head">
+        <h3>✨ AI 휴무 등록</h3>
+        <span class="muted">자연어로 입력 → 분석 → 확인 후 등록</span>
+      </div>
+      <div class="ai-leave-hint">
+        AI가 분석한 내용입니다. 실제 등록 전 치료사, 날짜, 휴무 유형을 반드시 확인하세요. 애매한 내용은 자동 등록되지 않습니다.
+      </div>
+
+      <textarea id="ai-leave-input" rows="2" maxlength="200"
+                placeholder="예: 김테스트치료사 4월30일 종일 연차"
+                oninput="aiLeaveOnInput()"></textarea>
+      <div class="ai-leave-actions">
+        <button id="ai-leave-analyze-btn" class="primary" onclick="aiLeaveAnalyze()" disabled>분석</button>
+        <span id="ai-leave-status" class="muted" style="margin-left:8px"></span>
+      </div>
+
+      <!-- 분석 결과 카드 (분석 후만 표시) -->
+      <div id="ai-leave-preview" class="ai-leave-preview" style="display:none">
+        <div class="ai-leave-preview-head">📋 등록 예정 미리보기</div>
+        <div class="ai-leave-preview-grid">
+          <div class="ai-leave-row"><span class="ai-leave-label">치료사</span><span id="ai-leave-emp" class="ai-leave-value"></span></div>
+          <div class="ai-leave-row"><span class="ai-leave-label">날짜</span><span id="ai-leave-date" class="ai-leave-value"></span></div>
+          <div class="ai-leave-row"><span class="ai-leave-label">휴무 유형</span><span id="ai-leave-type" class="ai-leave-value"></span></div>
+          <div class="ai-leave-row"><span class="ai-leave-label">휴무 종류</span><span id="ai-leave-kind" class="ai-leave-value"></span></div>
+        </div>
+        <div id="ai-leave-assumption" class="ai-leave-assumption" style="display:none"></div>
+        <div id="ai-leave-warnings" class="ai-leave-warnings"></div>
+        <label class="ai-leave-memo">
+          <span class="ai-leave-label">사유 (직접 입력)</span>
+          <input id="ai-leave-memo" type="text" maxlength="200" placeholder="(선택) 예: 병원 진료, 가족 행사 등">
+        </label>
+        <label id="ai-leave-overwrite-row" class="ai-leave-overwrite" style="display:none">
+          <input id="ai-leave-overwrite-ack" type="checkbox" onchange="aiLeaveSyncSubmitButton()">
+          <span>기존 휴무 덮어쓰기를 확인했습니다</span>
+        </label>
+        <div class="ai-leave-actions">
+          <button onclick="aiLeaveReset()">취소</button>
+          <button id="ai-leave-submit-btn" class="primary" onclick="aiLeaveSubmit()" disabled>휴무 등록하기</button>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 <section id="tab-sms" class="tab-pane">
@@ -203,9 +247,22 @@
         </select>
         <button onclick="sms1ResetTemplate()">🔄 변수 다시 채우기</button>
       </div>
-      <label>메시지 본문
-        <textarea id="sms1-body" rows="7" placeholder="템플릿을 선택하면 자동으로 채워집니다"></textarea>
-      </label>
+      <div class="sms-single-edit-grid">
+        <label>메시지 본문
+          <textarea id="sms1-body" rows="7"
+                    oninput="sms1RenderPreview()"
+                    placeholder="템플릿을 선택하면 자동으로 채워집니다"></textarea>
+        </label>
+        <div class="sms-preview-wrap">
+          <div class="sms-preview-head">📱 변환 예시</div>
+          <div id="sms1-preview" class="sms-preview-card">
+            <span class="muted">템플릿을 선택하면 미리보기가 표시됩니다</span>
+          </div>
+          <div class="sms-preview-foot muted">
+            실제 발송될 모습입니다. 환자 미선택 시 예시 값으로 채워집니다.
+          </div>
+        </div>
+      </div>
       <div class="sms-variables">
         <span class="muted">사용 가능 변수:</span>
         <code>{환자명}</code> <code>{차트번호}</code> <code>{생년월일}</code> <code>{연락처}</code>
@@ -897,6 +954,238 @@ async function loadTherapistLeaves(date=''){
   const url = date ? `/api/therapist-leaves?date=${date}` : '/api/therapist-leaves';
   THERAPIST_LEAVES = await (await fetch(url)).json();
   return THERAPIST_LEAVES;
+}
+
+// ──────────────── AI 휴무 등록 (세션 14) ────────────────
+//   백엔드 3 엔드포인트는 세션 13 에서 완성됨 (POST /api/ai/action/{parse,preview,execute}).
+//   본 UI 는 preview → execute 두 단계만 호출. parse 는 디버깅용 (호출 안 함).
+//   안전 원칙: 사용자가 "휴무 등록하기" 클릭 전에는 execute 호출 절대 금지.
+let _aiLeaveLastPreview = null;
+
+function _aiLeaveTypeLabel(t){
+  // 백엔드는 spec § 4.1 의 "full"/"morning"/"afternoon" 값을 반환.
+  // 기존 캘린더는 'am'/'pm'/'full' 사용 — UI 표시는 양쪽 모두 처리.
+  if(t === 'full') return '종일';
+  if(t === 'morning' || t === 'am') return '오전 반차';
+  if(t === 'afternoon' || t === 'pm') return '오후 반차';
+  return t || '-';
+}
+function _aiLeaveKindLabel(k){
+  if(k === 'monthly') return '월차';
+  if(k === 'annual') return '연차';
+  return k || '-';
+}
+
+function aiLeaveOnInput(){
+  const el = document.getElementById('ai-leave-input');
+  const btn = document.getElementById('ai-leave-analyze-btn');
+  if(!el || !btn) return;
+  const len = (el.value || '').trim().length;
+  btn.disabled = !(len >= 1 && len <= 200);
+}
+
+function aiLeaveReset(){
+  _aiLeaveLastPreview = null;
+  const inp = document.getElementById('ai-leave-input');
+  if(inp) inp.value = '';
+  const memo = document.getElementById('ai-leave-memo');
+  if(memo) memo.value = '';
+  const ack = document.getElementById('ai-leave-overwrite-ack');
+  if(ack) ack.checked = false;
+  const ow = document.getElementById('ai-leave-overwrite-row');
+  if(ow) ow.style.display = 'none';
+  const pv = document.getElementById('ai-leave-preview');
+  if(pv) pv.style.display = 'none';
+  const status = document.getElementById('ai-leave-status');
+  if(status){ status.textContent = ''; status.className = 'muted'; }
+  aiLeaveOnInput();
+}
+
+function aiLeaveSyncSubmitButton(){
+  const btn = document.getElementById('ai-leave-submit-btn');
+  if(!btn) return;
+  const data = _aiLeaveLastPreview;
+  if(!data || !data.safe_to_execute){
+    btn.disabled = true;
+    return;
+  }
+  if(data.mode === 'overwrite'){
+    const ack = document.getElementById('ai-leave-overwrite-ack');
+    btn.disabled = !(ack && ack.checked);
+  } else {
+    btn.disabled = false;
+  }
+}
+
+function aiLeaveRenderPreview(data){
+  _aiLeaveLastPreview = data;
+  const pv = document.getElementById('ai-leave-preview');
+  const status = document.getElementById('ai-leave-status');
+
+  // candidate 가 없을 때 (safe_to_execute=false) — 카드 자체는 숨기고 status 에 사유 표시
+  if(!data.candidate){
+    if(pv) pv.style.display = 'none';
+    if(status){
+      const msg = data.message || data.outcome || '분석 실패';
+      // warnings 가 있고 message 와 다르면 추가 표시 (중복 회피)
+      const ws = Array.isArray(data.warnings) ? data.warnings.filter(w => w && w !== msg) : [];
+      status.textContent = '⚠ ' + msg + (ws.length ? ' — ' + ws.join(' / ') : '');
+      status.className = 'ai-leave-status-error';
+    }
+    return;
+  }
+
+  // candidate 있음 → 미리보기 카드 표시
+  const c = data.candidate;
+  document.getElementById('ai-leave-emp').textContent = c.employee_name || c.employee_name_raw || '-';
+  document.getElementById('ai-leave-date').textContent =
+    (c.resolved_date || '-') + (c.original_date_text ? ` (원문: "${c.original_date_text}")` : '');
+  document.getElementById('ai-leave-type').textContent = _aiLeaveTypeLabel(c.leave_type);
+  document.getElementById('ai-leave-kind').textContent = _aiLeaveKindLabel(c.leave_kind);
+
+  // assumption (날짜 해석 근거) — 노란 박스로 강조
+  const aBox = document.getElementById('ai-leave-assumption');
+  if(c.assumption){
+    aBox.textContent = '🗓 ' + c.assumption;
+    aBox.style.display = '';
+  } else {
+    aBox.textContent = '';
+    aBox.style.display = 'none';
+  }
+
+  // warnings (mode/예약/이미 휴무 있음 등)
+  const wBox = document.getElementById('ai-leave-warnings');
+  wBox.innerHTML = '';
+  const items = Array.isArray(data.warnings) ? data.warnings.slice() : [];
+  if(typeof data.appointments_count === 'number' && data.appointments_count > 0){
+    // 백엔드 warnings 에 이미 포함되어 있으면 중복 방지를 위해 추가 안 함.
+    const has = items.some(w => /예약/.test(w));
+    if(!has) items.push(`해당 날짜에 예약 ${data.appointments_count} 건이 있습니다`);
+  }
+  items.forEach(w => {
+    const div = document.createElement('div');
+    div.className = 'ai-leave-warn';
+    div.textContent = '⚠ ' + w;
+    wBox.appendChild(div);
+  });
+
+  // overwrite 체크박스 (mode === 'overwrite' 만 노출)
+  const owRow = document.getElementById('ai-leave-overwrite-row');
+  const ack = document.getElementById('ai-leave-overwrite-ack');
+  if(data.mode === 'overwrite'){
+    owRow.style.display = '';
+    if(ack) ack.checked = false;
+  } else {
+    owRow.style.display = 'none';
+    if(ack) ack.checked = false;
+  }
+
+  pv.style.display = '';
+  if(status){
+    if(data.mode === 'noop'){
+      status.textContent = 'ℹ 이미 같은 내용으로 등록되어 있습니다';
+      status.className = 'ai-leave-status-info';
+    } else if(data.mode === 'overwrite'){
+      status.textContent = '⚠ 기존 휴무를 덮어씁니다 — 체크박스 확인 필요';
+      status.className = 'ai-leave-status-warn';
+    } else {
+      status.textContent = '✓ 분석 완료 — 미리보기 확인 후 등록하세요';
+      status.className = 'ai-leave-status-ok';
+    }
+  }
+  aiLeaveSyncSubmitButton();
+}
+
+async function aiLeaveAnalyze(){
+  const inp = document.getElementById('ai-leave-input');
+  const status = document.getElementById('ai-leave-status');
+  const btn = document.getElementById('ai-leave-analyze-btn');
+  if(!inp) return;
+  const text = (inp.value || '').trim();
+  if(!text || text.length > 200) return;
+  btn.disabled = true;
+  if(status){ status.textContent = '분석 중...'; status.className = 'muted'; }
+  try {
+    const r = await adminFetch('/api/ai/action/preview', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text: text})
+    });
+    if(r.status === 503){
+      const msg = await r.text();
+      if(status){ status.textContent = '⚠ AI 서비스를 사용할 수 없습니다 (관리자 설정 확인)'; status.className = 'ai-leave-status-error'; }
+      // eslint-disable-next-line no-console
+      console.warn('AI provider unavailable:', msg);
+      return;
+    }
+    if(!r.ok){
+      const msg = await r.text();
+      if(status){ status.textContent = '⚠ 분석 실패: ' + msg; status.className = 'ai-leave-status-error'; }
+      return;
+    }
+    const data = await r.json();
+    aiLeaveRenderPreview(data);
+  } catch(e){
+    if(status){ status.textContent = '⚠ 네트워크 오류: ' + (e && e.message ? e.message : e); status.className = 'ai-leave-status-error'; }
+  } finally {
+    aiLeaveOnInput();  // 분석 버튼 다시 활성화 (입력값 그대로 있으므로)
+  }
+}
+
+async function aiLeaveSubmit(){
+  const data = _aiLeaveLastPreview;
+  const status = document.getElementById('ai-leave-status');
+  const btn = document.getElementById('ai-leave-submit-btn');
+  if(!data || !data.safe_to_execute || !data.preview_token){
+    if(status){ status.textContent = '⚠ 등록할 수 있는 분석 결과가 없습니다'; status.className = 'ai-leave-status-error'; }
+    return;
+  }
+  if(data.mode === 'overwrite'){
+    const ack = document.getElementById('ai-leave-overwrite-ack');
+    if(!(ack && ack.checked)){
+      if(status){ status.textContent = '⚠ 덮어쓰기 확인 체크가 필요합니다'; status.className = 'ai-leave-status-warn'; }
+      return;
+    }
+  }
+  const memo = (document.getElementById('ai-leave-memo').value || '').trim();
+  btn.disabled = true;
+  if(status){ status.textContent = '등록 중...'; status.className = 'muted'; }
+  try {
+    const r = await adminFetch('/api/ai/action/execute', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        preview_token: data.preview_token,
+        confirm: true,
+        overwrite_acknowledged: data.mode === 'overwrite',
+        memo: memo
+      })
+    });
+    let body = null;
+    try { body = await r.json(); } catch(_) { body = null; }
+    if(r.ok && body && body.ok){
+      // 성공 — 캘린더 갱신 + 카드 리셋
+      alert('✓ 휴무가 등록되었습니다.');
+      try { await loadLeaveCalendar(); } catch(_){}
+      aiLeaveReset();
+      return;
+    }
+    // 실패 outcome 매핑 (spec § 12 표 — 백엔드의 message 필드를 그대로 사용)
+    const outcome = (body && body.outcome) || ('http_' + r.status);
+    const msg = (body && body.message) || ('등록 실패: ' + outcome);
+    if(r.status === 409){
+      // 동시 변경 — 다시 분석 유도
+      alert('⚠ ' + msg + '\n\n다시 분석해주세요.');
+      aiLeaveReset();
+    } else {
+      alert('⚠ ' + msg);
+      if(status){ status.textContent = '⚠ ' + msg; status.className = 'ai-leave-status-error'; }
+    }
+    aiLeaveSyncSubmitButton();
+  } catch(e){
+    if(status){ status.textContent = '⚠ 네트워크 오류: ' + (e && e.message ? e.message : e); status.className = 'ai-leave-status-error'; }
+    aiLeaveSyncSubmitButton();
+  }
 }
 
 async function loadLeaveCalendar(){
@@ -3785,6 +4074,44 @@ async function loadSmsSettingIfNeeded(){
   return SMS_SETTING_CACHE;
 }
 
+// 개별문자 변환예시 — 환자 미선택 시 토큰을 채울 더미 샘플
+function smsPreviewSampleVars(){
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  const lastVisit = new Date(); lastVisit.setDate(lastVisit.getDate()-7);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const setting = SMS_SETTING_CACHE || {};
+  return {
+    '{환자명}': '홍길동',
+    '{차트번호}': '00123',
+    '{생년월일}': '1980-01-01',
+    '{연락처}': '010-1234-5678',
+    '{병원명}': setting.clinic_name || '우리병원',
+    '{병원전화}': setting.clinic_phone || '02-000-0000',
+    '{다음예약날짜}': fmt(tomorrow),
+    '{다음예약시간}': '14:00',
+    '{다음예약항목}': '도수치료',
+    '{마지막내원일}': fmt(lastVisit),
+  };
+}
+
+// 개별문자 변환예시 렌더 — textarea 본문에 남아있는 변수만 더미값으로 치환
+function sms1RenderPreview(){
+  const ta = document.getElementById('sms1-body');
+  const box = document.getElementById('sms1-preview');
+  if(!ta || !box) return;
+  const raw = ta.value || '';
+  if(!raw.trim()){
+    box.innerHTML = '<span class="muted">템플릿을 선택하면 미리보기가 표시됩니다</span>';
+    return;
+  }
+  let txt = raw;
+  const sample = smsPreviewSampleVars();
+  for(const [k,v] of Object.entries(sample)){
+    txt = txt.split(k).join(v);
+  }
+  box.textContent = txt;
+}
+
 function sms1Search(){
   const q = document.getElementById('sms1-search').value.trim().toLowerCase();
   const box = document.getElementById('sms1-results');
@@ -3872,6 +4199,7 @@ async function sms1FillTemplate(){
     text = text.split(k).join(v);
   }
   document.getElementById('sms1-body').value = text;
+  sms1RenderPreview();
 }
 
 async function sms1ResetTemplate(){
@@ -3901,6 +4229,7 @@ async function sms1Send(){
   if(d.sent === d.total && d.sent > 0){
     alert(`✅ ${d.sent}건 발송 성공`);
     document.getElementById('sms1-body').value = '';
+    sms1RenderPreview();
   } else {
     // 실패 사유 추출 — 404/URL 문제면 별도 안내
     const results = d.results || [];
@@ -3961,6 +4290,9 @@ async function loadSmsTabData(){
 
   // 관리 카드
   renderSmsTemplatesList();
+
+  // 개별문자 변환예시 초기 렌더 (현재 textarea 상태 반영)
+  sms1RenderPreview();
 }
 
 function renderSmsTemplatesList(){
@@ -4147,6 +4479,7 @@ async function sms1FillTemplateWithBody(tplBody){
     text = text.split(k).join(v);
   }
   document.getElementById('sms1-body').value = text;
+  sms1RenderPreview();
 }
 
 // 일괄 안내 — 템플릿 적용
@@ -4237,18 +4570,16 @@ function smsBodyChange(idx, value){
   if(SMS_TARGETS && SMS_TARGETS[idx]){ SMS_TARGETS[idx].body = value; }
 }
 
-// ─────── AI 보조: /api/ai/health 가용성 체크 + 버튼 토글 ───────
-//   - /api/ai/health 는 admin 전용 → 일반 직원은 401 이 옴.
-//     이 경우 사전 가드를 못 하므로 버튼은 활성 상태로 두고, 클릭 시 서버의
-//     503 응답으로 안내한다(아래 smsAiDraftChecked 참고).
+// ─────── AI 보조: /api/ai/health/public 가용성 체크 + 버튼 토글 ───────
+//   - /api/ai/health/public 는 인증 불필요 — 일반 직원도 200 받음.
+//     응답 4 필드: enabled, ready, provider, api_key_set.
+//   - admin 화면 전용 디테일(model 명, sdk_installed, knowledge_doc_count)은
+//     /api/ai/health (admin 전용) 으로 별도 호출 (loadAiHealthBox/testAiConnection).
 async function loadAiHealth(force){
   if(AI_HEALTH && !force) return AI_HEALTH;
   try{
-    const r = await fetch('/api/ai/health');
-    if(r.status === 401 || r.status === 403){
-      AI_HEALTH = { unauthorized: true };
-      return AI_HEALTH;
-    }
+    // public endpoint — 인증 불필요. 4 필드만: enabled, ready, provider, api_key_set
+    const r = await fetch('/api/ai/health/public');
     if(!r.ok){ AI_HEALTH = {enabled:false, api_key_set:false, ready:false, _err:'health 조회 실패'}; return AI_HEALTH; }
     AI_HEALTH = await r.json();
   } catch(e){
@@ -4266,12 +4597,7 @@ async function refreshAiHealthBadge(){
   // 점검(validate) 은 LLM 미사용이라 항상 활성
   if(validateBtn) validateBtn.disabled = false;
   let msg = '', cls = 'muted';
-  if(h && h.unauthorized){
-    // 비-admin: AI 상태를 알 수 없음 → 버튼은 활성, 배지는 안내만
-    msg = '';  // 배지를 비워둠 (혼란 방지)
-    cls = 'muted';
-    if(draftBtn){ draftBtn.disabled = false; draftBtn.title = ''; }
-  } else if(!h || !h.enabled){
+  if(!h || !h.enabled){
     msg = 'AI 기능 꺼짐 — 관리자 → AI 설정에서 켜주세요';
     cls = 'badge gray';
     if(draftBtn){ draftBtn.disabled = true; draftBtn.title = msg; }
@@ -5321,6 +5647,7 @@ async function loadAiHealthBox(){
   if(!r.ok){ box.innerHTML = '<p class="muted">상태 조회 실패 (' + r.status + ')</p>'; return; }
   const h = await r.json();
   const sdkOk = !!(h.sdk_installed && h.sdk_installed[h.provider]);
+  const sdkErr = (h.sdk_errors && h.sdk_errors[h.provider]) || '';
   const docCount = (typeof h.knowledge_doc_count === 'number') ? h.knowledge_doc_count : 0;
   const smsDraftReady = !!h.ready;
   const manualSearchReady = docCount > 0;
@@ -5332,13 +5659,23 @@ async function loadAiHealthBox(){
     warn = '<p class="muted" style="color:#D7625C;margin:0 0 10px;">⚠ API Key 가 설정되지 않았습니다.</p>';
   }
 
+  let sdkLine;
+  if(sdkOk){
+    sdkLine = '✅ '+_aiEsc(h.provider)+' SDK 사용 가능';
+  } else if(sdkErr){
+    const shortErr = sdkErr.length > 80 ? sdkErr.slice(0, 80) + '…' : sdkErr;
+    sdkLine = '⛔ '+_aiEsc(h.provider)+' SDK 미설치 <span class="muted" style="font-size:11px;">('+_aiEsc(shortErr)+')</span>';
+  } else {
+    sdkLine = '⛔ '+_aiEsc(h.provider)+' SDK 미설치';
+  }
+
   box.innerHTML = warn + `
     <div style="display:grid;grid-template-columns:160px 1fr;gap:6px 14px;font-size:13px;">
       <div class="muted">AI 기능</div>          <div>${h.enabled ? '✅ ON' : '⛔ OFF'}</div>
       <div class="muted">Provider</div>         <div>${_aiEsc(h.provider || '-')}</div>
       <div class="muted">모델</div>             <div>${h.model ? _aiEsc(h.model) : '<span class="muted">미설정</span>'}</div>
       <div class="muted">API Key 설정</div>     <div>${h.api_key_set ? '✅ 설정됨' : '⛔ 미설정'}</div>
-      <div class="muted">SDK 설치</div>         <div>${sdkOk ? '✅ '+_aiEsc(h.provider)+' SDK 사용 가능' : '⛔ '+_aiEsc(h.provider)+' SDK 미설치'}</div>
+      <div class="muted">SDK 설치</div>         <div>${sdkLine}</div>
       <div class="muted">knowledge 문서</div>   <div>${docCount} 개</div>
       <div class="muted">SMS draft</div>        <div>${smsDraftReady ? '✅ 사용 가능' : '⛔ 추가 설정 필요'}</div>
       <div class="muted">manual search</div>   <div>${manualSearchReady ? '✅ 사용 가능 ('+docCount+'개 문서)' : '⛔ 인덱스 비어있음'}</div>
@@ -5351,6 +5688,7 @@ async function testAiConnection(){
   if(!r.ok){ alert('연결 테스트 실패: ' + r.status); return; }
   const h = await r.json();
   const sdkOk = !!(h.sdk_installed && h.sdk_installed[h.provider]);
+  const sdkErr = (h.sdk_errors && h.sdk_errors[h.provider]) || '';
   const docCount = (typeof h.knowledge_doc_count === 'number') ? h.knowledge_doc_count : 0;
   let msg = '[연결 테스트 결과]\n\n';
   msg += '· AI 기능: ' + (h.enabled ? 'ON' : 'OFF') + '\n';
@@ -5358,6 +5696,10 @@ async function testAiConnection(){
   msg += '· 모델: ' + (h.model || '미설정') + '\n';
   msg += '· API Key: ' + (h.api_key_set ? '설정됨' : '미설정') + '\n';
   msg += '· SDK: ' + (sdkOk ? '사용 가능' : '미설치') + '\n';
+  if(!sdkOk && sdkErr){
+    const shortErr = sdkErr.length > 160 ? sdkErr.slice(0, 160) + '…' : sdkErr;
+    msg += '   └ 사유: ' + shortErr + '\n';
+  }
   msg += '· knowledge 문서: ' + docCount + '개\n';
   msg += '· SMS draft: ' + (h.ready ? '사용 가능' : '추가 설정 필요') + '\n';
   msg += '· manual search: ' + (docCount > 0 ? '사용 가능' : '인덱스 비어있음') + '\n';
@@ -5459,19 +5801,35 @@ async function askManualQa(){
 
 // ─────── 관리자 > 버전 / 업데이트 확인 ───────
 
+// /api/about 응답 캐시 — checkUpdate 가 다운로드/설치 버튼을 렌더할 때
+// is_frozen 여부 참조해 dev 모드면 disabled 처리. 매번 about 재호출 안 해도 되게.
+let _LAST_ABOUT = null;
+
 async function loadAboutBox(){
   const box = document.getElementById('about-box');
   if(!box) return;
   try {
     const a = await (await fetch('/api/about')).json();
+    _LAST_ABOUT = a;
+    // is_frozen 누락 시(구 백엔드 호환) 안전하게 true 로 간주 — 빌드본 기준 동작 유지
+    const isFrozen = (a.is_frozen !== false);
+    const devBanner = isFrozen ? '' : `
+      <div style="margin-top:14px;padding:12px 14px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:10px;font-size:13px;color:#92400E;line-height:1.7;">
+        <div style="font-weight:700;margin-bottom:4px;">⚠️ 개발 모드 (dev / uvicorn) 환경입니다</div>
+        <div>자동 업데이트는 빌드된 exe(메인서버)에서만 동작합니다. 여기서는 "다운로드 / 지금 설치" 버튼을 눌러도 차단됩니다 — <b>메인서버에서 업데이트 해주세요.</b></div>
+      </div>
+    `;
     box.innerHTML = `
       <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13px;align-items:center;">
         <span class="muted">앱 이름</span><b>${a.app_name}</b>
         <span class="muted">현재 버전</span><b style="color:#2F86CB;font-size:15px;">v${a.version}</b>
         <span class="muted">빌드 날짜</span><span>${a.build_date}</span>
+        <span class="muted">실행 환경</span>${isFrozen ? '<span style="color:#3BA67D;">● 빌드본 (exe)</span>' : '<span style="color:#92400E;">● 개발 모드 (dev / uvicorn)</span>'}
         <span class="muted">데이터 폴더</span><code style="font-size:12px;background:#F3F4F6;padding:2px 6px;border-radius:4px;word-break:break-all;">${a.data_dir}</code>
         <span class="muted">백업 폴더</span><code style="font-size:12px;background:#F3F4F6;padding:2px 6px;border-radius:4px;word-break:break-all;">${a.backup_dir}</code>
       </div>
+
+      ${devBanner}
 
       <div style="margin-top:14px;padding:12px;background:#FAFCFE;border:1px solid #E5EDF5;border-radius:10px;">
         <div style="font-size:13px;font-weight:600;color:#3D4A5C;margin-bottom:8px;">업데이트 매니페스트 URL <span class="muted" style="font-weight:normal;font-size:12px;">(선택 — 비워두면 수동 교체 방식)</span></div>
@@ -5547,6 +5905,12 @@ async function checkUpdate(){
       const mandatoryTag = d.mandatory ? ' <span style="background:#FEE2E2;color:#B74841;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">필수 업데이트</span>' : '';
       const shaBadge = d.sha256 ? ' <span class="muted" style="font-size:11px;">(SHA256 검증 지원)</span>' : '';
       const dlLink = d.download_url ? ` · <a href="${d.download_url}" target="_blank" rel="noopener" style="font-size:12px;">수동 다운로드</a>` : '';
+      // dev 모드면 다운로드 버튼은 disabled — _is_frozen() 가드로 백엔드에서 어차피 400 차단됨.
+      const isFrozen = !(_LAST_ABOUT && _LAST_ABOUT.is_frozen === false);
+      const dlBtnHtml = isFrozen
+        ? `<button class="primary" onclick="downloadUpdate()">⬇ 업데이트 다운로드</button>`
+        : `<button class="primary" disabled title="메인서버(빌드된 exe)에서 업데이트 해주세요" style="opacity:0.5;cursor:not-allowed;">⬇ 업데이트 다운로드 (dev 차단)</button>`;
+      const devNote = isFrozen ? '' : `<span class="muted" style="font-size:12px;color:#92400E;">메인서버에서 업데이트 해주세요</span>`;
       if(r) r.innerHTML = `
         <div style="margin-bottom:10px;">
           <span style="color:#2F86CB;">● 새 버전 <b>v${d.latest_version}</b> 사용 가능</span>
@@ -5555,8 +5919,8 @@ async function checkUpdate(){
         </div>
         ${notes}
         <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <button class="primary" onclick="downloadUpdate()">⬇ 업데이트 다운로드</button>
-          <span id="update-download-status" class="muted" style="font-size:12px;"></span>
+          ${dlBtnHtml}
+          <span id="update-download-status" class="muted" style="font-size:12px;">${devNote}</span>
         </div>
         <div id="update-install-zone" style="margin-top:10px;"></div>
       `;
@@ -5567,6 +5931,10 @@ async function checkUpdate(){
 }
 
 async function downloadUpdate(){
+  if(_LAST_ABOUT && _LAST_ABOUT.is_frozen === false){
+    alert('개발 모드(dev / uvicorn)에서는 자동 업데이트가 지원되지 않습니다.\n메인서버(빌드된 exe)에서 업데이트 해주세요.');
+    return;
+  }
   if(!_LAST_UPDATE_CHECK || !_LAST_UPDATE_CHECK.available){
     alert('먼저 "업데이트 확인"을 눌러 새 버전을 조회하세요.'); return;
   }
@@ -5605,6 +5973,12 @@ async function downloadUpdate(){
 }
 
 async function applyUpdate(){
+  // dev 모드는 백엔드에서 _is_frozen() 가드로 어차피 400 차단되지만,
+  // confirm 띄우기 전에 미리 안내해 헛클릭 방지.
+  if(_LAST_ABOUT && _LAST_ABOUT.is_frozen === false){
+    alert('개발 모드(dev / uvicorn)에서는 자동 업데이트가 지원되지 않습니다.\n메인서버(빌드된 exe)에서 업데이트 해주세요.');
+    return;
+  }
   if(!confirm('업데이트를 지금 설치하시겠습니까?\n\n• 설치 직전 DB 가 자동 백업됩니다.\n• 프로그램이 재시작되며 약 15~20초간 화면이 멈춥니다.')) return;
   try {
     const res = await adminFetch('/api/about/apply-update', {method:'POST'});
@@ -5690,10 +6064,11 @@ async function applyUpdate(){
       <div id="upd-log-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;padding:40px 20px;overflow:auto;">
         <div style="max-width:760px;margin:0 auto;background:#fff;border-radius:10px;padding:20px;font-family:system-ui;">
           <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #E5E7EB;padding-bottom:10px;margin-bottom:12px;">
-            <h3 style="margin:0;color:#1F2937;font-size:16px;">업데이터 로그</h3>
+            <h3 id="upd-log-title" style="margin:0;color:#1F2937;font-size:16px;">업데이터 로그</h3>
             <button onclick="document.getElementById('upd-log-modal').style.display='none'" style="padding:4px 12px;border:1px solid #D1D5DB;background:#fff;border-radius:6px;cursor:pointer;">닫기</button>
           </div>
           <pre id="upd-log-body" style="background:#1F2937;color:#E5E7EB;padding:12px;border-radius:6px;font-size:12px;line-height:1.5;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0;">로그 불러오는 중...</pre>
+          <div id="upd-log-footer" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;"></div>
         </div>
       </div>
     `;
@@ -5734,37 +6109,146 @@ async function applyUpdate(){
     }, 5000);
 
     // "업데이터 로그 보기" 버튼 핸들러 — window 에 노출 (인라인 onclick 에서 호출)
+    //
+    // 동작 흐름:
+    //   1) 즉시 1차 fetch — 성공하면 그대로 렌더 (드물게 새 서버가 이미 떠 있는 경우)
+    //   2) 실패 시 2초 간격 × 5회(=10초) 자동 재시도 — "재시작 중" 진행 표시
+    //   3) 그래도 실패하면 fallback 뷰: "오류" 라는 단어 빼고, 진행 중임을 명확히 안내 +
+    //      로그 파일 경로 복사 / 다시 시도 버튼 제공
+    //   4) 모달이 닫히면 진행 중 setTimeout 체인 즉시 중단 (가드)
     window.showUpdateLog = async function(){
       const modal = document.getElementById('upd-log-modal');
       const body = document.getElementById('upd-log-body');
+      const footer = document.getElementById('upd-log-footer');
+      const title = document.getElementById('upd-log-title');
       if(!modal || !body) return;
       modal.style.display = 'block';
+      if(title) title.textContent = '업데이터 로그';
+      if(footer) footer.innerHTML = '';
       body.textContent = '로그 불러오는 중...';
-      try {
-        const r = await adminFetch('/api/about/update-log');
-        if(!r.ok){
-          body.textContent = '로그 조회 실패 (HTTP ' + r.status + ').\n'
-            + '서버가 이미 종료된 상태일 수 있습니다.\n\n'
-            + '로그 파일을 파일 탐색기에서 직접 열어보세요:\n  ' + updaterLogPath;
-          return;
+
+      // 모달이 닫혀 있으면 후속 작업 중단 — setTimeout 체인 안전장치
+      const isOpen = function(){ return modal.style.display !== 'none'; };
+
+      // 한 번의 fetch 시도. 성공: 렌더 후 true, 실패(네트워크/HTTP): false 반환.
+      const tryFetchOnce = async function(){
+        try {
+          const r = await adminFetch('/api/about/update-log');
+          if(!r.ok) return false;
+          const j = await r.json();
+          if(!isOpen()) return true;
+          if(!j.exists){
+            body.textContent = '로그 파일이 아직 생성되지 않았습니다.\n경로: ' + (j.path || updaterLogPath) + '\n\n'
+              + 'updater.bat 가 시작 전이거나, 경로가 다를 수 있습니다.';
+            renderRetryFooter();
+            return true;
+          }
+          const head = '[파일] ' + j.path
+            + '\n[수정시각] ' + (j.mtime || '-')
+            + '\n[크기] ' + (j.size_bytes || 0) + ' bytes'
+            + '\n[줄 수] ' + (j.total_lines || (j.lines||[]).length)
+            + '\n──────────────────────────────────────────\n';
+          body.textContent = head + (j.lines || []).join('\n');
+          renderRetryFooter();
+          return true;
+        } catch(e){
+          return false;
         }
-        const j = await r.json();
-        if(!j.exists){
-          body.textContent = '로그 파일이 아직 생성되지 않았습니다.\n경로: ' + (j.path || updaterLogPath) + '\n\n'
-            + 'updater.bat 가 시작 전이거나, 경로가 다를 수 있습니다.';
-          return;
+      };
+
+      // 클립보드 복사 — secure context 가 아닐 때를 대비해 textarea fallback 포함.
+      const copyPath = async function(btn){
+        const path = updaterLogPath;
+        let ok = false;
+        try {
+          if(navigator.clipboard && window.isSecureContext){
+            await navigator.clipboard.writeText(path);
+            ok = true;
+          }
+        } catch(e){ /* fallback */ }
+        if(!ok){
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = path;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+          } catch(e){ ok = false; }
         }
-        const head = '[파일] ' + j.path
-          + '\n[수정시각] ' + (j.mtime || '-')
-          + '\n[크기] ' + (j.size_bytes || 0) + ' bytes'
-          + '\n[줄 수] ' + (j.total_lines || (j.lines||[]).length)
-          + '\n──────────────────────────────────────────\n';
-        body.textContent = head + (j.lines || []).join('\n');
-      } catch(e){
-        body.textContent = '로그 조회 중 오류: ' + (e.message || e) + '\n\n'
-          + '서버가 이미 종료된 상태일 수 있습니다.\n'
-          + '로그 파일을 파일 탐색기에서 직접 열어보세요:\n  ' + updaterLogPath;
+        if(btn){
+          const orig = btn.textContent;
+          btn.textContent = ok ? '✓ 복사됨' : '⚠ 복사 실패 — 직접 선택해 주세요';
+          btn.disabled = true;
+          setTimeout(function(){
+            if(!isOpen()) return;
+            btn.textContent = orig;
+            btn.disabled = false;
+          }, 1500);
+        }
+      };
+
+      // 정상 응답 후에도 "다시 시도" 정도는 노출 — 로그가 갱신됐는지 다시 보고 싶을 때 사용.
+      const renderRetryFooter = function(){
+        if(!footer) return;
+        footer.innerHTML = '';
+        const retryBtn = document.createElement('button');
+        retryBtn.textContent = '🔁 다시 불러오기';
+        retryBtn.style.cssText = 'padding:6px 14px;background:#fff;color:#374151;border:1px solid #D1D5DB;border-radius:6px;cursor:pointer;font-size:12px;';
+        retryBtn.onclick = function(){ window.showUpdateLog(); };
+        footer.appendChild(retryBtn);
+      };
+
+      // fallback 뷰 — 5회 재시도 모두 실패 시.
+      const renderFallback = function(){
+        if(!isOpen()) return;
+        if(title) title.textContent = '업데이터 로그 — 서버 재시작 중';
+        body.textContent =
+          '⏸ 서버가 아직 재시작 중이에요\n'
+          + '업데이트가 진행 중이라 로그 조회 API 가 잠시 응답하지 않습니다.\n'
+          + '로그 파일을 직접 열면 진행 상황을 확인할 수 있어요.\n\n'
+          + '[파일 경로]\n'
+          + '  ' + updaterLogPath + '\n\n'
+          + '[여는 방법]\n'
+          + '  1) 아래 "경로 복사" 버튼을 누른다\n'
+          + '  2) 파일 탐색기 주소창에 붙여넣고 Enter\n'
+          + '     (또는 Win+R → 붙여넣기 → 확인)';
+        if(!footer) return;
+        footer.innerHTML = '';
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = '📋 경로 복사';
+        copyBtn.style.cssText = 'padding:6px 14px;background:#2F86CB;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;';
+        copyBtn.onclick = function(){ copyPath(copyBtn); };
+        const retryBtn = document.createElement('button');
+        retryBtn.textContent = '🔁 다시 시도';
+        retryBtn.style.cssText = 'padding:6px 14px;background:#fff;color:#374151;border:1px solid #D1D5DB;border-radius:6px;cursor:pointer;';
+        retryBtn.onclick = function(){ window.showUpdateLog(); };
+        footer.appendChild(copyBtn);
+        footer.appendChild(retryBtn);
+      };
+
+      // 1차 즉시 시도
+      if(await tryFetchOnce()) return;
+      if(!isOpen()) return;
+
+      // 자동 재시도 (2초 × 5회)
+      const MAX_RETRY = 5;
+      const INTERVAL_MS = 2000;
+      for(let i = 1; i <= MAX_RETRY; i++){
+        if(!isOpen()) return;
+        body.textContent =
+          '⏳ 서버 재시작 대기 중... (재시도 ' + i + '/' + MAX_RETRY + ')\n'
+          + '경로: ' + updaterLogPath + '\n\n'
+          + '잠시만요 — 새 서버가 떠오르면 자동으로 로그를 보여드립니다.';
+        await new Promise(function(resolve){ setTimeout(resolve, INTERVAL_MS); });
+        if(!isOpen()) return;
+        if(await tryFetchOnce()) return;
       }
+
+      // 끝까지 실패 → fallback
+      renderFallback();
     };
   } catch(e){
     alert('업데이트 요청 중 오류: ' + e.message);

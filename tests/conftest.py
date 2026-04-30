@@ -99,3 +99,39 @@ def client():
 def db_path() -> str:
     """검증된 임시 DB 경로 (smoke 테스트가 출력 확인용)."""
     return _VERIFIED_DB_PATH
+
+
+# ──────────────────────── 6) 공용 FakeProvider (LLM mock) ────────────────────────
+#
+# 세션 13: AI 자연어 휴무 등록 테스트 + 기존 SMS draft 테스트가 공유.
+# 외부 LLM 호출 절대 금지 — 테스트는 항상 이 클래스로 stub.
+
+from app.services.ai import provider as _ai_provider  # noqa: E402, I001
+
+
+class FakeProvider(_ai_provider.AiProvider):
+    """결정적 LLM stub. 호출 인자 기록.
+
+    return_text: 고정 응답. callable 이면 호출 시 prompt 를 인자로 받아 동적 결정.
+    """
+    name = "fake"
+
+    def __init__(self, return_text="안녕하세요 환자A님, ㅇㅇ의원입니다."):
+        super().__init__(model="fake-1", api_key="fake-key")
+        self.return_text = return_text
+        self.calls: list = []
+
+    def is_ready(self) -> bool:
+        return True
+
+    def generate(self, prompt: str, system: str = "") -> _ai_provider.AiResult:
+        self.calls.append({"prompt": prompt, "system": system})
+        text = self.return_text
+        if callable(text):
+            text = text(prompt)
+        return _ai_provider.AiResult(text=text)
+
+
+def make_fake_provider(returns: str = "") -> FakeProvider:
+    """팩토리 — return_text 기본값을 명시적으로 지정하고 싶을 때."""
+    return FakeProvider(return_text=returns or "안녕하세요 환자A님, ㅇㅇ의원입니다.")

@@ -26,12 +26,14 @@ import time
 from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Header
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import models
 from ..services import auth
+from ..services.ai import action_leave as ai_action_leave
 from ..services.ai import ai_logging as ai_log
 from ..services.ai import manual_qa as ai_manual_qa
 from ..services.ai import provider as ai_provider
@@ -87,23 +89,36 @@ def _serialize_setting(obj: models.AiSetting) -> dict:
     }
 
 
+# provider → (ok, error_message). health 엔드포인트가 폴링되므로 결과 캐시.
+# 서버 재시작 시 초기화 → pip install 후 정상 반영.
+_sdk_check_cache: dict[str, tuple[bool, str | None]] = {}
+
+
+def _check_sdk(name: str) -> tuple[bool, str | None]:
+    """SDK import 점검 → (ok, error_message). 실패 사유를 짧게 보존해 admin 화면 진단용."""
+    cached = _sdk_check_cache.get(name)
+    if cached is not None:
+        return cached
+    if name not in ("openai", "anthropic"):
+        # local 등 — v2 보류, 실패 사유 없음
+        result: tuple[bool, str | None] = (False, None)
+        _sdk_check_cache[name] = result
+        return result
+    try:
+        importlib.import_module(name)
+        result = (True, None)
+    except Exception as e:
+        msg = f"{type(e).__name__}: {e}"
+        if len(msg) > 200:
+            msg = msg[:200] + "..."
+        result = (False, msg)
+    _sdk_check_cache[name] = result
+    return result
+
+
 def _sdk_available(name: str) -> bool:
-    """SDK import 가 실제로 가능한지. import 실패해도 예외 throw 안 함."""
-    if name == "openai":
-        try:
-            importlib.import_module("openai")
-            return True
-        except Exception:
-            return False
-    if name == "anthropic":
-        try:
-            importlib.import_module("anthropic")
-            return True
-        except Exception:
-            return False
-    if name == "local":
-        return False  # v2 보류
-    return False
+    """기존 호출자용 — bool 만 필요할 때."""
+    return _check_sdk(name)[0]
 
 
 def _commit_silent(db: Session) -> None:
@@ -124,7 +139,10 @@ def ai_health(db: Session = Depends(get_db),
               _: bool = Depends(require_admin)):
     """AI 기능 상태 점검 — 관리자 전용. 로그 안 남김 (폴링 다수)."""
     s = _get_or_create_setting(db)
-    sdk_status = {p: _sdk_available(p) for p in ai_provider.list_known_providers()}
+    sdk_results = {p: _check_sdk(p) for p in ai_provider.list_known_providers()}
+    sdk_status = {p: ok for p, (ok, _err) in sdk_results.items()}
+    # admin 전용: SDK import 실패 사유 — public health 엔드포인트에는 노출 X
+    sdk_errors = {p: err for p, (ok, err) in sdk_results.items() if (not ok) and err}
     ready = bool(
         s.enabled and s.api_key and s.model and sdk_status.get(s.provider or "")
     )
@@ -138,9 +156,30 @@ def ai_health(db: Session = Depends(get_db),
         "model": s.model or "",
         "api_key_set": bool(s.api_key),
         "sdk_installed": sdk_status,
+        "sdk_errors": sdk_errors,
         "knowledge_doc_count": knowledge_doc_count,
         "ready": ready,
         "version": "v1.3-stage1",
+    }
+
+
+@router.get("/health/public")
+def ai_health_public(db: Session = Depends(get_db)):
+    """AI 기능 상태 — 일반 사용자 노출용 4 필드. 인증 불필요.
+
+    의도적으로 admin 전용 정보(model 명, sdk 상세, knowledge_doc_count, version)는 제외.
+    api_key_set 은 boolean 이므로 키 자체 누출 없음 — UI 흐름 제어용.
+    """
+    s = _get_or_create_setting(db)
+    sdk_status = {p: _sdk_available(p) for p in ai_provider.list_known_providers()}
+    ready = bool(
+        s.enabled and s.api_key and s.model and sdk_status.get(s.provider or "")
+    )
+    return {
+        "enabled": bool(s.enabled),
+        "ready": ready,
+        "provider": s.provider or "openai",
+        "api_key_set": bool(s.api_key),
     }
 
 
@@ -709,3 +748,140 @@ def manual_ask_endpoint(
         )
     _commit_silent(db)
     return result
+
+
+# ──────────── 단계 6 엔드포인트 (AI 자연어 휴무 등록, 세션 13) ────────────
+#
+# 정책 (절대 위반 X):
+#   - parse / preview 는 DB 수정 안 함. execute 만 (employee_leaves) 에 1행 upsert.
+#   - execute 는 confirm=True + HMAC 토큰 검증 통과 시에만 실행.
+#   - 기존 휴무 헬퍼 (_upsert_employee_leave_core) 를 재사용 — 단일 진실원천.
+#   - 자세한 spec: docs/specs/04_ai_action_leave.md
+
+class ActionParseIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=200)
+
+
+class ActionPreviewIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=200)
+
+
+class ActionExecuteIn(BaseModel):
+    preview_token: str
+    confirm: bool = False
+    overwrite_acknowledged: bool = False
+    memo: str = Field(default="", max_length=200)
+
+
+def _action_leave_provider(db: Session = Depends(get_db),
+                           _: bool = Depends(require_admin)) -> ai_provider.AiProvider:
+    """AI 자연어 휴무 엔드포인트의 provider dependency.
+
+    설정·readiness 검증 + Provider 인스턴스 반환. 테스트는
+    `app.dependency_overrides[_action_leave_provider] = lambda: FakeProvider(...)` 로 주입.
+
+    503 에러는 라우터 함수 안에서 발생 — dependency 가 raise 하면 cleanup 어렵다.
+    """
+    s = _get_or_create_setting(db)
+    if not s.enabled:
+        raise HTTPException(503, "AI 기능이 꺼져 있습니다. 관리자 → AI 설정에서 활성화해 주세요.")
+    if not (s.api_key or "").strip():
+        raise HTTPException(503, "AI API key 가 설정되지 않았습니다.")
+    if not (s.model or "").strip():
+        raise HTTPException(503, "AI 모델이 지정되지 않았습니다.")
+    try:
+        return ai_provider.get_provider(
+            s.provider or "openai",
+            model=s.model,
+            api_key=s.api_key,
+            base_url=s.base_url or "",
+            max_tokens=int(s.max_tokens or 512),
+            temperature=float(s.temperature or 0.3),
+        )
+    except ai_provider.AiUnavailable as e:
+        raise HTTPException(503, f"AI provider 사용 불가: {e}")
+
+
+def _serialize_parse_result(r: ai_action_leave.ParseResult) -> dict:
+    return {
+        "ok": r.ok,
+        "outcome": r.outcome,
+        "parsed": r.parsed,
+        "warnings": r.warnings,
+        "safe_to_continue": r.safe_to_continue,
+        "message": r.message,
+    }
+
+
+def _serialize_preview_result(r: ai_action_leave.PreviewResult) -> dict:
+    return {
+        "ok": r.ok,
+        "outcome": r.outcome,
+        "candidate": r.candidate,
+        "mode": r.mode,
+        "existing": r.existing,
+        "appointments_count": r.appointments_count,
+        "warnings": r.warnings,
+        "safe_to_execute": r.safe_to_execute,
+        "preview_token": r.preview_token,
+        "preview_token_exp": r.preview_token_exp,
+        "message": r.message,
+    }
+
+
+@router.post("/action/parse")
+def action_parse(payload: ActionParseIn,
+                 db: Session = Depends(get_db),
+                 provider: ai_provider.AiProvider = Depends(_action_leave_provider),
+                 _: bool = Depends(require_admin)):
+    """자연어 → LLM JSON 추출 (DB 미접근, 토큰 발급 안 함).
+
+    이 엔드포인트는 디버깅·투명성용이다. 실제 등록은 preview/execute 사용.
+    parse 응답을 그대로 신뢰해서는 안 됨 — preview/execute 가 다시 검증한다.
+    """
+    s = _get_or_create_setting(db)
+    r = ai_action_leave.parse(db, text=payload.text, provider=provider, settings=s)
+    return _serialize_parse_result(r)
+
+
+@router.post("/action/preview")
+def action_preview(payload: ActionPreviewIn,
+                   db: Session = Depends(get_db),
+                   provider: ai_provider.AiProvider = Depends(_action_leave_provider),
+                   _: bool = Depends(require_admin)):
+    """LLM 추출 + DB 매칭/검증 + HMAC 토큰 발급. DB 수정 절대 없음."""
+    s = _get_or_create_setting(db)
+    r = ai_action_leave.preview(db, text=payload.text, provider=provider, settings=s)
+    return _serialize_preview_result(r)
+
+
+@router.post("/action/execute")
+def action_execute(payload: ActionExecuteIn,
+                   db: Session = Depends(get_db),
+                   _: bool = Depends(require_admin)):
+    """confirm + 토큰 검증 + TOCTOU 재조회 + EmployeeLeave upsert.
+
+    이 엔드포인트는 Provider 의존성이 없다 (LLM 호출 없음).
+    """
+    r = ai_action_leave.execute(
+        db,
+        preview_token=payload.preview_token,
+        confirm=payload.confirm,
+        overwrite_acknowledged=payload.overwrite_acknowledged,
+        memo=payload.memo,
+    )
+    body = {
+        "ok": r.ok,
+        "outcome": r.outcome,
+        "leave_id": r.leave_id,
+        "mode": r.mode,
+        "message": r.message,
+    }
+    if r.ok:
+        return body
+    if r.outcome in ("conflict_changed", "therapist_changed"):
+        return JSONResponse(content=body, status_code=409)
+    if r.outcome == "db_error":
+        return JSONResponse(content=body, status_code=500)
+    # 그 외 (not_confirmed, overwrite_not_acknowledged, token_*) → 400
+    return JSONResponse(content=body, status_code=400)

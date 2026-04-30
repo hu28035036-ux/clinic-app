@@ -282,6 +282,10 @@ def about():
         "db_path": str(get_db_path()),
         "backup_dir": str(get_backup_dir()),
         "update_manifest_url": cfg.get("update_manifest_url", ""),
+        # 프론트가 dev/uvicorn 환경 여부를 알 수 있게 노출.
+        # False 면 자동 업데이트(다운로드/설치) 가 _is_frozen() 가드로 차단됨 →
+        # UI 가 사전에 안내 배너 + 버튼 비활성화로 헛클릭을 막음.
+        "is_frozen": _is_frozen(),
     }
 
 
@@ -1091,29 +1095,32 @@ def list_employee_leaves(date: str = "", db: Session = Depends(get_db)):
     } for r in rows]
 
 
-@router.post("/employee-leaves")
-def create_employee_leave(p: schemas.EmployeeLeaveIn, db: Session = Depends(get_db)):
+def _upsert_employee_leave_core(db: Session, p: schemas.EmployeeLeaveIn) -> models.EmployeeLeave:
+    """동일 (employee_id, leave_date) 키면 update, 아니면 insert. commit 안 함.
+
+    세션 13: AI 자연어 휴무 등록 흐름이 같은 헬퍼를 트랜잭션 안에서 호출.
+    sync 로깅 (_log) 도 여기서 처리 — 호출자는 commit 만 책임.
+    """
     exists = db.query(models.EmployeeLeave).filter(
         models.EmployeeLeave.employee_id == p.employee_id,
         models.EmployeeLeave.leave_date == p.leave_date,
     ).first()
     if exists:
-        # 동일 (employee_id, leave_date) 키 → upsert: payload 값으로 갱신
         exists.leave_type = p.leave_type
         exists.leave_kind = p.leave_kind
         exists.memo = p.memo
         db.flush()
         _log(db, "employee_leave", exists.id, "upsert", exists)
-        db.commit(); db.refresh(exists)
-        return {
-            "id": exists.id, "employee_id": exists.employee_id,
-            "leave_date": exists.leave_date, "leave_type": exists.leave_type,
-            "leave_kind": exists.leave_kind or "annual",
-            "memo": exists.memo or "",
-        }
+        return exists
     obj = models.EmployeeLeave(**p.model_dump())
     db.add(obj); db.flush()
     _log(db, "employee_leave", obj.id, "upsert", obj)
+    return obj
+
+
+@router.post("/employee-leaves")
+def create_employee_leave(p: schemas.EmployeeLeaveIn, db: Session = Depends(get_db)):
+    obj = _upsert_employee_leave_core(db, p)
     db.commit(); db.refresh(obj)
     return {
         "id": obj.id, "employee_id": obj.employee_id,

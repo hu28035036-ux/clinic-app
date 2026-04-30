@@ -74,7 +74,8 @@ def test_get_employee_leaves(client):
     assert resp.status_code == 200
     rows = resp.json()
     types = {r["leave_type"] for r in rows}
-    assert {"full", "morning", "afternoon"}.issubset(types), (
+    # DB 표준은 am/pm/full (기존 캘린더 + fetchLeavesOn 호환)
+    assert {"full", "am", "pm"}.issubset(types), (
         f"시드된 휴무 3종 모두가 보이지 않습니다: {rows}"
     )
 

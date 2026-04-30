@@ -42,6 +42,9 @@ class Employee(Base):
 
 class EmployeeLeave(Base):
     __tablename__ = "employee_leaves"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "leave_date", name="uq_employee_leave_date"),
+    )
     id = Column(String(32), primary_key=True, default=uid)
     employee_id = Column(String(32), ForeignKey("employees.id"), nullable=False, index=True)
     leave_date = Column(String(10), nullable=False, index=True)
@@ -325,7 +328,12 @@ class AiUsageLog(Base):
     error_kind = Column(String(50), default="")  # legacy: 차단/실패 이유 분류
     actor = Column(String(50), default="")
     # ── m008 확장 ──
-    outcome = Column(String(20), default="")     # success | error | blocked | warning
+    # outcome: m008 에서 VARCHAR(20) 으로 컬럼 생성됨. v1.3.3(m011 시점)에서
+    # 'overwrite_not_acknowledged' (26자) 같은 긴 outcome 코드를 truncate 없이
+    # 저장하기 위해 모델 차원만 String(50) 으로 확장. SQLite 는 VARCHAR(N)
+    # 길이를 강제하지 않으므로(TEXT 로 저장) DB 마이그레이션 불필요. m008
+    # 파일은 한 번 배포된 마이그레이션이므로 수정하지 않음.
+    outcome = Column(String(50), default="")     # success | error | blocked | warning | overwrite_not_acknowledged 등
     error_detail = Column(String(500), default="")  # 사유 텍스트 (PII/원문 금지, 500자 컷)
     prompt_hash = Column(String(64), default="")   # sha256(마스킹 후 prompt). 원문 미저장.
     response_hash = Column(String(64), default="")  # sha256(마스킹 후 response). 원문 미저장.

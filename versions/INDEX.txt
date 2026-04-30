@@ -2,7 +2,34 @@
   도수치료예약 - 배포 버전 기록
 ================================================================
 
-[ v1.3.2 ]  2026-04-30  (최신 · 직원 관리 강화)
+[ v1.3.3 ]  2026-05-01  (최신 · AI/RAG v1 후속 보강)
+  위치: versions\v1.3.3\dosu_clinic_v1.3.3_20260501.zip
+  주요 변경 (v1.3.2 → v1.3.3):
+    🛡️ 직원 휴무 중복 차단 (m011)
+       · employee_leaves(employee_id, leave_date) UNIQUE 제약 추가
+       · 다중 워커 race 시 동일 직원·동일 날짜 휴무 row 중복 차단
+       · 마이그레이션이 기존 중복을 (created_at DESC, id DESC) 최신
+         1건만 보존하고 나머지 자동 정리 (정상 환경엔 중복 없음)
+       · 사후 추적: 삭제 대상 row 정보가 stderr 로 출력
+       · ⚠ 업데이트 적용 전 clinic.db 수동 백업 권장
+    🛡️ AI 사용 로그 outcome 길이 확장
+       · AiUsageLog.outcome String(20) → String(50)
+       · "overwrite_not_acknowledged" 등 긴 코드도 truncate 없이 저장
+       · SQLite VARCHAR 길이 미강제 — m008 마이그레이션 수정 없음
+    🛡️ AI 상태 점검 엔드포인트 권한 분리
+       · GET /api/ai/health/public 신설 (인증 불필요, 4 필드)
+       · 기존 admin 전용 /api/ai/health 그대로 유지
+       · 프론트 SMS 탭 401 fallback 코드 제거
+    🛡️ AI SDK import 진단 메시지 노출 (admin)
+       · admin /health 에 sdk_errors 필드 — 실패 사유 inline 표시
+       · 폴링 비용 절감용 module-level 캐시
+    🛡️ PyInstaller 번들 누락 방지 (spec)
+       · collect_submodules 빈 리스트면 RuntimeError → 빌드 중단
+       · collect_data_files('openai'/'anthropic') 추가
+    ✅ 회귀 방지 테스트 +8건 (175 → 183 passed)
+    ⚙️ pytest.ini norecursedirs + spec hiddenimports 보강
+
+[ v1.3.2 ]  2026-04-30  (직원 관리 강화)
   위치: versions\v1.3.2\dosu_clinic_v1.3.2_20260430.zip
   주요 변경 (v1.3.1 → v1.3.2):
     🧑‍⚕️ 치료사 휴무 — 연차/월차 분류 (m009)

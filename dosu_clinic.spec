@@ -15,12 +15,18 @@ for m in ('uvicorn', 'uvicorn.protocols', 'uvicorn.lifespan', 'uvicorn.loops',
     hidden += collect_submodules(m)
 
 # AI SDK — provider 선택형. 둘 다 빌드에 포함해 사용자가 어느 쪽이든 선택 가능하게.
-# 설치 안 돼 있으면 collect_submodules 가 빈 리스트 반환 (안전).
+# ⚠ 과거에 try/except 로 collect 실패를 삼켜서 번들에 누락된 사고가 있었음 (v1.3.2).
+#   이제는 실패 시 빌드를 즉시 중단해서 누락 사실을 빨리 발견한다.
+_ai_sdk_modules = []
 for m in ('openai', 'anthropic'):
-    try:
-        hidden += collect_submodules(m)
-    except Exception:
-        pass
+    subs = collect_submodules(m)
+    if not subs:
+        raise RuntimeError(
+            f"[spec] '{m}' SDK 가 venv 에 없거나 collect_submodules 가 빈 리스트를 "
+            f"반환했습니다. 'pip install -r requirements.txt' 후 재빌드 하세요."
+        )
+    _ai_sdk_modules += subs
+hidden += _ai_sdk_modules
 
 hidden += [
     'app', 'app.main', 'app.config', 'app.database',
@@ -39,6 +45,9 @@ hidden += [
     'app.services.ai.ai_logging',
     'app.services.ai.sms_draft',
     'app.services.ai.manual_qa',
+    # AI 휴무 액션 (v1.3.3 세션 16) — 라우터에서 import
+    'app.services.ai.action_leave',
+    'app.services.ai.date_resolver',
     # RAG 검색 (knowledge/ 키워드 인덱스 로딩)
     'app.services.rag',
     'app.services.rag.search',
@@ -95,6 +104,10 @@ datas = [
 # openpyxl 은 XML/ZIP 관련 리소스 파일이 있어 collect_data_files 로 함께 복사해야
 #   실제 .xlsx 파싱 시 누락 에러가 안 남
 datas += collect_data_files('openpyxl')
+# AI SDK 가 의존하는 데이터 파일 (예: openai 의 _resources, anthropic 의 _types).
+# collect_submodules 만으로는 .py 만 잡혀 일부 토큰화/스키마 리소스가 누락될 수 있음.
+datas += collect_data_files('openai')
+datas += collect_data_files('anthropic')
 
 # --- 아이콘 (icon.ico가 프로젝트 루트에 있으면 자동 사용) ---
 icon_path = 'icon.ico' if os.path.exists('icon.ico') else None

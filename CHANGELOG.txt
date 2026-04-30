@@ -3,6 +3,63 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
+━━━━ v1.3.3  (2026-05-01) ━━━━
+
+🛡️ AI/RAG v1 후속 보강 — 정합성 + 권한 분리
+
+▸ 직원 휴무 중복 차단 (m011)
+  - employee_leaves(employee_id, leave_date) UNIQUE 제약 추가.
+    다중 워커 race 시 동일 직원·동일 날짜 휴무 row 중복 생성 차단.
+  - 마이그레이션 적용 시 기존 중복이 있으면 (created_at DESC, id DESC) 최신
+    1건만 보존하고 나머지 자동 정리. 정상 운영 환경엔 중복 없음.
+  - 사후 추적: 삭제 대상 row 의 (id, employee_id, leave_date, created_at)
+    가 stderr 로 한 줄씩 출력됨. 로그로 100% 식별 가능.
+  - ⚠ 업데이트 적용 전 %APPDATA%\도수치료예약\clinic.db 수동 백업 권장.
+
+▸ AI 사용 로그 outcome 길이 확장
+  - AiUsageLog.outcome 모델 선언이 String(20) → String(50) 으로 확장.
+  - "overwrite_not_acknowledged" (26자) 등 긴 outcome 코드가 truncate 없이
+    DB 에 저장. SQLite VARCHAR 길이 미강제 → m008 의 컬럼 선언은 그대로 유효
+    (m008 마이그레이션 수정 없음).
+
+▸ AI 상태 점검 엔드포인트 권한 분리
+  - GET /api/ai/health/public 신설 — 인증 불필요. 일반 사용자가 SMS 탭에서
+    AI 상태(enabled/ready/provider/api_key_set)를 자체 조회 가능.
+  - 기존 GET /api/ai/health 는 admin 전용 그대로 유지 (sdk_installed/version
+    /knowledge_doc_count 등 운영 정보 노출).
+  - 프론트 SMS 탭 배지: 기존 401 fallback 코드 제거 → 깔끔한 200 응답 흐름.
+
+▸ AI SDK import 진단 메시지 노출 (admin)
+  - _check_sdk() 가 import 실패 시 (False, "ImportError: ...") 형태로 사유
+    보존. 기존엔 except Exception 으로 사유 전체를 삼켜 "왜 미설치로 뜨는지"
+    추적 불가했음.
+  - admin /api/ai/health 응답에 sdk_errors: {provider: 짧은 에러 메시지}
+    필드 추가. public 엔드포인트엔 노출 X (관리자 전용 진단).
+  - AI 설정 박스 + 연결 테스트 alert 에 사유 inline 표시 (예:
+    "⛔ openai SDK 미설치 (ModuleNotFoundError: ...)").
+  - module-level 캐시로 폴링 비용 절감 — 서버 재시작 시 자동 초기화.
+
+▸ PyInstaller 번들 누락 방지 (spec)
+  - 이전 빌드(v1.3.2)에서 dist/도수치료예약/_internal/ 에 openai/anthropic
+    패키지가 누락된 사고 발생. 원인은 spec 의 try/except 가 collect_submodules
+    실패를 조용히 삼킨 것.
+  - 이제 collect_submodules 가 빈 리스트면 RuntimeError 로 빌드 즉시 중단.
+  - collect_data_files('openai'), collect_data_files('anthropic') 추가
+    (openai 토큰화/스키마 리소스 + anthropic _types 데이터 동봉).
+
+✅ 회귀 방지 테스트 +8건 (175 → 183 passed)
+  - test_employee_leave_unique: 인덱스 존재 / 중복 INSERT IntegrityError /
+    m011 정리 SQL 단위 테스트
+  - test_ai_action_leave T22b: outcome full-length 저장 회귀
+  - test_ai_health_public: public 200 4필드 / admin 401 / admin 200 9필드 /
+    sdk_errors admin 전용 회귀 (+1 추가)
+
+⚙️ 인프라
+  - pytest.ini norecursedirs = tests/temp 추가 — Windows 파일 핸들 락으로
+    collection 단계 PermissionError 발생 시 회피.
+  - dosu_clinic.spec hiddenimports 에 action_leave / date_resolver 추가.
+
+
 ━━━━ v1.3.2  (2026-04-30) ━━━━
 
 🧑‍⚕️ 직원 관리 강화

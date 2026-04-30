@@ -1,6 +1,6 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   도수치료예약 (병원 예약 관리 프로그램)
-  v1.3.2  (2026-04-30)
+  v1.3.3  (2026-05-01)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [빌드 정보]
@@ -9,32 +9,50 @@
   Python 런타임  : 3.12 (내장)
   DB             : SQLite
 
-[주요 변경 (v1.3.2) — 직원 관리 강화]
+[주요 변경 (v1.3.3) — AI/RAG v1 후속 보강]
 
-  🧑‍⚕️ 치료사 휴무 — 연차/월차 분류 (m009)
-     · 휴무 관리 모달에서 치료사별 연차/월차 선택
-     · employee_leaves.leave_kind 컬럼 추가 (default 'annual')
-     · /api/employee-leaves (POST/GET/bulk-set) 응답에 leave_kind 포함
-     · 캘린더 이벤트 타이틀에 "(연차/월차)" 표시
-     · 동일 (employee_id, leave_date) 재요청 시 payload 값 갱신 (회귀 수정)
+  🛡️ 직원 휴무 중복 차단 (m011)
+     · employee_leaves(employee_id, leave_date) UNIQUE 제약 추가
+     · 다중 워커 race 시 동일 직원·동일 날짜 휴무 row 중복 차단
+     · 마이그레이션이 기존 중복을 (created_at DESC, id DESC) 최신
+       1건만 보존하고 나머지 자동 정리 (정상 환경엔 중복 없음)
+     · 사후 추적: 삭제 대상 row 정보가 stderr 로 출력
+     · ⚠ 업데이트 적용 전 clinic.db 수동 백업 권장
 
-  🧑‍⚕️ 치료사 정보 — 입사일 (m010)
-     · 치료사 수정 모달에 "입사일" 입력칸 추가
-     · 자동변환: 20200101 → 2020-01-01 (생년월일과 동일 패턴)
-     · 직원 목록 시트 치료사 테이블에 "입사일" 컬럼 추가
-     · 의사 테이블에는 표시 안 함 (can_eswt/can_manual 과 동일 분기)
-     · employees.hire_date 컬럼 추가 (nullable)
+  🛡️ AI 사용 로그 outcome 길이 확장
+     · AiUsageLog.outcome String(20) → String(50)
+     · "overwrite_not_acknowledged" 등 긴 코드도 truncate 없이 저장
+     · SQLite VARCHAR 길이 미강제 — m008 마이그레이션 수정 없음
 
-  ✅ 회귀 방지 테스트 +8건 (132 passed)
-     · test_employee_can_manual_contract — can_manual 필드 보호
-     · test_employee_leave_kind — leave_kind 4종 시나리오
-     · test_employee_hire_date — hire_date 라운드트립
+  🛡️ AI 상태 점검 엔드포인트 권한 분리
+     · GET /api/ai/health/public 신설 (인증 불필요)
+     · 일반 사용자도 SMS 탭에서 AI 상태 자체 확인 가능
+     · 기존 admin 전용 /api/ai/health 그대로 유지
 
-  ⚙️ 마이그레이션 정책
-     · DB 컬럼 추가만 (DROP/DELETE 없음, 멱등성 보장)
-     · 기존 데이터 100% 보존, 자동 업데이트 시 다음 부팅 때 자동 적용
+  🛡️ AI SDK import 진단 메시지 노출 (admin)
+     · _check_sdk() 가 import 실패 사유를 짧게 보존 → admin /health 응답에
+       sdk_errors: {provider: msg} 필드 추가 (public 엔드포인트엔 미노출)
+     · AI 설정 박스 + 연결 테스트 alert 에 사유 inline 표시
+       ("⛔ openai SDK 미설치 (ModuleNotFoundError: ...)")
+     · 폴링 비용 절감 위해 module-level 캐시 (서버 재시작 시 초기화)
+
+  🛡️ PyInstaller 번들 누락 방지 (spec)
+     · 이전 v1.3.2 빌드에서 _internal/ 의 openai/anthropic 누락 사고 발생
+     · 원인: spec 의 try/except 가 collect_submodules 실패를 조용히 삼킴
+     · 이제 collect_submodules 가 빈 리스트면 RuntimeError 로 빌드 중단
+     · collect_data_files('openai'/'anthropic') 도 datas 에 명시 추가
+
+  ✅ 회귀 방지 테스트 +8건 (175 → 183 passed)
+     · test_employee_leave_unique — 인덱스/IntegrityError/m011 단위
+     · test_ai_action_leave T22b — outcome full-length 저장
+     · test_ai_health_public — public/admin 권한 분리 + sdk_errors 회귀
+
+  ⚙️ 인프라
+     · pytest.ini norecursedirs = tests/temp 추가
+     · spec hiddenimports 에 action_leave / date_resolver 명시
 
 [이전 주요 변경]
+  v1.3.2 — 직원 관리 강화 (휴무 연차/월차 + 치료사 입사일)
   v1.3.1 — 보안 + 안정성 패치 (자동업데이트 hang, 인증 누수, DB 복원, SMS 비밀)
   v1.3.0 — AI/RAG 1차 통합 (AI 도우미 탭 + SMS 초안/점검 + PII 보호)
   v1.2.18 — 문자나라 발송 결과 오판정 수정 + 통계탭 엑셀

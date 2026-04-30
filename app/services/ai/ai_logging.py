@@ -104,7 +104,7 @@ def log_ai_usage(
             status=(outcome or "")[:20],          # legacy mirror
             error_kind=(_truncate(error_detail, 50)),  # legacy mirror (짧게)
             actor=(actor or "")[:50],
-            outcome=(outcome or "")[:20],
+            outcome=(outcome or "")[:50],
             error_detail=_truncate(error_detail, 500),
             prompt_hash=_safe_hash(prompt_text),
             response_hash=_safe_hash(response_text),
