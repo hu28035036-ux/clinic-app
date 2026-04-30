@@ -650,9 +650,11 @@ async function openLeaveModal(dateStr){
   const leaves = await loadTherapistLeaves(dateStr);
   const memo = leaves[0]?.memo || '';
 
-  const selectedMap = {};
+  const selectedTypeMap = {};
+  const selectedKindMap = {};
   leaves.forEach(x => {
-    selectedMap[x.therapist_id] = x.leave_type || 'full';
+    selectedTypeMap[x.therapist_id] = x.leave_type || 'full';
+    selectedKindMap[x.therapist_id] = x.leave_kind || 'annual';
   });
 
   const rows = THERAPISTS
@@ -660,16 +662,20 @@ async function openLeaveModal(dateStr){
   .map(t => `
     <div class="leave-row">
       <label class="chk-item">
-        <input type="checkbox" class="leave-ther-chk" value="${t.id}" ${selectedMap[t.id] ? 'checked' : ''}>
+        <input type="checkbox" class="leave-ther-chk" value="${t.id}" ${selectedTypeMap[t.id] ? 'checked' : ''}>
         <span>
           <span class="color-dot" style="background:${t.color}"></span>
           <span class="leave-name-text">${t.name}</span>
         </span>
       </label>
       <select class="leave-type-sel" data-tid="${t.id}">
-        <option value="full" ${selectedMap[t.id] === 'full' ? 'selected' : ''}>종일</option>
-        <option value="am" ${selectedMap[t.id] === 'am' ? 'selected' : ''}>오전반차</option>
-        <option value="pm" ${selectedMap[t.id] === 'pm' ? 'selected' : ''}>오후반차</option>
+        <option value="full" ${selectedTypeMap[t.id] === 'full' ? 'selected' : ''}>종일</option>
+        <option value="am" ${selectedTypeMap[t.id] === 'am' ? 'selected' : ''}>오전반차</option>
+        <option value="pm" ${selectedTypeMap[t.id] === 'pm' ? 'selected' : ''}>오후반차</option>
+      </select>
+      <select class="leave-kind-sel" data-tid="${t.id}">
+        <option value="annual"  ${selectedKindMap[t.id] === 'monthly' ? '' : 'selected'}>연차</option>
+        <option value="monthly" ${selectedKindMap[t.id] === 'monthly' ? 'selected' : ''}>월차</option>
       </select>
     </div>
   `).join('');
@@ -696,10 +702,15 @@ async function saveLeaveDay(dateStr){
 
   const items = Array.from(document.querySelectorAll('.leave-type-sel'))
     .filter(sel => checkedIds.has(sel.dataset.tid))
-    .map(sel => ({
-      therapist_id: sel.dataset.tid,
-      leave_type: sel.value
-    }));
+    .map(sel => {
+      const tid = sel.dataset.tid;
+      const kindSel = document.querySelector(`.leave-kind-sel[data-tid="${tid}"]`);
+      return {
+        therapist_id: tid,
+        leave_type: sel.value,
+        leave_kind: kindSel ? kindSel.value : 'annual',
+      };
+    });
 
   const body = {
     leave_date: dateStr,
@@ -922,11 +933,13 @@ async function loadLeaveCalendar(){
       const typeLabel =
         x.leave_type === 'am' ? '오전' :
         x.leave_type === 'pm' ? '오후' : '종일';
+      const kindLabel = x.leave_kind === 'monthly' ? '월차' : '연차';
       grouped[x.leave_date].push({
         therapist_id: t.id,
         name: t.name,
         color: t.color || '#9CA3AF',
-        typeLabel: typeLabel
+        typeLabel: typeLabel,
+        kindLabel: kindLabel,
       });
     }
   });
@@ -942,7 +955,7 @@ async function loadLeaveCalendar(){
       window._leaveCal.addEvent({
         start: date,
         allDay: true,
-        title: `${it.name}(${it.typeLabel})`,
+        title: `${it.name}(${it.typeLabel},${it.kindLabel})`,
         backgroundColor: it.color,
         borderColor: it.color,
         textColor: '#fff'
@@ -1202,7 +1215,8 @@ async function renderDayBoard(){
     { id: COL_MANUAL, name: '💆 치료사 미배정',  color: '#8B5CF6', isFixed: true },
   ];
   const activeThers = THERAPISTS
-    .filter(t => t.active !== false);
+    .filter(t => t.active !== false)
+    .filter(t => t.can_manual !== false);
   const therCols = activeThers.map(t => ({
     id: t.id, name: t.name, color: t.color || '#9CA3AF', isFixed: false,
     can_eswt: t.can_eswt !== false, can_manual: t.can_manual !== false,
@@ -3502,6 +3516,8 @@ function renderEmployeeCards(list, role){
   if(!list.length) return '';
   const isDoctor = role === 'doctor';
   const capsCol = isDoctor ? '<th>처리 가능 (의사 항목)</th>' : '<th>치료 가능</th>';
+  // 치료사 테이블에만 입사일 컬럼 표시
+  const hireHead = isDoctor ? '' : '<th>입사일</th>';
   const rows = list.map(e => {
     let caps;
     if(isDoctor){
@@ -3520,11 +3536,13 @@ function renderEmployeeCards(list, role){
     const statusBadge = e.active
       ? '<span class="badge green">● 활성</span>'
       : '<span class="badge gray">○ 비활성</span>';
+    const hireCell = isDoctor ? '' : `<td>${e.hire_date||'-'}</td>`;
     return `<tr data-id="${e.id}">
       <td class="drag-handle" title="드래그하여 순서 변경">⠿</td>
       <td><span class="color-dot" style="background:${e.color}"></span> <b>${e.name}</b></td>
       <td>${e.birth_date||'-'}</td>
       <td>${e.phone||'-'}</td>
+      ${hireCell}
       <td>${caps}</td>
       <td>${statusBadge}</td>
       <td>
@@ -3537,7 +3555,7 @@ function renderEmployeeCards(list, role){
     <thead><tr>
       <th style="width:32px"></th>
       <th>이름</th><th>생년월일</th><th>연락처</th>
-      ${capsCol}<th>상태</th><th>관리</th>
+      ${hireHead}${capsCol}<th>상태</th><th>관리</th>
     </tr></thead>
     <tbody class="emp-sortable-body" data-role="${role}">${rows}</tbody>
   </table>`;
@@ -3622,6 +3640,9 @@ function editEmployee(e){
         <label class="chk-item"><input id="e-manual" type="checkbox" ${e.can_manual!==false?'checked':''}> <span>도수치료</span></label>
       </div>
     </div>`;
+  // 치료사일 때만 입사일 입력칸 표시
+  const hireBlock = isDoctor ? '' : `
+    <label>입사일 <input id="e-hire" type="text" data-fmt="birth" maxlength="10" inputmode="numeric" placeholder="20200101 → 2020-01-01" value="${e.hire_date||''}"></label>`;
   showModal(`<h3>${e.id?`${roleLabel} 수정`:`신규 ${roleLabel}`}</h3>
     <input type="hidden" id="e-role" value="${role}">
     <label>이름 * <input id="e-name" value="${e.name||''}"></label>
@@ -3629,6 +3650,7 @@ function editEmployee(e){
       <label>생년월일 <input id="e-birth" type="text" data-fmt="birth" maxlength="10" inputmode="numeric" placeholder="19900101 → 1990-01-01" value="${e.birth_date||''}"></label>
       <label>연락처 <input id="e-phone" type="tel" data-fmt="phone" maxlength="13" inputmode="tel" placeholder="01012345678 → 010-1234-5678" value="${e.phone||''}"></label>
     </div>
+    ${hireBlock}
     ${capsBlock}
     <label class="chk-item" style="margin-top:6px"><input id="e-active" type="checkbox" ${e.active!==false?'checked':''}> <span>활성</span></label>
     <div class="emp-color-section">
@@ -3668,6 +3690,7 @@ async function saveEmployee(eid){
     role: role,
     birth_date: _v('e-birth') || null,
     phone: _v('e-phone') || null,
+    hire_date: role === 'therapist' ? (document.getElementById('e-hire')?.value || null) : null,
     color: _v('e-color'),
     active: document.getElementById('e-active').checked,
     can_eswt: role === 'therapist' ? document.getElementById('e-eswt').checked : true,

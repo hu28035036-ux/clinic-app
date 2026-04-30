@@ -29,6 +29,7 @@ class Employee(Base):
     active = Column(Boolean, default=True)
     birth_date = Column(String(10))
     phone = Column(String(30))
+    hire_date = Column(String(10))  # YYYY-MM-DD, nullable
     can_eswt = Column(Boolean, default=True)
     can_manual = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
@@ -45,6 +46,7 @@ class EmployeeLeave(Base):
     employee_id = Column(String(32), ForeignKey("employees.id"), nullable=False, index=True)
     leave_date = Column(String(10), nullable=False, index=True)
     leave_type = Column(String(10), default="full")
+    leave_kind = Column(String(10), default="annual")  # annual | monthly
     memo = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     employee = relationship("Employee")

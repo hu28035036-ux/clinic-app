@@ -11,6 +11,7 @@ class EmployeeIn(BaseModel):
     active: bool = True
     birth_date: Optional[str] = None
     phone: Optional[str] = None
+    hire_date: Optional[str] = None
     can_eswt: bool = True
     can_manual: bool = True
 
@@ -24,6 +25,7 @@ class EmployeeLeaveIn(BaseModel):
     employee_id: str
     leave_date: str
     leave_type: str = "full"
+    leave_kind: str = "annual"   # annual | monthly
     memo: str = ""
 
 

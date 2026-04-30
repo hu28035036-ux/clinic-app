@@ -3,6 +3,37 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
+━━━━ v1.3.2  (2026-04-30) ━━━━
+
+🧑‍⚕️ 직원 관리 강화
+
+▸ 치료사 휴무 — 연차/월차 분류 (m009)
+  - 휴무 관리 모달에서 치료사별로 "연차" 또는 "월차" 선택 가능.
+  - employee_leaves.leave_kind 컬럼 추가 (default 'annual', 기존 row 자동 backfill).
+  - GET/POST /api/employee-leaves + /api/employee-leaves/bulk-set + /api/therapist-leaves
+    응답 모두 leave_kind 포함. 캘린더 이벤트 타이틀에도 "(연차/월차)" 표시.
+  - POST 동일 (employee_id, leave_date) 키 재요청 시 payload 값으로 갱신 (이전:
+    값 무시되어 "연차→월차 변경" 이 저장되지 않던 회귀 수정).
+
+▸ 치료사 정보 — 입사일 (m010)
+  - 치료사 수정 모달에 "입사일" 입력칸 추가 (생년월일과 동일한 자동변환:
+    20200101 → 2020-01-01).
+  - 직원 목록 시트의 치료사 테이블에 "입사일" 컬럼 추가. 의사 테이블에는 표시 안 함
+    (can_eswt/can_manual 과 동일한 분기 패턴).
+  - employees.hire_date 컬럼 추가 (nullable, 기존 row 는 NULL 유지).
+
+✅ 회귀 방지 테스트 +8건
+  - test_employee_can_manual_contract: can_manual 필드 GET/PUT 라운드트립
+  - test_employee_leave_kind: leave_kind 라운드트립 + bulk-set + upsert + snake_case
+  - test_employee_hire_date: hire_date 라운드트립 + null clear + snake_case
+
+⚙️ 마이그레이션 정책
+  - DB 컬럼 추가만 (DROP/DELETE 없음, 멱등성 보장). 기존 데이터 100% 보존.
+  - 자동 업데이트 시 다음 부팅 때 자동 적용.
+
+✅ 132 passed, 1 skipped, 7 xfailed (이전 124 → +8)
+
+
 ━━━━ v1.3.1  (2026-04-30) ━━━━
 
 🛡️ 보안 + 안정성 패치 (v1.3.0 후속)

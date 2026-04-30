@@ -1,6 +1,6 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   도수치료예약 (병원 예약 관리 프로그램)
-  v1.3.1  (2026-04-30)
+  v1.3.2  (2026-04-30)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [빌드 정보]
@@ -9,40 +9,33 @@
   Python 런타임  : 3.12 (내장)
   DB             : SQLite
 
-[주요 변경 (v1.3.1) — 보안 + 안정성 패치]
+[주요 변경 (v1.3.2) — 직원 관리 강화]
 
-  🛡️ 자동 업데이트 hang 수정
-     · updater.bat: rename 5회 재시도 + ExecutionPolicy Bypass + rollback pause
-     · apply_update: DETACHED_PROCESS, /k→/c, sleep 3초, 백업 실패 시 중단
-     · 신규 GET /api/about/update-log — 진단용 로그 조회
-     · 프론트: 30/60초/6분 단계별 안내 + 로그 모달 + 자동 새로고침
+  🧑‍⚕️ 치료사 휴무 — 연차/월차 분류 (m009)
+     · 휴무 관리 모달에서 치료사별 연차/월차 선택
+     · employee_leaves.leave_kind 컬럼 추가 (default 'annual')
+     · /api/employee-leaves (POST/GET/bulk-set) 응답에 leave_kind 포함
+     · 캘린더 이벤트 타이틀에 "(연차/월차)" 표시
+     · 동일 (employee_id, leave_date) 재요청 시 payload 값 갱신 (회귀 수정)
 
-  🛡️ 인증 누수 회귀 수정 (HIGH)
-     · /api/sync/pull, /sync/push, /sync/now, /backup 에 require_admin 추가
-     · /api/mode 첫 실행 시 인증 우회 차단
-     · sync pull/push 듀얼 인증 (관리자 토큰 OR X-Sync-Token)
-       - config.sync_secret 자동 생성 + sync_with_peer 가 헤더 동봉
-       - GET /api/config 에서 secret 자동 제거 (이전 회귀: 익명 노출 가능)
-       - 관리자 전용: GET /api/config/sync-secret, POST /regenerate-sync-secret
+  🧑‍⚕️ 치료사 정보 — 입사일 (m010)
+     · 치료사 수정 모달에 "입사일" 입력칸 추가
+     · 자동변환: 20200101 → 2020-01-01 (생년월일과 동일 패턴)
+     · 직원 목록 시트 치료사 테이블에 "입사일" 컬럼 추가
+     · 의사 테이블에는 표시 안 함 (can_eswt/can_manual 과 동일 분기)
+     · employees.hire_date 컬럼 추가 (nullable)
 
-  🛡️ DB 복원 안전성
-     · 임시 파일 → integrity_check → atomic 교체
-     · engine.dispose() + db Session 의존성 제거 — Windows 파일 잠금 회피
-     · 손상된 파일 업로드 시 운영 DB 무손상 보장
+  ✅ 회귀 방지 테스트 +8건 (132 passed)
+     · test_employee_can_manual_contract — can_manual 필드 보호
+     · test_employee_leave_kind — leave_kind 4종 시나리오
+     · test_employee_hire_date — hire_date 라운드트립
 
-  🛡️ SMS 발송 비밀 노출 차단
-     · 서버 echo / urllib 예외 메시지에 platext passwd/key 자동 마스킹
-
-  ⚙️ UX
-     · 데이터 변환 spinner + 버튼 비활성화 + 90초 타임아웃
-     · 모달 액션 버튼 sticky (긴 모달 스크롤 시 항상 가시)
-
-  ⚙️ 빌드 인프라
-     · 마이그레이션 hiddenimports 자동 글롭 — m*_*.py 새 추가 시 자동 등록
-
-  ✅ 회귀 방지 테스트 +45건 (124 passed)
+  ⚙️ 마이그레이션 정책
+     · DB 컬럼 추가만 (DROP/DELETE 없음, 멱등성 보장)
+     · 기존 데이터 100% 보존, 자동 업데이트 시 다음 부팅 때 자동 적용
 
 [이전 주요 변경]
+  v1.3.1 — 보안 + 안정성 패치 (자동업데이트 hang, 인증 누수, DB 복원, SMS 비밀)
   v1.3.0 — AI/RAG 1차 통합 (AI 도우미 탭 + SMS 초안/점검 + PII 보호)
   v1.2.18 — 문자나라 발송 결과 오판정 수정 + 통계탭 엑셀
   v1.2.17 — 점심시간 + 도수치료 엑셀 + 신규 환자 중복 차단

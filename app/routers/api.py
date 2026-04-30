@@ -170,6 +170,7 @@ def _serialize_employee(e: models.Employee) -> dict:
     return {
         "id": e.id, "name": e.name, "role": e.role, "color": e.color,
         "active": bool(e.active), "birth_date": e.birth_date, "phone": e.phone,
+        "hire_date": e.hire_date,
         "can_eswt": bool(e.can_eswt), "can_manual": bool(e.can_manual),
         "sort_order": e.sort_order or 0,
     }
@@ -1085,6 +1086,7 @@ def list_employee_leaves(date: str = "", db: Session = Depends(get_db)):
         "employee_id": r.employee_id,
         "leave_date": r.leave_date,
         "leave_type": r.leave_type or "full",
+        "leave_kind": r.leave_kind or "annual",
         "memo": r.memo or "",
     } for r in rows]
 
@@ -1096,9 +1098,17 @@ def create_employee_leave(p: schemas.EmployeeLeaveIn, db: Session = Depends(get_
         models.EmployeeLeave.leave_date == p.leave_date,
     ).first()
     if exists:
+        # 동일 (employee_id, leave_date) 키 → upsert: payload 값으로 갱신
+        exists.leave_type = p.leave_type
+        exists.leave_kind = p.leave_kind
+        exists.memo = p.memo
+        db.flush()
+        _log(db, "employee_leave", exists.id, "upsert", exists)
+        db.commit(); db.refresh(exists)
         return {
             "id": exists.id, "employee_id": exists.employee_id,
             "leave_date": exists.leave_date, "leave_type": exists.leave_type,
+            "leave_kind": exists.leave_kind or "annual",
             "memo": exists.memo or "",
         }
     obj = models.EmployeeLeave(**p.model_dump())
@@ -1108,6 +1118,7 @@ def create_employee_leave(p: schemas.EmployeeLeaveIn, db: Session = Depends(get_
     return {
         "id": obj.id, "employee_id": obj.employee_id,
         "leave_date": obj.leave_date, "leave_type": obj.leave_type,
+        "leave_kind": obj.leave_kind or "annual",
         "memo": obj.memo or "",
     }
 
@@ -1139,11 +1150,12 @@ def bulk_set_employee_leaves(payload: dict, db: Session = Depends(get_db)):
     for item in items:
         emp_id = item.get("employee_id") or item.get("therapist_id")  # 호환
         leave_type = item.get("leave_type", "full")
+        leave_kind = item.get("leave_kind", "annual")
         if not emp_id:
             continue
         db.add(models.EmployeeLeave(
             employee_id=emp_id, leave_date=leave_date,
-            leave_type=leave_type, memo=memo,
+            leave_type=leave_type, leave_kind=leave_kind, memo=memo,
         ))
         count += 1
     db.commit()
@@ -1175,6 +1187,7 @@ def list_therapist_leaves_alias(date: str = "", db: Session = Depends(get_db)):
         "employee_id": r.employee_id,
         "leave_date": r.leave_date,
         "leave_type": r.leave_type or "full",
+        "leave_kind": r.leave_kind or "annual",
         "memo": r.memo or "",
     } for r in rows]
 
