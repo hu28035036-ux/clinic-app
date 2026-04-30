@@ -80,7 +80,7 @@ if not _migration_modules:
         "[spec] app/migrations/ 에서 m*_*.py 마이그레이션 파일을 1개도 못 찾았습니다. "
         "글롭 패턴이나 디렉토리 구조를 확인하세요."
     )
-print(f"[spec] 마이그레이션 자동 등록: {len(_migration_modules)}개 — {_migration_modules}")
+print(f"[spec] migration auto-register: {len(_migration_modules)} modules - {_migration_modules}")
 
 # --- 포함할 리소스 파일 (템플릿 / CSS / 업데이터) ---
 datas = [
