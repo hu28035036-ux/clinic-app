@@ -309,12 +309,15 @@ def test_19_X_core_module_actually_importable(modname):
 
 
 # 19-2 modules 후보 구조 (settings/health) — facade / 직렬화 helper.
+# 19-3 추가 — modules.calendar 표시용 view-model helper.
 # COMPAT: 기존 app.routers.api / app.routers.ai / app.services.ai.health 그대로 동작.
 EXPECTED_19_X_MODULES_MODULES = (
     "app.modules",
     "app.modules.settings",
     "app.modules.settings.serializers",
     "app.modules.health",
+    "app.modules.calendar",
+    "app.modules.calendar.view_models",
 )
 
 

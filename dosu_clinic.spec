@@ -95,6 +95,11 @@ hidden += [
     'app.modules.settings',
     'app.modules.settings.serializers',
     'app.modules.health',
+    # 19-3 modules.calendar 후보 구조 — 표시용 view-model 순수 helper
+    # COMPAT: 기존 app.routers.api 의 _serialize_appointment / _serialize_employee /
+    #         _lighten_hex 그대로 동작 (라우터 무수정).
+    'app.modules.calendar',
+    'app.modules.calendar.view_models',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
