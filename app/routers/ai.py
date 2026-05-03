@@ -35,6 +35,7 @@ from ..models import models
 from ..services import auth
 from ..services.ai import action_leave as ai_action_leave
 from ..services.ai import ai_logging as ai_log
+from ..services.ai import health as ai_status_mod
 from ..services.ai import manual_qa as ai_manual_qa
 from ..services.ai import provider as ai_provider
 from ..services.ai import sms_draft as ai_sms_draft
@@ -181,6 +182,47 @@ def ai_health_public(db: Session = Depends(get_db)):
         "provider": s.provider or "openai",
         "api_key_set": bool(s.api_key),
     }
+
+
+@router.get("/status")
+def ai_status(
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_admin),
+):
+    """관리자 AI/RAG 상태 조회 — read-only 집계 (외부 호출 0). 18-7.
+
+    응답 본체는 ``ai_health.build_admin_status`` 가 단일 진실원천으로 조립.
+
+    노출 항목 (docs/ai_rag_rollout_plan.md §7):
+      - ai_mode (local_only / local_first / ai_assist) — 현재 ``AiSetting`` 파생.
+      - search_mode (keyword / vector / hybrid / disabled) — pipeline effective.
+      - ai_settings — provider/model/api_key_set boolean/max_tokens/temperature/pii_guard.
+      - vector_status — enabled / available / reason.
+      - external_api — llm_available / embedding_available / sdk_installed.
+      - knowledge — documents/chunks/vectors 카운트 + last_reindex 요약.
+      - prompt_versions — DEFAULT_VERSIONS 매핑.
+      - recent_ai_logs — outcome/feature 카운트 + 최근 5건 메타.
+
+    원칙 (사용자 18-7 세션 지시문 + AI_WORKING_RULES):
+      - **외부 API 호출 0** — read-only DB 집계만.
+      - **API key 평문 미노출** — ``api_key_set`` boolean 만.
+      - **PII 미노출** — AiUsageLog 에는 이미 sha256 해시만 저장됨.
+        본 응답은 hash 도 미노출 (메타만).
+      - **운영 DB 직접 접근 X** — caller dependency 의 격리 세션만 사용.
+      - **manual/{search,ask} 응답 키 무영향** — 별도 엔드포인트.
+
+    폴링 가능 — 본 엔드포인트는 AiUsageLog 기록을 남기지 않음 (health/health/public
+    와 동일 정책). 관리자 화면에서 짧은 주기 새로고침 OK.
+    """
+    s = _get_or_create_setting(db)
+    sdk_installed = {
+        p: _sdk_available(p) for p in ai_provider.list_known_providers()
+    }
+    return ai_status_mod.build_admin_status(
+        db,
+        setting=s,
+        sdk_installed=sdk_installed,
+    )
 
 
 @router.get("/providers")

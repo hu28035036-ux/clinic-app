@@ -48,7 +48,35 @@ hidden += [
     # AI 휴무 액션 (v1.3.3 세션 16) — 라우터에서 import
     'app.services.ai.action_leave',
     'app.services.ai.date_resolver',
-    # RAG 검색 (knowledge/ 키워드 인덱스 로딩)
+    # 18-7 관리자 상태 집계 — /api/ai/status 엔드포인트가 import.
+    # 라우터는 'health as ai_status_mod' 로 import 하므로 PyInstaller 가
+    # 자동 발견하지만 명시 등록으로 누락 방지.
+    'app.services.ai.health',
+    # 18-1~18-6 RAG 패키지 — manual_qa wrapper 가 rag.pipeline 을 통해
+    # 간접 import. 일부 모듈 (reranker/confidence/store/similarity 등) 은
+    # lazy import 라 PyInstaller 자동 발견 누락 위험 → 명시 등록.
+    'app.services.ai.rag',
+    'app.services.ai.rag.schemas',
+    'app.services.ai.rag.prompts',
+    'app.services.ai.rag.safety',
+    'app.services.ai.rag.retriever',
+    'app.services.ai.rag.pipeline',
+    'app.services.ai.rag.reranker',     # 18-6
+    'app.services.ai.rag.confidence',   # 18-6
+    # 18-3/18-4 knowledge 패키지 — chunker/indexer/loader/normalizer/keyword_index
+    'app.services.ai.knowledge',
+    'app.services.ai.knowledge.loader',
+    'app.services.ai.knowledge.normalizer',
+    'app.services.ai.knowledge.chunker',
+    'app.services.ai.knowledge.keyword_index',
+    'app.services.ai.knowledge.indexer',
+    # 18-5 vector 패키지 — indexer 가 lazy import (vector 패키지 부재 환경
+    # 호환). 운영 빌드에서는 명시 등록 필수.
+    'app.services.ai.vector',
+    'app.services.ai.vector.embeddings',
+    'app.services.ai.vector.store',
+    'app.services.ai.vector.similarity',
+    # RAG 검색 (knowledge/ 키워드 인덱스 로딩) — v1.3.3 keyword RAG (분리 전 경로)
     'app.services.rag',
     'app.services.rag.search',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수

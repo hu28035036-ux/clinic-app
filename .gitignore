@@ -14,6 +14,7 @@ tests/temp/*
 venv/
 .venv/
 env/
+venv_broken*/
 
 # PyInstaller build artifacts
 build/

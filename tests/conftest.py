@@ -135,3 +135,135 @@ class FakeProvider(_ai_provider.AiProvider):
 def make_fake_provider(returns: str = "") -> FakeProvider:
     """팩토리 — return_text 기본값을 명시적으로 지정하고 싶을 때."""
     return FakeProvider(return_text=returns or "안녕하세요 환자A님, ㅇㅇ의원입니다.")
+
+
+# ──────────────────────── 7) 외부 SDK 호출 차단 (18-0) ────────────────────────
+#
+# 의도: 어떤 테스트도 실제 OpenAI/Anthropic API 를 호출하면 안 된다.
+# ``app.services.ai.{openai_client,anthropic_client}`` 가 lazy import 로
+# SDK 클래스를 사용하므로, SDK 모듈의 진입점 클래스를 즉시 RuntimeError 로
+# 교체한다. ``app.routers.ai._check_sdk`` 는 importlib.import_module 만
+# 시도하므로 이 monkeypatch 의 영향을 받지 않는다 (import 가능 + 인스턴스화 차단).
+#
+# 18-0 정책 (``docs/ai_harness_overview.md`` §4-1, ``docs/ai_rag_test_plan.md`` §3-8):
+#   - FakeProvider/FakeEmbeddingProvider + 본 monkeypatch 로 외부 호출 차단.
+#   - 실제 외부 API 호출이 발생하면 테스트 실패.
+#   - 18-5 직전 ``pytest-socket`` 등 강화 도구 도입은 별도 ADR.
+
+def _raise_external_call(*_args, **_kwargs):
+    raise RuntimeError(
+        "[하네스 안전망] 테스트에서 실제 외부 LLM/Embedding API 호출이 시도되었습니다. "
+        "FakeProvider 또는 monkeypatch 를 사용하세요."
+    )
+
+
+def _block_sdk_modules() -> None:
+    """openai/anthropic 의 client 클래스를 즉시 fail 하는 stub 으로 교체.
+
+    SDK 가 설치되어 있으면 import 후 클래스를 patch.
+    설치되어 있지 않으면 (= ``_check_sdk`` 가 false 처리) 아무 것도 하지 않는다.
+    """
+    for mod_name, attrs in (
+        ("openai", ("OpenAI", "Client", "AsyncOpenAI")),
+        ("anthropic", ("Anthropic", "Client", "AsyncAnthropic")),
+    ):
+        try:
+            mod = importlib.import_module(mod_name)
+        except Exception:
+            continue
+        for attr in attrs:
+            if hasattr(mod, attr):
+                try:
+                    setattr(mod, attr, _raise_external_call)
+                except Exception:
+                    # frozen 또는 read-only 속성이면 패스 (테스트가 실제 호출
+                    # 하지 않는 한 영향 없음).
+                    pass
+
+
+import importlib  # noqa: E402, I001
+
+_block_sdk_modules()
+
+
+# ──────────────────────── 8) AI 라우터 통합 테스트용 fixture (18-0) ────────────────────────
+#
+# manual/ask 라우터 흐름 (``app/routers/ai.py:603-750``) 은
+#   ``ai_provider.get_provider(...)`` 로 매번 새 인스턴스를 만든다.
+# 통합 테스트에서 FakeProvider 호출 카운트를 관찰하려면
+#   (1) ``AiSetting`` 을 enabled=True 로 활성화하고
+#   (2) ``ai_provider.get_provider`` 를 monkeypatch 로 FakeProvider 반환하게 한다.
+# (``docs/ai_rag_current_state.md`` §1-5-2 의 권장 경로 (b))
+
+
+@pytest.fixture
+def ai_disabled_setting():
+    """AiSetting 을 disabled 상태로 강제 (manual/ask 503 케이스용).
+
+    세션 시작 시 ``init_db`` 의 자동 시드로 enabled=False 로 만들어지지만,
+    다른 테스트가 변경했을 가능성을 대비해 명시적으로 reset.
+    """
+    from app.database import SessionLocal
+    from app.models import models as _models
+
+    db = SessionLocal()
+    try:
+        s = db.query(_models.AiSetting).filter(_models.AiSetting.id == 1).first()
+        if s is None:
+            s = _models.AiSetting(id=1)
+            db.add(s)
+        s.enabled = False
+        s.api_key = ""
+        s.model = ""
+        db.commit()
+        yield s
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def ai_enabled_with_fake(monkeypatch):
+    """AiSetting 을 enabled+key+model 로 활성화하고
+    ``ai_provider.get_provider`` 를 FakeProvider 로 monkeypatch.
+
+    Returns: ``FakeProvider`` 인스턴스 (테스트가 ``len(.calls)`` 단언에 사용).
+    """
+    from app.database import SessionLocal
+    from app.models import models as _models
+    from app.routers import ai as _ai_router
+
+    db = SessionLocal()
+    try:
+        s = db.query(_models.AiSetting).filter(_models.AiSetting.id == 1).first()
+        if s is None:
+            s = _models.AiSetting(id=1)
+            db.add(s)
+        s.enabled = True
+        s.provider = "openai"
+        s.model = "test-model"
+        s.api_key = "test-fake-key"
+        db.commit()
+    finally:
+        db.close()
+
+    fake = FakeProvider(
+        return_text="발췌에 따르면 예약 문자 탭에서 작성합니다.\n\n참고: sms_compose.md"
+    )
+    # 라우터가 ``from ..services.ai import provider as ai_provider`` 후
+    # ``ai_provider.get_provider(...)`` 로 호출하므로 모듈의 attribute 를 patch.
+    monkeypatch.setattr(_ai_router.ai_provider, "get_provider",
+                        lambda *a, **kw: fake)
+
+    yield fake
+
+    # 정리 — 다른 테스트에 영향이 가지 않도록 disabled 로 reset.
+    db = SessionLocal()
+    try:
+        s = db.query(_models.AiSetting).filter(_models.AiSetting.id == 1).first()
+        if s is not None:
+            s.enabled = False
+            s.api_key = ""
+            s.model = ""
+            db.commit()
+    finally:
+        db.close()

@@ -10,7 +10,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import (Column, String, Integer, Float, DateTime, ForeignKey, Text,
-                        Boolean, UniqueConstraint)
+                        Boolean, LargeBinary, UniqueConstraint)
 from sqlalchemy.orm import relationship
 from ..database import Base
 
@@ -341,3 +341,124 @@ class AiUsageLog(Base):
     hallucination_guard_hits = Column(Integer, default=0)
     response_used = Column(Integer, default=0)   # 0=미정, 1=UI 채택 (v2 PATCH 로 갱신 예정)
     sms_sent = Column(Integer, default=0)        # 항상 0 (AI 직접 발송 금지 정책)
+
+
+# ──────────────────────── 18-4: knowledge_chunks / knowledge_index_runs ────────────────────────
+#
+# 18-3 chunker 의 in-memory 산출물을 SQLite 에 영속화하기 위한 두 테이블.
+# - KnowledgeChunk      : 매뉴얼 문서를 chunk 단위로 저장
+# - KnowledgeIndexRun   : reindex 실행 이력 (요약/실패 path/에러 JSON)
+#
+# 정책 (docs/ai_rag_migration_plan.md §0/§2/§4):
+#  - (doc_id, chunk_index) UNIQUE — 위치별 1 row.
+#  - content_hash 동일하면 indexer 가 skip — UNIQUE 제약 아님 (서로 다른
+#    문서가 동일 텍스트를 가질 수 있어 단일 컬럼 UNIQUE 부적합).
+#  - reindex 실패 시 기존 row DELETE 금지 — indexer 가 어떤 분기에서도
+#    db.delete() 를 호출하지 않음으로 보장.
+
+
+class KnowledgeChunk(Base):
+    """매뉴얼 문서의 chunk 영속화 (18-4).
+
+    필드 매핑은 ``app.services.ai.rag.schemas.Chunk`` dataclass 와 정렬.
+    프론트/응답 키와 1:1 매핑 의무는 없음 (internal-only). 검색 단계
+    (18-5/18-6) 에서 retriever 가 본 row 를 source of truth 로 사용.
+    """
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        UniqueConstraint("doc_id", "chunk_index", name="uq_knowledge_chunks_doc_chunk"),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    doc_id = Column(String(40), nullable=False, index=True)            # sha1(source_path) hex
+    source_path = Column(String(500), nullable=False)                  # knowledge/<cat>/<file>.md
+    category = Column(String(50), nullable=False, default="", index=True)  # "manuals" | "sms_guides"
+    title = Column(Text, nullable=False, default="")                   # 문서 첫 heading
+    heading = Column(Text, nullable=False, default="")                 # chunk 가 속한 가장 가까운 heading
+    section_path = Column(Text, nullable=False, default="")            # "h1 > h2 > h3"
+    chunk_index = Column(Integer, nullable=False)                      # 문서 내 0-based
+    content = Column(Text, nullable=False)                             # 정규화된 본문
+    content_hash = Column(String(64), nullable=False, index=True)      # sha256(content) hex 64자
+    token_count = Column(Integer, nullable=False, default=0)           # len(content) 글자 수
+    tags = Column(Text, nullable=False, default="")                    # csv (현재 빈 값)
+    document_version = Column(String(64), nullable=False, default="")  # reindex 추적 (현재 빈 값)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class KnowledgeIndexRun(Base):
+    """reindex 실행 이력 (18-4).
+
+    한 reindex 호출당 1 row. ``status`` 는 다음 중 하나:
+      - ``running`` : 진행 중 (정상 종료 시 다른 값으로 갱신)
+      - ``success`` : 모든 문서 성공
+      - ``partial`` : 일부 문서 실패, 나머지 성공 (기존 chunk 보존)
+      - ``failed``  : 전체 실패 (loader 자체 실패 등)
+      - ``skipped_in_progress`` : 다른 reindex 가 이미 실행 중이라 본 호출은 즉시 종료
+    """
+    __tablename__ = "knowledge_index_runs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    started_at = Column(DateTime, default=datetime.utcnow, index=True)
+    finished_at = Column(DateTime, nullable=True)
+    status = Column(String(30), nullable=False, default="running")
+    trigger = Column(String(20), nullable=False, default="manual")  # manual | startup | upgrade
+    total_documents = Column(Integer, nullable=False, default=0)
+    processed_documents = Column(Integer, nullable=False, default=0)
+    failed_documents = Column(Integer, nullable=False, default=0)
+    total_chunks = Column(Integer, nullable=False, default=0)
+    inserted_chunks = Column(Integer, nullable=False, default=0)
+    updated_chunks = Column(Integer, nullable=False, default=0)
+    skipped_chunks = Column(Integer, nullable=False, default=0)
+    failed_chunks = Column(Integer, nullable=False, default=0)
+    failed_paths = Column(Text, nullable=False, default="")  # \n 구분
+    errors = Column(Text, nullable=False, default="")        # JSON 배열 [{"path","error","stage"}]
+    notes = Column(Text, nullable=False, default="")
+
+
+# ──────────────────────── 18-5: knowledge_vectors ────────────────────────
+#
+# 18-5 vector store / embedding. chunk_id 기준 (provider, model) 별 1 row.
+#
+# 정책 (docs/ai_rag_migration_plan.md §3, docs/ai_rag_architecture_plan.md §3-18):
+#  - (chunk_id, provider, model) UNIQUE — 같은 청크에 같은 provider+model 조합은 1개.
+#  - content_hash 동일 (저장된 row 의 content_hash == 현재 chunk content_hash) → 재생성 skip.
+#  - dimension 은 row 당 저장 — provider/model 변경 시 다른 row 로 분리되며,
+#    검색 시 query dim 과 row dim 이 다르면 안전 skip.
+#  - embedding 값은 ``embedding_json`` (Text) 으로 저장 — 18-5 시점은
+#    FakeEmbeddingProvider dim=16 만 검증되므로 JSON 으로 충분 (< 1KB).
+#    ``embedding_blob`` 은 향후 확장(외부 OpenAI 1536 dim 등) 슬롯 — 현재 NULL.
+#  - chunk 가 삭제되면 ON DELETE CASCADE 로 vector 도 정리.
+
+
+class KnowledgeVector(Base):
+    """청크 임베딩 영속화 (18-5).
+
+    필드 매핑은 ``docs/ai_rag_migration_plan.md`` §3 그대로. 검색 단계
+    (18-6 hybrid) 에서 retriever 가 본 row 를 source of truth 로 사용.
+
+    저장 형식:
+      - 작은 dimension (~16) : ``embedding_json`` (JSON list[float] 문자열)
+      - 큰 dimension (확장)  : ``embedding_blob`` (struct 패킹) — 18-5 시점 미사용
+      두 컬럼 중 하나만 채움.
+    """
+    __tablename__ = "knowledge_vectors"
+    __table_args__ = (
+        UniqueConstraint(
+            "chunk_id", "provider", "model",
+            name="uq_knowledge_vectors_chunk_provider_model",
+        ),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chunk_id = Column(
+        Integer,
+        ForeignKey("knowledge_chunks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider = Column(String(40), nullable=False)              # "fake" | "openai" | ...
+    model = Column(String(100), nullable=False)                # "fake-embed-1" | "text-embedding-3-small" | ...
+    dimension = Column(Integer, nullable=False)                # vector 길이
+    embedding_json = Column(Text, nullable=True)               # JSON list[float] (작은 dim)
+    embedding_blob = Column(LargeBinary, nullable=True)        # 확장 슬롯 (큰 dim)
+    content_hash = Column(String(64), nullable=False, index=True)  # 임베딩 시점의 chunk content_hash
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
