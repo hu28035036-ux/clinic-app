@@ -100,6 +100,11 @@ hidden += [
     #         _lighten_hex 그대로 동작 (라우터 무수정).
     'app.modules.calendar',
     'app.modules.calendar.view_models',
+    # 19-4 modules.appointments 후보 구조 — availability 판정 helper (라우터 무수정)
+    # COMPAT: 기존 app.routers.api 의 _lunch_window / _check_lunch_block / _check_version
+    #         / _bump_version 그대로 동작.
+    'app.modules.appointments',
+    'app.modules.appointments.availability',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
