@@ -243,6 +243,21 @@ EXPECTED_18_X_MODULES = (
 )
 
 
+# 19-1 core 공통 유틸 (re-export wrapper 3 + 신규 helper 4 + __init__ = 8)
+# spec hiddenimports 에 반드시 포함되어야 함 (PyInstaller 빌드본 import 안전성).
+# COMPAT: 기존 app.config / app.database / app.services.auth 경로는 그대로 동작.
+EXPECTED_19_X_CORE_MODULES = (
+    "app.core",
+    "app.core.config",
+    "app.core.database",
+    "app.core.security",
+    "app.core.errors",
+    "app.core.responses",
+    "app.core.time_utils",
+    "app.core.feature_flags",
+)
+
+
 @pytest.mark.parametrize("modname", EXPECTED_18_X_MODULES)
 def test_18_X_module_in_spec_hidden_imports(modname):
     """18-1~18-7 신규 모듈이 spec hiddenimports 에 등록됨.
@@ -260,6 +275,33 @@ def test_18_X_module_in_spec_hidden_imports(modname):
 @pytest.mark.parametrize("modname", EXPECTED_18_X_MODULES)
 def test_18_X_module_actually_importable(modname):
     """18-1~18-7 신규 모듈이 실제로 import 가능 (코드 자체 검증)."""
+    try:
+        importlib.import_module(modname)
+    except Exception as e:
+        pytest.fail(f"{modname} import 실패: {type(e).__name__}: {e}")
+
+
+@pytest.mark.parametrize("modname", EXPECTED_19_X_CORE_MODULES)
+def test_19_X_core_module_in_spec_hidden_imports(modname):
+    """19-1 core 신규 모듈이 spec hiddenimports 에 등록됨.
+
+    spec 누락 시 PyInstaller 빌드는 통과해도 런타임 ImportError.
+    각 모듈을 개별 parametrize 로 검증해서 fail 시 정확한 모듈명 보고.
+    """
+    items = _extract_hidden_imports()
+    assert modname in items, (
+        f"spec hiddenimports 에 {modname!r} 누락 — PyInstaller 빌드 후 런타임 ImportError 위험. "
+        f"dosu_clinic.spec 의 hidden 리스트에 추가하세요."
+    )
+
+
+@pytest.mark.parametrize("modname", EXPECTED_19_X_CORE_MODULES)
+def test_19_X_core_module_actually_importable(modname):
+    """19-1 core 신규 모듈이 실제로 import 가능 (코드 자체 검증).
+
+    re-export wrapper (config/database/security) + 신규 helper
+    (errors/responses/time_utils/feature_flags) 모두 검증.
+    """
     try:
         importlib.import_module(modname)
     except Exception as e:

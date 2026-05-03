@@ -79,6 +79,16 @@ hidden += [
     # RAG 검색 (knowledge/ 키워드 인덱스 로딩) — v1.3.3 keyword RAG (분리 전 경로)
     'app.services.rag',
     'app.services.rag.search',
+    # 19-1 core 공통 유틸 (config/database/security re-export wrapper + errors/responses/time_utils/feature_flags 신규)
+    # COMPAT: 기존 app.config / app.database / app.services.auth 도 그대로 동작
+    'app.core',
+    'app.core.config',
+    'app.core.database',
+    'app.core.security',
+    'app.core.errors',
+    'app.core.responses',
+    'app.core.time_utils',
+    'app.core.feature_flags',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
