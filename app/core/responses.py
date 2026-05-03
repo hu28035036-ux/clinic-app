@@ -59,13 +59,17 @@ HEALTH_ADMIN_KEYS: Final[tuple[str, ...]] = (
 )
 
 
-# ─── /api/ai/health/public 4키 (인증 불필요) ────────────────────────────────────
+# ─── /api/ai/health/public 4키 (인증 불필요 — routers/ai.py:167~184) ───────────
 
+# COMPAT: tests/test_ai_health_public.py:9 와 ``app/routers/ai.py:179~184`` 의
+# 실제 4키 정합 — ``enabled / ready / provider / api_key_set``. (19-2 보정 — 이전
+# r1 placeholder ``ai_enabled / ai_ready / version / node_id`` 는 실제 응답과
+# 불일치, 본 상수가 wire 되지 않은 상태에서 정정.)
 HEALTH_PUBLIC_KEYS: Final[tuple[str, ...]] = (
-    "ai_enabled",
-    "ai_ready",
-    "version",
-    "node_id",
+    "enabled",
+    "ready",
+    "provider",
+    "api_key_set",
 )
 
 

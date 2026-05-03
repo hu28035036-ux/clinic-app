@@ -308,6 +308,38 @@ def test_19_X_core_module_actually_importable(modname):
         pytest.fail(f"{modname} import 실패: {type(e).__name__}: {e}")
 
 
+# 19-2 modules 후보 구조 (settings/health) — facade / 직렬화 helper.
+# COMPAT: 기존 app.routers.api / app.routers.ai / app.services.ai.health 그대로 동작.
+EXPECTED_19_X_MODULES_MODULES = (
+    "app.modules",
+    "app.modules.settings",
+    "app.modules.settings.serializers",
+    "app.modules.health",
+)
+
+
+@pytest.mark.parametrize("modname", EXPECTED_19_X_MODULES_MODULES)
+def test_19_X_modules_module_in_spec_hidden_imports(modname):
+    """19-2 modules 신규 폴더가 spec hiddenimports 에 등록됨."""
+    items = _extract_hidden_imports()
+    assert modname in items, (
+        f"spec hiddenimports 에 {modname!r} 누락 — PyInstaller 빌드 후 런타임 ImportError 위험. "
+        f"dosu_clinic.spec 의 hidden 리스트에 추가하세요."
+    )
+
+
+@pytest.mark.parametrize("modname", EXPECTED_19_X_MODULES_MODULES)
+def test_19_X_modules_module_actually_importable(modname):
+    """19-2 modules 신규 폴더가 실제로 import 가능 (코드 자체 검증).
+
+    settings/serializers + health (re-export wrapper) 모두 검증.
+    """
+    try:
+        importlib.import_module(modname)
+    except Exception as e:
+        pytest.fail(f"{modname} import 실패: {type(e).__name__}: {e}")
+
+
 # ──────────────────────── 4. data files 동봉 정합 ────────────────────────
 
 

@@ -89,6 +89,12 @@ hidden += [
     'app.core.responses',
     'app.core.time_utils',
     'app.core.feature_flags',
+    # 19-2 modules 후보 구조 (settings/health) — facade / re-export wrapper
+    # COMPAT: 기존 app.routers.api / app.routers.ai / app.services.ai.health 그대로 동작
+    'app.modules',
+    'app.modules.settings',
+    'app.modules.settings.serializers',
+    'app.modules.health',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
