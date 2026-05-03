@@ -103,8 +103,16 @@ hidden += [
     # 19-4 modules.appointments 후보 구조 — availability 판정 helper (라우터 무수정)
     # COMPAT: 기존 app.routers.api 의 _lunch_window / _check_lunch_block / _check_version
     #         / _bump_version 그대로 동작.
+    # 19-9 추가 — appointments 예약 service / repository / rules / schemas 후보 구조 (라우터 무수정)
+    # COMPAT: 기존 app.routers.api 의 모든 예약 핸들러 (create/update/approve/cancel/
+    #         revert/delete/split/assign/list/last/history/manual-history-summary) 그대로 동작.
+    # SAFETY: 응답 dict 키 변경 ⊥ — schemas.py 의 contract 상수가 회귀 검출.
     'app.modules.appointments',
     'app.modules.appointments.availability',
+    'app.modules.appointments.rules',
+    'app.modules.appointments.repository',
+    'app.modules.appointments.service',
+    'app.modules.appointments.schemas',
     # 19-5 modules.leaves 후보 구조 — 휴무 도메인 규칙 / 조회 / service helper (라우터 무수정)
     # COMPAT: 기존 app.routers.api 의 휴무 핸들러 + AI action_leave 흐름 그대로 동작.
     'app.modules.leaves',
