@@ -119,6 +119,15 @@ hidden += [
     'app.modules.treatments.repository',
     'app.modules.treatments.service',
     'app.modules.treatments.completion_rules',
+    # 19-7 modules.patients / modules.notes 후보 구조 — 환자·메모 도메인 (라우터 무수정)
+    # COMPAT: 기존 app.routers.api 의 환자 / 메모 흐름 그대로 동작.
+    # SAFETY: PII 마스킹 helper 는 로그 / AI prompt 전용 — 운영 응답 dict 영향 ⊥.
+    'app.modules.patients',
+    'app.modules.patients.rules',
+    'app.modules.patients.repository',
+    'app.modules.patients.service',
+    'app.modules.notes',
+    'app.modules.notes.rules',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',

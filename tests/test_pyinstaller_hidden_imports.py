@@ -313,6 +313,7 @@ def test_19_X_core_module_actually_importable(modname):
 # 19-4 추가 — modules.appointments availability 판정 helper (라우터 무수정).
 # 19-5 추가 — modules.leaves 휴무 도메인 규칙 / 조회 / service helper (라우터 무수정).
 # 19-6 추가 — modules.treatments 치료항목 분류 / 조회 / 직렬화 / 완료체크 (라우터 무수정).
+# 19-7 추가 — modules.patients / modules.notes 환자·메모 도메인 (라우터 무수정).
 # COMPAT: 기존 app.routers.api / app.routers.ai / app.services.ai.health 그대로 동작.
 EXPECTED_19_X_MODULES_MODULES = (
     "app.modules",
@@ -332,6 +333,12 @@ EXPECTED_19_X_MODULES_MODULES = (
     "app.modules.treatments.repository",
     "app.modules.treatments.service",
     "app.modules.treatments.completion_rules",
+    "app.modules.patients",
+    "app.modules.patients.rules",
+    "app.modules.patients.repository",
+    "app.modules.patients.service",
+    "app.modules.notes",
+    "app.modules.notes.rules",
 )
 
 
