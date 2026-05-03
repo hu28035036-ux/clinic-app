@@ -128,6 +128,13 @@ hidden += [
     'app.modules.patients.service',
     'app.modules.notes',
     'app.modules.notes.rules',
+    # 19-8 modules.therapists 후보 구조 — 치료사 / 직원 도메인 (라우터 무수정)
+    # COMPAT: 기존 app.routers.api 의 _serialize_employee / 통계 id→name 매핑 / 도수치료 표 흐름 그대로 동작.
+    # NOTE: doctors / medical_staff 전용 모듈은 *후속 검토* — 현재 진료과 / 진료실 / 오더 / 처방 / EMR 기능 부재.
+    'app.modules.therapists',
+    'app.modules.therapists.rules',
+    'app.modules.therapists.repository',
+    'app.modules.therapists.service',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
