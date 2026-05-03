@@ -105,6 +105,12 @@ hidden += [
     #         / _bump_version 그대로 동작.
     'app.modules.appointments',
     'app.modules.appointments.availability',
+    # 19-5 modules.leaves 후보 구조 — 휴무 도메인 규칙 / 조회 / service helper (라우터 무수정)
+    # COMPAT: 기존 app.routers.api 의 휴무 핸들러 + AI action_leave 흐름 그대로 동작.
+    'app.modules.leaves',
+    'app.modules.leaves.rules',
+    'app.modules.leaves.repository',
+    'app.modules.leaves.service',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
