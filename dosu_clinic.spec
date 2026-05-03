@@ -111,6 +111,14 @@ hidden += [
     'app.modules.leaves.rules',
     'app.modules.leaves.repository',
     'app.modules.leaves.service',
+    # 19-6 modules.treatments 후보 구조 — 치료항목 분류 / 조회 / 직렬화 / 완료체크 (라우터 무수정)
+    # COMPAT: 기존 app.routers.api 의 치료항목 / 완료체크 / 통계 흐름 그대로 동작.
+    # RISK: 시간 가중치 합산 (count_increment 곱셈) 도입 ⊥ — manual60=1 정책 보존.
+    'app.modules.treatments',
+    'app.modules.treatments.rules',
+    'app.modules.treatments.repository',
+    'app.modules.treatments.service',
+    'app.modules.treatments.completion_rules',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
