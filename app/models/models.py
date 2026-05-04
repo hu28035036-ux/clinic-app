@@ -43,6 +43,30 @@ class Employee(Base):
                                 foreign_keys="Appointment.therapist_id")
 
 
+class AppointmentSeries(Base):
+    """반복 예약 시리즈 (post-19-P / 20-3-4 / F-2 (a) N회만).
+
+    사용자 §6-6 결정 정합:
+      - (a) 반복 패턴 = N회만 (interval_days + count)
+      - (i) 일괄 처리 = 미래만 (DELETE 시 today 이후 슬롯만)
+      - (ii) 충돌 검사 = 등록 후 충돌만 안내 (충돌 슬롯 skip + 응답에 포함)
+
+    # NOTE: pattern 컬럼은 향후 (b) 주간/격주/월간 확장 대비 — 본 v1 은 'n_times' 단일 값.
+    # NOTE: pattern_data = JSON 문자열 — 본 v1 = '{"interval_days": N, "count": M}'.
+    """
+    __tablename__ = "appointment_series"
+    id = Column(String(32), primary_key=True, default=uid)
+    patient_id = Column(String(32), ForeignKey("patients.id"),
+                        nullable=False, index=True)
+    therapist_id = Column(String(32), ForeignKey("employees.id"), nullable=True)
+    pattern = Column(String(20), nullable=False, default="n_times")
+    pattern_data = Column(Text, nullable=False, default="{}")
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime, nullable=True)
+    treatment_codes = Column(Text, nullable=False, default="[]")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Doctor(Base):
     """의사 별도 테이블 (post-19-P / 20-3-3 / F-1 (c) 가벼운 의사).
 
@@ -179,6 +203,9 @@ class Appointment(Base):
     version = Column(Integer, nullable=False, default=0)
     # 20-3-1 (post-19-P / F-10): 노쇼 별도 필드. status="canceled" 와 동시 적용 가능.
     no_show = Column(Boolean, nullable=False, default=False)
+    # 20-3-4 (post-19-P / F-2): 반복 예약 시리즈 FK. 단일 예약은 None.
+    series_id = Column(String(32), ForeignKey("appointment_series.id"),
+                       nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

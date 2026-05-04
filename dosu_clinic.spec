@@ -212,6 +212,12 @@ hidden += [
     'app.modules.doctors.router',
     'app.modules.doctors.service',
     'app.modules.doctors.schemas',
+    # 20-3-4 F-2 — 반복 예약 (a) N회만 + (i) 미래만 일괄 + (ii) 충돌 skip
+    # NOTE: AppointmentSeries 모델 + Appointment.series_id FK 추가. m017 마이그레이션.
+    'app.modules.appointment_series',
+    'app.modules.appointment_series.router',
+    'app.modules.appointment_series.service',
+    'app.modules.appointment_series.schemas',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',

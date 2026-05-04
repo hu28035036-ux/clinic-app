@@ -399,6 +399,11 @@ EXPECTED_19_X_MODULES_MODULES = (
     "app.modules.doctors.router",
     "app.modules.doctors.service",
     "app.modules.doctors.schemas",
+    # 20-3-4 F-2 — 반복 예약 (N회만 + 미래만 + 충돌 skip)
+    "app.modules.appointment_series",
+    "app.modules.appointment_series.router",
+    "app.modules.appointment_series.service",
+    "app.modules.appointment_series.schemas",
 )
 
 

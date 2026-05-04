@@ -115,6 +115,8 @@ APPOINTMENT_EXTENDED_PROPS_KEYS: Final[frozenset[str]] = frozenset(
         "version",
         # 20-3-1 (post-19-P / F-10): 노쇼 별도 필드 (status="canceled" 와 동시 가능)
         "no_show",
+        # 20-3-4 (post-19-P / F-2): 반복 예약 시리즈 FK (단일 예약은 None)
+        "series_id",
     }
 )
 
