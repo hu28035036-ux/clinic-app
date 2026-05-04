@@ -161,6 +161,35 @@ hidden += [
     'app.modules.stats.aggregators',
     'app.modules.stats.service',
     'app.modules.stats.schemas',
+    # 19-12 modules.admin / backup / audit / export_import 후보 구조 (라우터 무수정)
+    # COMPAT: 기존 app.routers.api / app.routers.ai 의 관리자 / about / config / system-settings /
+    #         backup / restore / audit-logs / data-convert 핸들러 그대로 동작.
+    # SAFETY: API key / 문자나라 계정 / sync_secret / admin_password_hash 원문 비노출 정책 단일 원천.
+    # RISK: 운영 DB 보호 (engine.dispose + atomic rename) 정책 변경 ⊥. audit detail 500자 cap 변경 ⊥.
+    'app.modules.admin',
+    'app.modules.admin.service',
+    'app.modules.admin.schemas',
+    'app.modules.backup',
+    'app.modules.backup.service',
+    'app.modules.backup.schemas',
+    'app.modules.audit',
+    'app.modules.audit.service',
+    'app.modules.audit.schemas',
+    'app.modules.export_import',
+    'app.modules.export_import.service',
+    'app.modules.export_import.schemas',
+    # 19-13 modules.ai.commands 후보 구조 — AI commands Preview/Approval/Execute 경계 (라우터 무수정)
+    # COMPAT: 기존 app.routers.ai 의 action/parse/preview/execute, sms/{validate,draft}, manual/{search,ask} 그대로 동작.
+    # SAFETY: 본 패키지 = byte-equivalent helper 만 — 실제 LLM 호출 ⊥, DB 변경 ⊥, SMS 발송 ⊥.
+    # RISK: AI 가 사용자 승인 없이 DB 변경 ⊥ — Preview/Execute 경계 정책 단일 원천. local-first 가드.
+    'app.modules.ai',
+    'app.modules.ai.commands',
+    'app.modules.ai.commands.schemas',
+    'app.modules.ai.commands.safety',
+    'app.modules.ai.commands.preview',
+    'app.modules.ai.commands.executor',
+    'app.modules.ai.commands.service',
+    'app.modules.ai.commands.adapters',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',

@@ -362,6 +362,28 @@ EXPECTED_19_X_MODULES_MODULES = (
     "app.modules.stats.aggregators",
     "app.modules.stats.service",
     "app.modules.stats.schemas",
+    # 19-12 추가 — modules.admin / backup / audit / export_import (라우터 무수정).
+    "app.modules.admin",
+    "app.modules.admin.service",
+    "app.modules.admin.schemas",
+    "app.modules.backup",
+    "app.modules.backup.service",
+    "app.modules.backup.schemas",
+    "app.modules.audit",
+    "app.modules.audit.service",
+    "app.modules.audit.schemas",
+    "app.modules.export_import",
+    "app.modules.export_import.service",
+    "app.modules.export_import.schemas",
+    # 19-13 추가 — modules.ai.commands AI commands Preview/Approval/Execute 경계 (라우터 무수정).
+    "app.modules.ai",
+    "app.modules.ai.commands",
+    "app.modules.ai.commands.schemas",
+    "app.modules.ai.commands.safety",
+    "app.modules.ai.commands.preview",
+    "app.modules.ai.commands.executor",
+    "app.modules.ai.commands.service",
+    "app.modules.ai.commands.adapters",
 )
 
 
