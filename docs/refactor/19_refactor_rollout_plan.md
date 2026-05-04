@@ -555,6 +555,104 @@
 
 ---
 
+## 8-A. 각 19-x 세션 공통 완료 조건 (19-C 연결)
+
+> 19-C [실제 기능 작동확인 체크리스트](19_refactor_function_verification_checklist.md) 신설 후 본 §8-A 추가. §3-0 ~ §3-14 의 각 세션 표 외에 *모든 세션 공통* 으로 충족해야 할 완료 조건 정리.
+
+### 8-A-1. 공통 완료 조건 10개 (모든 19-x 세션)
+
+| # | 항목 | 검증 |
+|---|---|---|
+| G-1 | 관련 자동 테스트 통과 | `run_check.bat` + `pytest tests -v` (또는 도메인별) + ruff + check_db_path 모두 통과. |
+| G-2 | 관련 실제 기능 작동확인 수행 | [19-C §18 세션별 영향 범위 매핑](19_refactor_function_verification_checklist.md) 기준 영향 항목 모두 확인. |
+| G-3 | 수동 확인 필요 항목 기록 | UI / FullCalendar / 문자 복사 / PyInstaller exe 등 자동 검증 부재 항목 명시. |
+| G-4 | 운영 DB / 외부 API / 실제 문자 발송 없음 확인 | `check_db_path.py` + `_block_sdk_modules` + sms provider mock 모두 활성. |
+| G-5 | 개인정보 / API key 원문 노출 없음 확인 | 응답 / 로그 / AI prompt grep — 환자 / API key 원문 부재. |
+| G-6 | [reports/refactor/{SESSION_NAME}_test_report.md](../../reports/refactor/) 작성 | [19-C §2-2 형식](19_refactor_function_verification_checklist.md) 7대 분류 모두 포함. |
+| G-7 | [reports/refactor/{SESSION_NAME}_fix_summary.md](../../reports/refactor/) 작성 | 변경 파일 목록 + 파일별 변경 요약 + 의도 + 이유. |
+| G-8 | [reports/refactor/{SESSION_NAME}_codex_review_request.md](../../reports/refactor/) + `latest_codex_review_request.md` 작성 | 본 §8-A-2 의 14 항목 모두 포함. |
+| G-9 | Codex 검증 통과 | pass 또는 pass with caveat (yes 진입 가능). |
+| G-10 | 다음 세션 진행 가능 판단 | yes / no + 근거. no 면 본 §7 (rollback) 또는 보강 후 재검증. |
+
+### 8-A-2. Codex 검증 요청 문서 공통 항목 (모든 19-x 세션)
+
+> 본 19-P-9 [§9-2 14 항목](19_refactor_checklists.md) + 19-C 추가 항목.
+
+| # | 항목 |
+|---|---|
+| 1 | 세션 이름 (`19-x_<domain>`) |
+| 2 | 작업 목표 (한 문장) |
+| 3 | 변경 파일 목록 (신규 / 수정 / 삭제 분류) |
+| 4 | 수정 가능 범위 |
+| 5 | 수정 금지 범위 |
+| 6 | 실제 변경 요약 (이동한 로직 / wrapper / 새 contract 테스트) |
+| 7 | 실행한 테스트 (run_check.bat / pytest / AI 하네스 / PyInstaller / S-1~S-5) |
+| 8 | 테스트 결과 요약 (529 passed baseline 또는 갱신값) |
+| 9 | 수정 루프 횟수 (1 ~ 5) |
+| **10** | **실제 기능 작동확인 수행 여부 (19-C §3 ~ §17 영향 범위 기준)** |
+| **11** | **자동 테스트로 확인한 항목** |
+| **12** | **테스트 클라이언트 / API 호출로 확인한 항목** |
+| **13** | **수동 확인 필요 항목** |
+| **14** | **이번 세션 영향 없음으로 판단한 항목** |
+| **15** | **확인하지 못한 항목과 이유** |
+| 16 | 운영 DB 접근 여부 |
+| 17 | 외부 API 호출 여부 |
+| 18 | 실제 문자 발송 여부 |
+| 19 | 개인정보 / API key 원문 노출 여부 |
+| 20 | 기존 API 응답 key 유지 여부 |
+| 21 | 기능 작동확인 누락 여부 |
+| 22 | 다음 세션 진행 가능 여부 (yes / no + 근거) |
+
+### 8-A-3. 세션별 실제 기능 확인 범위 (간단 매핑)
+
+> [19-C §18](19_refactor_function_verification_checklist.md) 인덱스 요약. 각 세션 작업 시 해당 항목만 확인.
+
+| 세션 | 실제 기능 확인 범위 |
+|---|---|
+| **19-0** | 공통 (운영 DB 보호 / 외부 API 차단 / 18-8 baseline 유지). |
+| **19-1** core | 공통 (응답 키 0 변경 / 운영 DB 보호). |
+| **19-2** settings/feature_flags/health | API key 비노출 / health 응답 / AI 모드 분기. |
+| **19-3** calendar (view-model) | 캘린더 표시 / FullCalendar event / UI 무수정 (수동 확인). |
+| **19-4** availability | 예약 생성 / 수정 / 충돌 / 휴무차단 / 반차차단 / 점심창 / devtools 우회 차단. |
+| **19-5** leaves | 휴무 등록 (full/am/pm) / 조회 / 삭제 / 표시 / 예약차단 / `_upsert_employee_leave_core` 단일 진실원천 / AI action_leave 회귀. |
+| **19-6** treatments / completion_rules | 치료항목 / 완료체크 / 개별 카운트 / `manual60=1` 보존 / 시간 가중치 ⊥. |
+| **19-7** patients / notes / data-convert | 환자검색 / 신환 / 메모 (당일 vs 지속) / 개인정보 비노출 / data-convert 트랜잭션. |
+| **19-8** staff | 치료사 활성 / 색상 / `can_eswt` / `can_manual` / alias 이중 키 / **F-1 의사 부재 단정 ⊥** / 의사 가드 후속. |
+| **19-9** appointments | 예약 생성 / 수정 / 삭제 / 조회 / 충돌 / 낙관적 락 / FullCalendar event / approve · revert. |
+| **19-10** sms | 문자대상 / 템플릿 / **실제발송 없음** / API key 마스킹 / 자동 발송 트리거 ⊥. |
+| **19-11** stats | 기존 통계 집계 결과 유지 / 8 endpoint 응답 키 / read-only 정책 / `is_doctor_filter` / `_get_manual_treatment_rows`. |
+| **19-12** admin / backup / audit | API key 비노출 / 백업 atomic rename / 운영 DB 보호 / `audit()` 시그니처. |
+| **19-13** AI commands | 승인 없는 실행 없음 / Safety → Preview → Execute / `local_only` provider 호출 0 / 33+ 응답 키 / HMAC + TOCTOU. |
+| **19-14** final | 전체 기능 + PyInstaller 빌드 (사용자 승인 시) + exe smoke. |
+
+### 8-A-4. 진행 순서 (모든 19-x 세션 공통)
+
+> [docs/ai_code_session_protocol.md](../ai_code_session_protocol.md) + 본 19-P-9 [§1 ~ §8](19_refactor_checklists.md) + 19-C 통합.
+
+1. 이전 세션 Codex 검증 결과 확인 ([reports/refactor/{이전 세션}_codex_review.md](../../reports/refactor/) 영구 보존본).
+2. 해당 세션 작업 범위 확인 (§3-N 표 + 사용자 지시문).
+3. 수정 금지 범위 확인.
+4. 코드 수정 전 관련 기능 작동 기준 확인 ([19-C §18 세션별 영향 범위 매핑](19_refactor_function_verification_checklist.md)).
+5. 작은 범위로 코드 수정.
+6. 자동 테스트 실행 (`run_check.bat` + 도메인별 pytest + AI 하네스).
+7. 실제 기능 작동확인 수행 ([19-C §4 ~ §17 영향 항목](19_refactor_function_verification_checklist.md)).
+8. 실패 시 최대 5회 수정 루프 (T-7 / 19-P-9 §7).
+9. 5회 실패 시 [failure report](../../reports/ai_dev_loop/) 작성 후 중단.
+10. [reports/refactor/{SESSION_NAME}_test_report.md](../../reports/refactor/) 작성 + `latest_test_report.md` 동기.
+11. [reports/refactor/{SESSION_NAME}_fix_summary.md](../../reports/refactor/) 작성 + `latest_fix_summary.md` 동기.
+12. [reports/refactor/{SESSION_NAME}_codex_review_request.md](../../reports/refactor/) + `latest_codex_review_request.md` 작성 (본 §8-A-2 22 항목 포함).
+13. Codex 검증 요청 (사용자 → Codex).
+14. Codex 검증 결과 문서 확인 ([reports/refactor/{SESSION_NAME}_codex_review.md](../../reports/refactor/)).
+15. 치명 / 중간 위험 없을 때 다음 세션 진행.
+
+### 8-A-5. 필수 원칙
+
+- [ ] **Codex 검증 전 다음 세션 진행 ⊥** (R-10 / DEC-T 정합).
+- [ ] **기능 작동확인 누락 시 다음 세션 진행 보류** ([19-C §1 V-1 / V-7 / V-8](19_refactor_function_verification_checklist.md) 정합).
+- [ ] **자동 테스트만 통과하고 실제 기능 확인이 누락되면 완료로 보지 않음** (G-2 / G-6 누락 시 Codex 가 *재작업 필요* 판정 가능).
+
+---
+
 ## 9. 보류 / 후속 검토 항목
 
 > 19-P-2 §2-2 + 19-P-3 §31 post-19-P + 19-P-5 §5-3 정합.

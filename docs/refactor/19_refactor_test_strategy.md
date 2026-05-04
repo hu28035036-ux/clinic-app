@@ -615,6 +615,48 @@
 
 ---
 
+## 7-A. 자동 테스트와 실제 기능 작동확인 (19-C 연결)
+
+> 19-C [실제 기능 작동확인 체크리스트](19_refactor_function_verification_checklist.md) 신설 후 본 §7-A 추가. T-1 ~ T-15 와 별개로 자동 테스트 + 실제 기능 작동확인 게이트 운영 방식 정리.
+
+### 7-A-1. 자동 테스트와 실제 기능 작동확인의 차이
+
+| 구분 | 자동 테스트 | 실제 기능 작동확인 |
+|---|---|---|
+| 대상 | 함수 단위 / API contract / 응답 dict 키 | 실제 기능 흐름 (예약 등록 → 캘린더 표시 → 통계 반영 → 문자 대상 추출 등) |
+| 도구 | `pytest tests -v` / `ruff` / `check_db_path.py` / AI 하네스 6개 | TestClient(app) / API 호출 / 수동 (UI / FullCalendar / 문자 복사) |
+| 합격 기준 | 통과 / 실패 (binary) | 영향 범위 항목 모두 확인 + 기록 + 5분류 (자동 / API / 수동 / 영향 없음 / 확인 못함) |
+| 한계 | UI 흐름 / 사용자 시나리오 / 다중 기능 연결은 확인 어려움 | 자동화 부재 — 누락 시 다음 세션 진행 보류 |
+| 위치 | [19_refactor_test_strategy.md §1 ~ §6](19_refactor_test_strategy.md) | [19_refactor_function_verification_checklist.md](19_refactor_function_verification_checklist.md) |
+
+### 7-A-2. 자동 테스트만으로 충분하지 않은 이유
+
+- T-1 / T-2 (이동 전후 결과 동치) 는 *함수 단위* 검증 — 다중 기능 연결 (예약 → 캘린더 → 통계 → 문자) 은 별도 확인 필요.
+- T-3 (응답 key 보존) 은 *contract* 검증 — 응답 dict 가 같아도 UI 표시 / 흐름이 깨질 수 있음.
+- T-4 (프론트 동작 보존) 는 자동 검증 부재 — 19-3 calendar / 9 캘린더 표시 / FullCalendar event 형식 등은 수동 확인 필요.
+- T-12 (외부 API 호출 0) 는 `local_only` 모드 단언만 — 실제 운영 모드 / `local_first` / `ai_assist` 시나리오는 별도 확인 필요.
+
+### 7-A-3. 테스트 클라이언트 / API 호출 기반 확인 기준
+
+- 각 19-x 세션의 영향 범위 endpoint 를 `TestClient(app)` 로 호출 → 응답 dict 비교.
+- 예: 19-9 appointments 분리 후 `POST /api/appointments` → `GET /api/appointments?range=...` → `GET /api/sms/tomorrow-targets` → `GET /api/stats/aggregate` 의 4단계 흐름 확인.
+- 19-C [§4 ~ §17 14개 영역](19_refactor_function_verification_checklist.md) 의 영향 항목 → 자동 / API / 수동 분류.
+
+### 7-A-4. 수동 확인 필요 항목 기록 기준
+
+- UI / FullCalendar 표시 / 문자 복사 흐름 / PyInstaller exe 실행 등 자동 검증 부재 항목.
+- [reports/refactor/{SESSION_NAME}_test_report.md](../../reports/refactor/) 에 *수동 확인 필요* 분류로 기록 + 후속 세션 / 사용자 수동 확인 시점 명시.
+- 수동 확인 못한 항목은 *확인 못함* 분류 + 이유 + 후속 확인 세션 명시.
+
+### 7-A-5. 실제 기능 작동확인 결과를 다음 세션 진행 게이트로 사용
+
+- [ ] **자동 테스트 통과 + 해당 기능 작동확인 기록 + Codex 검증 통과 = 다음 세션 진행 가능.**
+- [ ] **기능 작동확인 누락 시 다음 세션 진행 보류 가능** (자동 테스트만 통과하고 실제 기능 확인이 누락되면 *완료* 로 보지 않음).
+- [ ] Codex 검증 요청 문서 ([reports/refactor/{SESSION_NAME}_codex_review_request.md](../../reports/refactor/)) 에 작동확인 결과 7대 분류 모두 포함 — 누락 시 Codex 가 *재작업 필요* 판정 가능.
+- [ ] 부재 항목 (F-1 ~ F-15) 을 실제 구현된 것처럼 단정 ⊥.
+
+---
+
 ## 8. Codex 검증 결과 기록 위치
 
 본 19-P-5 산출물의 Codex 검증 결과는 다음 위치에 기록된다:

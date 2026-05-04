@@ -736,10 +736,35 @@ venv/Scripts/python.exe -m pytest tests/test_pyinstaller_hidden_imports.py -v --
 
 ---
 
+## 9-A. 실제 기능 작동확인 체크리스트 (19-C 연결)
+
+> 19-C [실제 기능 작동확인 체크리스트](19_refactor_function_verification_checklist.md) 신설 후 본 §9-A 추가. 자동 테스트 통과 외에 **실제 기능 흐름** 확인을 의무화.
+
+### 9-A-1. 적용 원칙
+
+- [ ] 각 19-x 세션은 [19_refactor_function_verification_checklist.md](19_refactor_function_verification_checklist.md) 를 확인한다.
+- [ ] 해당 세션 영향 범위 ([19-C §18 세션별 영향 범위 매핑](19_refactor_function_verification_checklist.md)) 에 맞는 실제 기능 작동확인을 수행한다.
+- [ ] 자동 테스트 / 테스트 클라이언트·API 호출 확인 / 수동 확인 필요 / 영향 없음 / 확인 못함 5분류로 구분해서 기록한다.
+- [ ] 운영 DB / 외부 API / 실제 문자 발송은 금지한다 (V-3 / V-4 / V-5 정합).
+- [ ] Codex 검증 요청 문서에 실제 기능 작동확인 결과를 포함한다 (본 §9 의 14 항목 + 작동확인 분류).
+
+### 9-A-2. 보고서 기록 형식
+
+- [ ] [reports/refactor/{SESSION_NAME}_test_report.md](../../reports/refactor/) 에 [19-C §2-2 형식](19_refactor_function_verification_checklist.md) 으로 기록한다.
+- [ ] 자동 테스트 / API 호출 / 수동 / 영향 없음 / 확인 못함 / 보안 (운영 DB / 외부 API / 문자 발송 / PII·API key) / 결론 (다음 단계 가능 여부 + 남은 위험) 7대 분류 모두 포함.
+
+### 9-A-3. 다음 세션 진행 게이트
+
+- [ ] 자동 테스트 통과 + 영향 범위 작동확인 기록 + Codex 검증 통과 = 다음 세션 진행 가능.
+- [ ] **기능 작동확인 누락 시 다음 세션 진행 보류 가능** (자동 테스트만 통과하고 실제 기능 확인이 누락되면 *완료* 로 보지 않음).
+- [ ] 부재 항목 (doctors / 노쇼 / 반복예약 / 자원 / 알림 / 출력물 등 [19_refactor_rollout_plan.md §9](19_refactor_rollout_plan.md) F-1 ~ F-15) 을 실제 구현된 것처럼 단정 ⊥ (V-10 정합).
+
+---
+
 ## 10. 종합
 
-- 본 19-P-9 = 19-x 실제 코드 리팩토링 세션이 매 세션 적용할 *공통 체크리스트* 9개 섹션 (§1 ~ §9).
-- §1 세션 시작 전 (8 항목) / §2 코드 수정 전 (9 항목) / §3 코드 이동 (8 항목) / §4 주석·문서화 (9 항목) / §5 테스트 (12 항목) / §6 모듈별 특수 (8 모듈) / §7 실패 대응 (7 항목) / §8 완료 (12 항목) / §9 Codex 검증 요청 (6 항목) = **총 79+ 체크 단위**.
+- 본 19-P-9 = 19-x 실제 코드 리팩토링 세션이 매 세션 적용할 *공통 체크리스트* 9개 섹션 (§1 ~ §9) + §9-A (19-C 연결).
+- §1 세션 시작 전 (8 항목) / §2 코드 수정 전 (9 항목) / §3 코드 이동 (8 항목) / §4 주석·문서화 (9 항목) / §5 테스트 (12 항목) / §6 모듈별 특수 (8 모듈) / §7 실패 대응 (7 항목) / §8 완료 (12 항목) / §9 Codex 검증 요청 (6 항목) / **§9-A 실제 기능 작동확인 (3 항목 + 19-C §4 ~ §17 14개 영역)** = **총 82+ 체크 단위**.
 - 모든 체크리스트는 19-P-1 ~ 19-P-8 산출물의 P-1 ~ P-12 / R-1 ~ R-14 / D-1 ~ D-13 / T-1 ~ T-15 / RB-1 ~ RB-10 / Risk ID 77 / DEC-A ~ DEC-T 와 정합.
 - §6 모듈별 특수 체크리스트 = appointments / leaves / treatments / stats / sms / patients-notes / admin-settings / ai-rag (8 모듈) — 각 모듈의 핵심 위험 + 절대 보존 항목 명시.
 - §4 주석 / 문서화 = COMPAT / SAFETY / NOTE / RISK / TODO / TEMP 6 카테고리 + DEC-S 정합.
