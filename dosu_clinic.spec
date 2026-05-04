@@ -190,6 +190,14 @@ hidden += [
     'app.modules.ai.commands.executor',
     'app.modules.ai.commands.service',
     'app.modules.ai.commands.adapters',
+    # 20-1 그룹 A — F-15 의사 가드 + F-7 privacy retention + F-8 audit retention
+    # SAFETY: doctors 도메인 부재 — DB 근거 없는 의사 정보 응답 차단 (post-19-P / F-15).
+    # NOTE: 환자 18개월 비활성 마스킹 / AI 로그 6개월 / audit_log 5년 자동 정리 헬퍼.
+    'app.modules.ai.safety',
+    'app.modules.ai.safety.doctor_guard',
+    'app.modules.privacy',
+    'app.modules.privacy.retention',
+    'app.modules.audit.retention',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',

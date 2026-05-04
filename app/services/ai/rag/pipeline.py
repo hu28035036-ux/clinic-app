@@ -132,6 +132,16 @@ def validate_answer(text: str, *, has_sources: bool) -> dict:
             reason = "unsupported claim"
             hits += 1
 
+    # 5) F-15 의사 정보 단정 차단 (post-19-P / 20-1 그룹 A)
+    # SAFETY: doctors 도메인 부재 (F-1) — DB 근거 없는 의사 정보 응답 ⊥
+    if not blocked:
+        from app.modules.ai.safety.doctor_guard import has_doctor_claim
+        doctor_blocked, doctor_reason = has_doctor_claim(cleaned)
+        if doctor_blocked:
+            blocked = True
+            reason = doctor_reason
+            hits += 1
+
     if blocked:
         cleaned = _BLOCKED_ANSWER
 

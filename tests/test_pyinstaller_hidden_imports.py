@@ -384,6 +384,12 @@ EXPECTED_19_X_MODULES_MODULES = (
     "app.modules.ai.commands.executor",
     "app.modules.ai.commands.service",
     "app.modules.ai.commands.adapters",
+    # 20-1 그룹 A 추가 — F-15 의사 가드 + F-7 privacy retention + F-8 audit retention
+    "app.modules.ai.safety",
+    "app.modules.ai.safety.doctor_guard",
+    "app.modules.privacy",
+    "app.modules.privacy.retention",
+    "app.modules.audit.retention",
 )
 
 
