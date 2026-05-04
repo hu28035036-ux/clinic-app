@@ -143,6 +143,15 @@ hidden += [
     'app.modules.therapists.rules',
     'app.modules.therapists.repository',
     'app.modules.therapists.service',
+    # 19-10 modules.sms 후보 구조 — 문자 / SMS 도메인 (라우터 무수정)
+    # COMPAT: 기존 app.routers.api 의 SMS 핸들러 (/sms/setting, /sms/templates, /sms/tomorrow-targets, /sms/send) 그대로 동작.
+    # SAFETY: provider.FakeSmsProvider 는 외부 호출 ⊥ — 본 모듈 import 만으로 외부 발송 사고 차단. 문자나라 계정 / API key 원문 노출 ⊥.
+    'app.modules.sms',
+    'app.modules.sms.rules',
+    'app.modules.sms.templates',
+    'app.modules.sms.service',
+    'app.modules.sms.provider',
+    'app.modules.sms.schemas',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
