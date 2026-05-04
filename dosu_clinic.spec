@@ -152,6 +152,15 @@ hidden += [
     'app.modules.sms.service',
     'app.modules.sms.provider',
     'app.modules.sms.schemas',
+    # 19-11 modules.stats 후보 구조 — 통계 도메인 (라우터 무수정)
+    # COMPAT: 기존 app.routers.api 의 통계 핸들러 (/stats/summary, /stats/by-hour, /stats/by-weekday, /stats/by-treatment, /stats/daily, /stats/aggregate, /stats/by-therapist, /stats/manual-by-therapist, /stats/daily-by-therapist) 그대로 동작.
+    # RISK: 시간 가중치 방식 (manual30=1, manual60=2) 회귀 방지 — rules.MANUAL_COUNT_INCREMENT_PER_APPT = 1 가드.
+    'app.modules.stats',
+    'app.modules.stats.rules',
+    'app.modules.stats.repository',
+    'app.modules.stats.aggregators',
+    'app.modules.stats.service',
+    'app.modules.stats.schemas',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',

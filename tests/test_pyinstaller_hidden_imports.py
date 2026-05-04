@@ -356,6 +356,12 @@ EXPECTED_19_X_MODULES_MODULES = (
     "app.modules.sms.service",
     "app.modules.sms.provider",
     "app.modules.sms.schemas",
+    "app.modules.stats",
+    "app.modules.stats.rules",
+    "app.modules.stats.repository",
+    "app.modules.stats.aggregators",
+    "app.modules.stats.service",
+    "app.modules.stats.schemas",
 )
 
 
