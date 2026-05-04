@@ -21,6 +21,15 @@ class EmployeeOut(EmployeeIn):
     class Config: from_attributes = True
 
 
+class EmployeePermissionIn(BaseModel):
+    """20-3-2 (post-19-P / F-11): 직원 권한 등급 변경 입력.
+
+    # NOTE: 권장값 등급 = 'staff' / 'admin' / 'super' (3등급, viewer 미도입).
+    # 라우터에서 EMPLOYEE_PERMISSION_LEVELS 상수로 검증.
+    """
+    permission_level: str
+
+
 class EmployeeLeaveIn(BaseModel):
     employee_id: str
     leave_date: str

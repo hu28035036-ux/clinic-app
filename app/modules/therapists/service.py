@@ -60,6 +60,8 @@ def serialize_employee(employee: Any) -> dict[str, Any]:
         "can_eswt": _rules.can_handle_eswt(employee.can_eswt),
         "can_manual": _rules.can_handle_manual(employee.can_manual),
         "sort_order": employee.sort_order or 0,
+        # 20-3-2 (post-19-P / F-11): 권한 등급 — api.py:_serialize_employee 정합
+        "permission_level": getattr(employee, "permission_level", None) or "staff",
     }
 
 

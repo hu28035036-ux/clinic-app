@@ -318,7 +318,10 @@ def test_count_employees_by_role(client):
 
 
 def test_serialize_employee_byte_equivalent_with_api(client):
-    """COMPAT: ``api.py:_serialize_employee`` 의 10키 dict 와 byte-equivalent."""
+    """COMPAT: ``api.py:_serialize_employee`` 의 12키 dict 와 byte-equivalent.
+
+    20-3-2 (post-19-P / F-11): 11키 + permission_level = 12키.
+    """
     from app.database import SessionLocal
     from app.routers.api import _serialize_employee
     from tests.harness.seed_data import get_test_therapist_id
@@ -334,11 +337,13 @@ def test_serialize_employee_byte_equivalent_with_api(client):
         service_dict = _service.serialize_employee(e)
 
         assert api_dict == service_dict
-        # 10키 정합.
+        # 12키 정합 (20-3-2 F-11 permission_level 추가).
         assert set(service_dict.keys()) == {
             "id", "name", "role", "color", "active",
             "birth_date", "phone", "hire_date",
             "can_eswt", "can_manual", "sort_order",
+            # 20-3-2 (post-19-P / F-11)
+            "permission_level",
         }
     finally:
         db.close()
@@ -373,6 +378,8 @@ def test_get_employees_endpoint_keys_match_serialize_employee(client):
         "id", "name", "role", "color", "active",
         "birth_date", "phone", "hire_date",
         "can_eswt", "can_manual", "sort_order",
+        # 20-3-2 (post-19-P / F-11)
+        "permission_level",
     }
     for item in items:
         assert set(item.keys()) == expected_keys

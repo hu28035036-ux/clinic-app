@@ -173,6 +173,8 @@ def _serialize_employee(e: models.Employee) -> dict:
         "hire_date": e.hire_date,
         "can_eswt": bool(e.can_eswt), "can_manual": bool(e.can_manual),
         "sort_order": e.sort_order or 0,
+        # 20-3-2 (post-19-P / F-11): 권한 등급 — 'staff' / 'admin' / 'super'
+        "permission_level": e.permission_level or "staff",
     }
 
 
@@ -1077,6 +1079,40 @@ def delete_employee(eid: str, db: Session = Depends(get_db),
     audit(db, "employee.delete", eid, f"name={e.name}")
     db.commit()
     return {"ok": True}
+
+
+# 20-3-2 (post-19-P / F-11): 직원 권한 등급 변경 — admin 권한 필수.
+# NOTE: 권장값 등급 = 'staff' / 'admin' / 'super' (3등급, viewer 미도입).
+EMPLOYEE_PERMISSION_LEVELS = ("staff", "admin", "super")
+
+
+@router.post("/admin/employees/{eid}/permission")
+def update_employee_permission(
+    eid: str,
+    p: schemas.EmployeePermissionIn,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_admin),
+):
+    """20-3-2 (post-19-P / F-11): 직원 권한 등급 변경.
+
+    # SAFETY: admin 권한 필수 (require_admin) — 권한 등급은 PBKDF2 + 5회 잠금 +
+    # 8h 세션 게이트를 통과한 admin 만 변경 가능.
+    """
+    if p.permission_level not in EMPLOYEE_PERMISSION_LEVELS:
+        raise HTTPException(
+            400,
+            f"permission_level 은 {EMPLOYEE_PERMISSION_LEVELS} 중 하나여야 합니다."
+        )
+    e = db.get(models.Employee, eid)
+    if not e:
+        raise HTTPException(404)
+    e.permission_level = p.permission_level
+    db.flush()
+    _log(db, "employee", e.id, "upsert", e)
+    audit(db, "employee.permission_update", e.id, f"level={p.permission_level}")
+    db.commit()
+    db.refresh(e)
+    return _serialize_employee(e)
 
 
 # ──────────────── 직원 휴무 (EmployeeLeave) ────────────────

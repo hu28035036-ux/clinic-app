@@ -33,6 +33,9 @@ class Employee(Base):
     can_eswt = Column(Boolean, default=True)
     can_manual = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
+    # 20-3-2 (post-19-P / F-11): 권한 등급. 'staff' / 'admin' / 'super' (3등급).
+    # 기존 admin 로그인 / require_admin 흐름은 별개 — 본 컬럼은 *직원 권한 메타*.
+    permission_level = Column(String(20), nullable=False, default="staff")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
