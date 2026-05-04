@@ -56,6 +56,8 @@ def aggregate_summary(
     approved = 0
     manual_approved = 0
     canceled = 0
+    # 20-3-1 (post-19-P / F-10): 노쇼 별도 카운트 (cancel 과 분리 — 사용자 §3-7 (ii))
+    no_show_count = 0
 
     for a in rows:
         codes = parse_codes(a.treatment_codes)
@@ -68,6 +70,9 @@ def aggregate_summary(
         total += _rules.MANUAL_COUNT_INCREMENT_PER_APPT
         if a.status == "canceled":
             canceled += _rules.MANUAL_COUNT_INCREMENT_PER_APPT
+            # NOTE: 노쇼는 cancel 의 부분집합 (둘 다 카운트)
+            if getattr(a, "no_show", False):
+                no_show_count += _rules.MANUAL_COUNT_INCREMENT_PER_APPT
         else:
             is_manual = any(c in manual_codes_set for c in codes)
             if is_manual:
@@ -83,6 +88,7 @@ def aggregate_summary(
         "approved": approved,
         "manual_approved": manual_approved,
         "canceled": canceled,
+        "no_show_count": no_show_count,
     }
 
 

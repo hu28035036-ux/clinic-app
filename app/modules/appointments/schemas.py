@@ -93,7 +93,7 @@ APPOINTMENT_SERIALIZE_TOP_KEYS: Final[frozenset[str]] = frozenset(
     {"id", "start", "end", "color", "textColor", "extendedProps"}
 )
 
-# extendedProps 안의 키 — 16개 (api.py:199~218 정합).
+# extendedProps 안의 키 — 16개 + 20-3-1 F-10 추가 = 17개 (api.py:199~218 정합).
 APPOINTMENT_EXTENDED_PROPS_KEYS: Final[frozenset[str]] = frozenset(
     {
         "patient_id",
@@ -113,6 +113,8 @@ APPOINTMENT_EXTENDED_PROPS_KEYS: Final[frozenset[str]] = frozenset(
         "assignments",
         "is_new_patient",
         "version",
+        # 20-3-1 (post-19-P / F-10): 노쇼 별도 필드 (status="canceled" 와 동시 가능)
+        "no_show",
     }
 )
 

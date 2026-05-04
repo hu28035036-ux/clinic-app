@@ -135,6 +135,8 @@ def build_summary_response(
         "approved": counts.get("approved", 0),
         "manual_approved": counts.get("manual_approved", 0),
         "canceled": counts.get("canceled", 0),
+        # 20-3-1 (post-19-P / F-10): 노쇼 별도 카운트 (cancel 의 부분집합 — 사용자 §3-7 (ii))
+        "no_show_count": counts.get("no_show_count", 0),
         "treatment_code": treatment_code or "",
     }
 

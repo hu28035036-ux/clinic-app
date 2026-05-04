@@ -39,6 +39,8 @@ SUMMARY_RESPONSE_KEYS: Final[frozenset[str]] = frozenset(
         "approved",
         "manual_approved",
         "canceled",
+        # 20-3-1 (post-19-P / F-10): 노쇼 별도 카운트
+        "no_show_count",
         "treatment_code",
     }
 )

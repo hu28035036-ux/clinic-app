@@ -215,6 +215,8 @@ def _serialize_appointment(a: models.Appointment) -> dict:
             "assignments": [_serialize_assignment(x) for x in a.assignments],
             "is_new_patient": bool(a.is_new_patient),
             "version": int(a.version or 0),
+            # 20-3-1 (post-19-P / F-10): 노쇼 별도 필드 — status="canceled" 와 동시 가능
+            "no_show": bool(a.no_show),
         },
     }
 
@@ -2014,11 +2016,36 @@ def cancel_appointment(aid: str, p: schemas.CancelAction,
     _check_version(obj, p.version)
     obj.status = "canceled"
     obj.memo = (obj.memo or "") + (f"\n[취소] {p.memo}" if p.memo else "\n[취소]")
+    # 20-3-1 (post-19-P / F-10): 노쇼 동시 적용 (사용자 §3-7 권장값 (i)).
+    if p.no_show:
+        obj.no_show = True
     _bump_version(obj)
     db.flush()
     _log(db, "appointment", obj.id, "upsert", obj)
     db.commit()
-    return {"ok": True, "version": int(obj.version or 0)}
+    return {"ok": True, "version": int(obj.version or 0), "no_show": bool(obj.no_show)}
+
+
+@router.post("/appointments/{aid}/mark-no-show")
+def mark_no_show(aid: str, db: Session = Depends(get_db)):
+    """20-3-1 (post-19-P / F-10): 노쇼 마킹.
+
+    # NOTE: 사용자 §3-7 권장값 (i) — 노쇼 = cancel 동시. obj.no_show=True +
+    # status="canceled" 둘 다 적용. 메모에 [노쇼] prefix 자동 추가.
+    """
+    obj = db.get(models.Appointment, aid)
+    if not obj:
+        raise HTTPException(404)
+    if obj.status == "approved":
+        raise HTTPException(400, "승인된 예약은 노쇼로 처리할 수 없습니다. 먼저 승인을 되돌리세요.")
+    obj.no_show = True
+    obj.status = "canceled"
+    obj.memo = (obj.memo or "") + "\n[노쇼]"
+    _bump_version(obj)
+    db.flush()
+    _log(db, "appointment", obj.id, "upsert", obj)
+    db.commit()
+    return {"ok": True, "no_show": True, "status": obj.status, "version": int(obj.version or 0)}
 
 
 @router.delete("/appointments/{aid}")
@@ -4015,6 +4042,8 @@ def stats_summary(year: int = None, month: int = None,
     approved = 0
     manual_approved = 0
     canceled = 0
+    # 20-3-1 (post-19-P / F-10): 노쇼 별도 카운트 (cancel 의 부분집합)
+    no_show_count = 0
 
     for a in rows:
         codes = _parse_codes(a.treatment_codes)
@@ -4023,6 +4052,8 @@ def stats_summary(year: int = None, month: int = None,
         total += 1
         if a.status == "canceled":
             canceled += 1
+            if getattr(a, "no_show", False):
+                no_show_count += 1
         else:
             is_manual = any(c in _manual_codes_set for c in codes)
             if is_manual:
@@ -4049,6 +4080,8 @@ def stats_summary(year: int = None, month: int = None,
         "approved": approved,
         "manual_approved": manual_approved,
         "canceled": canceled,
+        # 20-3-1 (post-19-P / F-10): 노쇼 별도 카운트
+        "no_show_count": no_show_count,
         "treatment_code": treatment_code,
     }
 

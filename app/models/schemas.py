@@ -130,6 +130,8 @@ class ApproveAction(BaseModel):
 class CancelAction(BaseModel):
     memo: str = ""
     version: Optional[int] = None  # 낙관적 락
+    # 20-3-1 (post-19-P / F-10): 노쇼 동시 적용. True 시 obj.no_show=True 도 함께.
+    no_show: bool = False
 
 
 # ─────── 시스템 설정 ───────

@@ -268,6 +268,8 @@ def test_aggregate_summary_basic():
         "approved": 1,       # manual30 approved
         "manual_approved": 1,
         "canceled": 1,       # manual60 canceled
+        # 20-3-1 (post-19-P / F-10): no_show_count 추가 — 본 시드 노쇼 0건
+        "no_show_count": 0,
     }
 
 
@@ -560,6 +562,8 @@ def test_summary_response_keys_contract():
     assert _schemas.SUMMARY_RESPONSE_KEYS == frozenset({
         "year", "month", "date_from", "date_to", "range_label", "days",
         "total", "manual", "approved", "manual_approved", "canceled",
+        # 20-3-1 (post-19-P / F-10): 노쇼 별도 카운트
+        "no_show_count",
         "treatment_code",
     })
 

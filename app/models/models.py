@@ -152,6 +152,8 @@ class Appointment(Base):
     is_new_patient = Column(Boolean, default=False)
     # 낙관적 락: 저장 시마다 +1. 클라이언트가 받은 값과 DB 값이 다르면 409
     version = Column(Integer, nullable=False, default=0)
+    # 20-3-1 (post-19-P / F-10): 노쇼 별도 필드. status="canceled" 와 동시 적용 가능.
+    no_show = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
