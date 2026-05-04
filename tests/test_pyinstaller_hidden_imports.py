@@ -390,6 +390,10 @@ EXPECTED_19_X_MODULES_MODULES = (
     "app.modules.privacy",
     "app.modules.privacy.retention",
     "app.modules.audit.retention",
+    # 20-2 그룹 B 추가 — F-13 /api/health + F-12 modules/notes/service
+    "app.modules.health.service",
+    "app.modules.health.router",
+    "app.modules.notes.service",
 )
 
 

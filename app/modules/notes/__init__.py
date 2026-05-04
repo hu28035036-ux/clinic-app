@@ -1,9 +1,13 @@
-"""modules.notes — 메모 도메인 후보 구조 (19-7 신규).
+"""modules.notes — 메모 도메인 후보 구조 (19-7 + 20-2 F-12).
 
 19-7 본 세션 범위:
   - **rules.py** : 메모 분류 도메인 규칙 (환자별 메모 vs 예약별 메모 / 지속 메모 vs
     당일 메모 후보 분류 + PII 마스킹 helper).
-  - 신규 저장소 / 신규 router / DB schema 변경 ⊥ — 본 모듈은 *분류 / 정책 helper* 만.
+
+20-2 (post-19-P / F-12) 추가:
+  - **service.py** : Patient.memo / Appointment.memo 통합 read/write 헬퍼
+    (사용자 §4-B 권장값 (a) — rules.py 위에 service 신설).
+  - 신규 저장소 / 신규 router / DB schema 변경 ⊥.
 
 NOTE: 현재 구현된 메모 유형 (사실 — *단정* ⊥):
   - **환자별 메모** (`Patient.memo`) — 환자 모달 / 검색 결과에 노출되는 *영구 누적*

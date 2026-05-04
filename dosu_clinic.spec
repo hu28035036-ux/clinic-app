@@ -198,6 +198,13 @@ hidden += [
     'app.modules.privacy',
     'app.modules.privacy.retention',
     'app.modules.audit.retention',
+    # 20-2 그룹 B — F-13 /api/health + F-12 modules/notes/service + F-14 calendar 회귀
+    # NOTE: F-13 = /api/health 신설 (db_ok / migration_version / backup_age /
+    # disk_free / version / uptime). F-12 = notes/service.py (Patient/Appointment
+    # memo read/write 헬퍼). F-14 = 19-3 view_models.py 회귀 (코드 신설 ⊥).
+    'app.modules.health.service',
+    'app.modules.health.router',
+    'app.modules.notes.service',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
