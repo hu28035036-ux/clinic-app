@@ -2828,11 +2828,14 @@ async function openAppt(aid){
   const hasEswt = codes.includes('eswt');
   const hasDoctor = codes.some(isDoctorCode);
 
-  const badge = {
-    reserved: '<span class="badge gray">▦ 예약됨</span>',
-    approved: '<span class="badge green">✓ 수납승인</span>',
-    canceled: '<span class="badge red">× 취소됨</span>',
-  }[status] || '';
+  // 20-3-1-UI (post-19-P / F-10): canceled + no_show=true 면 "노쇼" 배지로 대체
+  const badge = (status === 'canceled' && ep.no_show)
+    ? '<span class="badge red">⚠ 노쇼</span>'
+    : ({
+        reserved: '<span class="badge gray">▦ 예약됨</span>',
+        approved: '<span class="badge green">✓ 수납승인</span>',
+        canceled: '<span class="badge red">× 취소됨</span>',
+      }[status] || '');
 
   const therapistName = (() => {
     if(!ep.therapist_id) return hasManual ? '미배정(도수치료)' : '-';
@@ -2917,8 +2920,13 @@ async function openAppt(aid){
   // 취소/삭제
   let cancelBlock = '';
   if(status === 'reserved'){
+    // 20-3-1-UI (post-19-P / F-10): 노쇼 체크박스 — 통계 별도 집계용 (사용자 §3-7 (ii))
     cancelBlock = `<hr><h4>취소 / 삭제</h4>
       <input id="c-memo" placeholder="취소 사유 (선택)">
+      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;cursor:pointer;color:#7C2D12;">
+        <input type="checkbox" id="c-no-show" style="width:16px;height:16px;">
+        <span>⚠ 노쇼 (no-show) 처리 — 통계에 별도 집계</span>
+      </label>
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
         <button class="danger" onclick="cancelAppt('${aid}')">예약 취소</button>
         <button class="danger" onclick="deleteAppt('${aid}')" style="background:#991b1b;color:#fff;border-color:#991b1b">🗑️ 완전 삭제</button>
@@ -3138,7 +3146,13 @@ async function revertApprove(aid){
 
 async function cancelAppt(aid){
   const memoEl = document.getElementById('c-memo');
-  const body = { memo: memoEl ? memoEl.value : '', version: window._currentApptVersion };
+  // 20-3-1-UI (post-19-P / F-10): 노쇼 체크박스 → body.no_show — backend cancel 이 동시 처리
+  const noShowEl = document.getElementById('c-no-show');
+  const body = {
+    memo: memoEl ? memoEl.value : '',
+    version: window._currentApptVersion,
+    no_show: !!(noShowEl && noShowEl.checked),
+  };
   const r = await fetch(`/api/appointments/${aid}/cancel`, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -5293,8 +5307,11 @@ async function loadStats(){
     const manual         = summary.manual || 0;
     const manualApproved = summary.manual_approved || 0;
     const canceled       = summary.canceled || 0;
+    // 20-3-1-UI (post-19-P / F-10): 노쇼 별도 집계 (cancel 의 부분집합 — 사용자 §3-7 (ii))
+    const noShow         = summary.no_show_count || 0;
     const visitRate      = total > 0 ? Math.round((approved / total) * 100) : 0;
     const cancelRate     = total > 0 ? Math.round((canceled / total) * 100) : 0;
+    const noShowRate     = canceled > 0 ? Math.round((noShow / canceled) * 100) : 0;
     const manualRate     = total > 0 ? Math.round((manual / total) * 100) : 0;
     const manualDoneRate = manual > 0 ? Math.round((manualApproved / manual) * 100) : 0;
 
@@ -5306,6 +5323,7 @@ async function loadStats(){
       {label:'도수 예약', value:manual,         icon:'◐', color:'#7957AC', sub:'전체의 '+manualRate+'%'},
       {label:'도수 완료', value:manualApproved, icon:'●', color:'#5F4391', sub:'도수 중 '+manualDoneRate+'%'},
       {label:'취소',      value:canceled,       icon:'×', color:'#D7625C', sub:'취소율 '+cancelRate+'%'},
+      {label:'노쇼',      value:noShow,         icon:'⚠', color:'#B45309', sub:'취소 중 '+noShowRate+'%'},
     ];
     document.getElementById('stats-cards').innerHTML=cards.map(function(c){
       return '<div class="stats-card" style="border-top:3px solid '+c.color+';">'

@@ -74,13 +74,15 @@ def build_revert_response(*, version: int | None) -> dict:
     return {"ok": True, "version": int(version or 0)}
 
 
-def build_cancel_response(*, version: int | None) -> dict:
-    """``POST /appointments/{aid}/cancel`` 응답 dict — 2키.
+def build_cancel_response(*, version: int | None, no_show: bool = False) -> dict:
+    """``POST /appointments/{aid}/cancel`` 응답 dict — 3키.
 
-    COMPAT: ``api.py:cancel_appointment`` (line 2021) ``{"ok": True, "version":
-    int(obj.version or 0)}`` 와 byte-equivalent.
+    COMPAT: ``api.py:cancel_appointment`` (line 2089) ``{"ok": True, "version":
+    int(obj.version or 0), "no_show": bool(obj.no_show)}`` 와 byte-equivalent.
+
+    20-3-1 (post-19-P / F-10): ``no_show`` 키 추가 — UI / 통계 분기 의존.
     """
-    return {"ok": True, "version": int(version or 0)}
+    return {"ok": True, "version": int(version or 0), "no_show": bool(no_show)}
 
 
 def build_delete_response() -> dict:

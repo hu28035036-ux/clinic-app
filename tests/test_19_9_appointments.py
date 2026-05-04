@@ -504,10 +504,18 @@ def test_build_revert_response():
 
 
 def test_build_cancel_response():
-    """COMPAT: ``api.py:cancel_appointment`` (line 2021) 정합."""
-    out = _service.build_cancel_response(version=4)
-    assert out == {"ok": True, "version": 4}
+    """COMPAT: ``api.py:cancel_appointment`` (line 2089) 정합.
+
+    20-3-1 (post-19-P / F-10): ``no_show`` 키 추가 — 3키 응답.
+    """
+    out = _service.build_cancel_response(version=4, no_show=False)
+    assert out == {"ok": True, "version": 4, "no_show": False}
     assert set(out.keys()) == _schemas.CANCEL_RESPONSE_KEYS
+
+    # 20-3-1 (post-19-P / F-10): 노쇼 동시 적용 분기
+    out2 = _service.build_cancel_response(version=5, no_show=True)
+    assert out2 == {"ok": True, "version": 5, "no_show": True}
+    assert set(out2.keys()) == _schemas.CANCEL_RESPONSE_KEYS
 
 
 def test_build_delete_response():

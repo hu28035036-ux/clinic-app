@@ -59,10 +59,20 @@ APPROVE_RESPONSE_KEYS: Final[frozenset[str]] = frozenset({"ok", "status", "versi
 REVERT_RESPONSE_KEYS: Final[frozenset[str]] = frozenset({"ok", "version"})
 
 
-# ─── POST /appointments/{aid}/cancel 응답 키 (api.py:2021 정합) ──────────────
+# ─── POST /appointments/{aid}/cancel 응답 키 (api.py:2089 정합) ──────────────
 
 
-CANCEL_RESPONSE_KEYS: Final[frozenset[str]] = frozenset({"ok", "version"})
+# 20-3-1 (post-19-P / F-10): ``no_show`` 키 추가 — UI / 통계 분기 의존. 3키.
+CANCEL_RESPONSE_KEYS: Final[frozenset[str]] = frozenset({"ok", "version", "no_show"})
+
+
+# ─── POST /appointments/{aid}/mark-no-show 응답 키 (api.py:2111 정합) ────────
+
+
+# 20-3-1 (post-19-P / F-10): mark-no-show 신설 endpoint 응답 — 4키.
+MARK_NO_SHOW_RESPONSE_KEYS: Final[frozenset[str]] = frozenset(
+    {"ok", "no_show", "status", "version"}
+)
 
 
 # ─── DELETE /appointments/{aid} 응답 키 (api.py:2038 정합) ───────────────────
@@ -152,6 +162,7 @@ __all__ = [
     "APPROVE_RESPONSE_KEYS",
     "REVERT_RESPONSE_KEYS",
     "CANCEL_RESPONSE_KEYS",
+    "MARK_NO_SHOW_RESPONSE_KEYS",
     "DELETE_RESPONSE_KEYS",
     "SPLIT_NO_SPLIT_RESPONSE_KEYS",
     "SPLIT_REAL_RESPONSE_KEYS",

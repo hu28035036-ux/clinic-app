@@ -139,11 +139,56 @@ class TestF10CancelWithNoShow:
             assert data["ok"] is True
             assert data["no_show"] is True
 
-            # DB 확인
+            # DB 확인 + 20-3-1-UI: memo prefix [노쇼] 분기 (mark-no-show 와 데이터 일관성)
             db.expire_all()
             after = db.query(_m.Appointment).filter_by(id=aid).first()
             assert after.no_show is True
             assert after.status == "canceled"
+            assert "[노쇼]" in (after.memo or "")
+            assert "[취소]" not in (after.memo or "")
+        finally:
+            db.rollback()
+            db.close()
+
+    def test_cancel_without_no_show_keeps_cancel_prefix(self, client):
+        """20-3-1-UI 회귀 보호: no_show=false (기존 흐름) 시 [취소] prefix 보존."""
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            patient = _m.Patient(
+                name="20_3_1_plain_cancel", phone="010-3333-9999",
+                birth_date="1992-02-03", chart_no="C-2031-PC",
+                created_at=datetime.utcnow(),
+            )
+            db.add(patient)
+            db.flush()
+            appt = _m.Appointment(
+                patient_id=patient.id,
+                start_at=datetime.utcnow(),
+                end_at=datetime.utcnow() + timedelta(minutes=30),
+                duration_min=30,
+                treatment_codes='["manual30"]',
+                version=1,
+            )
+            db.add(appt)
+            db.commit()
+            aid = appt.id
+
+            resp = client.post(
+                f"/api/appointments/{aid}/cancel",
+                json={"memo": "사정", "version": 1, "no_show": False},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["no_show"] is False
+
+            db.expire_all()
+            after = db.query(_m.Appointment).filter_by(id=aid).first()
+            assert after.no_show is False
+            assert after.status == "canceled"
+            assert "[취소]" in (after.memo or "")
+            assert "[노쇼]" not in (after.memo or "")
         finally:
             db.rollback()
             db.close()

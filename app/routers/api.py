@@ -2078,8 +2078,11 @@ def cancel_appointment(aid: str, p: schemas.CancelAction,
         raise HTTPException(400, "승인된 예약은 취소할 수 없습니다. 먼저 승인을 되돌리세요.")
     _check_version(obj, p.version)
     obj.status = "canceled"
-    obj.memo = (obj.memo or "") + (f"\n[취소] {p.memo}" if p.memo else "\n[취소]")
-    # 20-3-1 (post-19-P / F-10): 노쇼 동시 적용 (사용자 §3-7 권장값 (i)).
+    # 20-3-1-UI (post-19-P / F-10): 노쇼 동시 적용 시 memo prefix 도 [노쇼] 로 분기 —
+    # mark-no-show endpoint 와 데이터 일관성 (둘 다 [노쇼] prefix). cancel?no_show=true
+    # 와 mark-no-show 의 결과가 (status / no_show / memo prefix) 모두 동일.
+    prefix = "[노쇼]" if p.no_show else "[취소]"
+    obj.memo = (obj.memo or "") + (f"\n{prefix} {p.memo}" if p.memo else f"\n{prefix}")
     if p.no_show:
         obj.no_show = True
     _bump_version(obj)
