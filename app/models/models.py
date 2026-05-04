@@ -43,6 +43,29 @@ class Employee(Base):
                                 foreign_keys="Appointment.therapist_id")
 
 
+class Resource(Base):
+    """자원 (치료실 / 장비) — post-19-P / 20-3-5 / F-3 (a) 치료실만.
+
+    사용자 §7-7 결정 정합:
+      - (a) v1 = type='room' 만 사용. 'equipment' 는 컬럼 보존 (후속 확장).
+      - (i) F-1 Room 과 별개 도메인. F-1 (c) 가벼운 의사 결정 정합.
+      - (i) capacity=1 — 같은 자원 동시 예약 ⊥. (1:1 도수치료 표준)
+      - (i) 인력 자원 미도입 — Employee 분기로 충분.
+
+    # SAFETY: 자원 충돌 검사 = 같은 resource_id + 시간 겹침 + status != canceled.
+    # NOTE: 본 v1 = capacity 컬럼 보존하되 활용 ⊥ — 후속 확장 시 capacity > 1 허용 가능.
+    """
+    __tablename__ = "resources"
+    id = Column(String(32), primary_key=True, default=uid)
+    type = Column(String(20), nullable=False, default="room")
+    name = Column(String(50), nullable=False)
+    capacity = Column(Integer, nullable=False, default=1)
+    active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AppointmentSeries(Base):
     """반복 예약 시리즈 (post-19-P / 20-3-4 / F-2 (a) N회만).
 
@@ -206,6 +229,9 @@ class Appointment(Base):
     # 20-3-4 (post-19-P / F-2): 반복 예약 시리즈 FK. 단일 예약은 None.
     series_id = Column(String(32), ForeignKey("appointment_series.id"),
                        nullable=True, index=True)
+    # 20-3-5 (post-19-P / F-3): 자원 (치료실) FK. 자원 미지정은 None.
+    resource_id = Column(String(32), ForeignKey("resources.id"),
+                         nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

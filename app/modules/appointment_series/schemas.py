@@ -20,6 +20,8 @@ class AppointmentSeriesIn(BaseModel):
     count: int = Field(ge=2, le=52, description="총 회차 (2~52, 가용 범위 제한)")
     treatment_codes: list[str]
     memo: str = ""
+    # 20-3-5 (post-19-P / F-3): 자원 (치료실) — 시리즈 전체에 같은 자원 사용
+    resource_id: Optional[str] = None
 
 
 # 시리즈 응답 dict 7키 (id / patient_id / therapist_id / pattern / pattern_data /

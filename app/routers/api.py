@@ -221,6 +221,8 @@ def _serialize_appointment(a: models.Appointment) -> dict:
             "no_show": bool(a.no_show),
             # 20-3-4 (post-19-P / F-2): 반복 예약 시리즈 ID. 단일 예약은 None.
             "series_id": a.series_id,
+            # 20-3-5 (post-19-P / F-3): 자원 (치료실) ID. 자원 미지정은 None.
+            "resource_id": a.resource_id,
         },
     }
 
@@ -1666,6 +1668,16 @@ def create_appointment(p: schemas.AppointmentIn, db: Session = Depends(get_db)):
     if not codes:
         raise HTTPException(400, "치료항목(treatment_codes)을 하나 이상 선택하세요.")
     _check_lunch_block(p.start_at, p.duration_min)
+    # 20-3-5 (post-19-P / F-3): 자원 충돌 검사 (capacity=1, 사용자 §7-7 (i))
+    if p.resource_id:
+        from app.modules.resources.service import check_resource_conflict
+        end_at = p.start_at + timedelta(minutes=p.duration_min)
+        conflict = check_resource_conflict(
+            db, resource_id=p.resource_id,
+            start_at=p.start_at, end_at=end_at,
+        )
+        if conflict:
+            raise HTTPException(409, f"자원 충돌 — 같은 시간 다른 예약이 같은 자원을 사용 중 (예약 ID: {conflict.id})")
     obj = models.Appointment(
         patient_id=p.patient_id,
         therapist_id=p.therapist_id,
@@ -1675,6 +1687,7 @@ def create_appointment(p: schemas.AppointmentIn, db: Session = Depends(get_db)):
         treatment_codes=json.dumps(codes, ensure_ascii=False),
         memo=p.memo, status="reserved",
         is_new_patient=getattr(p, 'is_new_patient', False) or False,
+        resource_id=p.resource_id,
     )
     db.add(obj); db.flush()
     # 초기 assignments — 치료사 항목(체외충격파 제외)은 만들지 않음 (담당은 appointment.therapist_id 로)
@@ -1744,6 +1757,18 @@ def update_appointment(aid: str, p: schemas.AppointmentUpdate,
     if "start_at" in data or "duration_min" in data:
         obj.end_at = obj.start_at + timedelta(minutes=obj.duration_min)
         _check_lunch_block(obj.start_at, obj.duration_min)
+
+    # 20-3-5 (post-19-P / F-3): 자원 충돌 검사 — resource_id / start_at / duration_min 변경 시
+    if "resource_id" in data or "start_at" in data or "duration_min" in data:
+        if obj.resource_id:
+            from app.modules.resources.service import check_resource_conflict
+            conflict = check_resource_conflict(
+                db, resource_id=obj.resource_id,
+                start_at=obj.start_at, end_at=obj.end_at,
+                exclude_appt_id=obj.id,
+            )
+            if conflict:
+                raise HTTPException(409, f"자원 충돌 — 같은 시간 다른 예약이 같은 자원을 사용 중 (예약 ID: {conflict.id})")
 
     # assignments 갱신
     if "assignments" in data and data["assignments"] is not None:

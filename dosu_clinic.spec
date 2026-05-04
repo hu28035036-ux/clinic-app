@@ -218,6 +218,12 @@ hidden += [
     'app.modules.appointment_series.router',
     'app.modules.appointment_series.service',
     'app.modules.appointment_series.schemas',
+    # 20-3-5 F-3 — 자원 (치료실 v1, 장비 후속) + Appointment.resource_id FK
+    # NOTE: capacity=1 정책 (사용자 §7-7 (i)). F-2 시리즈 + F-3 충돌 통합.
+    'app.modules.resources',
+    'app.modules.resources.router',
+    'app.modules.resources.service',
+    'app.modules.resources.schemas',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',

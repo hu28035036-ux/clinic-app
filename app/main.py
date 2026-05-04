@@ -7,6 +7,7 @@ from .database import init_db
 from .modules.appointment_series import router as appointment_series_router
 from .modules.doctors import router as doctors_router
 from .modules.health import router as health_router, set_startup_time
+from .modules.resources import router as resources_router
 from .routers import ai as ai_router
 from .routers import api, pages
 from .services.backup import start_auto_backup
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)      # 20-2 F-13: /api/health (post-19-P)
     app.include_router(doctors_router)     # 20-3-3 F-1 (c): /api/doctors (post-19-P)
     app.include_router(appointment_series_router)  # 20-3-4 F-2: /api/appointment-series
+    app.include_router(resources_router)   # 20-3-5 F-3: /api/resources
     set_startup_time()                     # 20-2 F-13: uptime 기준점
     start_sync_worker()
     start_auto_backup()   # 단계 G #18: 시작 시 1회 + 타이머

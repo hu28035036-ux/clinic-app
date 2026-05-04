@@ -404,6 +404,11 @@ EXPECTED_19_X_MODULES_MODULES = (
     "app.modules.appointment_series.router",
     "app.modules.appointment_series.service",
     "app.modules.appointment_series.schemas",
+    # 20-3-5 F-3 — 자원 (치료실 v1)
+    "app.modules.resources",
+    "app.modules.resources.router",
+    "app.modules.resources.service",
+    "app.modules.resources.schemas",
 )
 
 

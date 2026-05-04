@@ -90,7 +90,12 @@ def create_series(
     created_ids: list[str] = []
     conflicts: list[dict] = []
 
+    # 20-3-5 (post-19-P / F-3): 자원 충돌 검사 import (Codex 20-3-4 caveat 3 반영)
+    from app.modules.resources.service import check_resource_conflict
+
     for slot_start in slot_starts:
+        slot_end = slot_start + __import__("datetime").timedelta(minutes=p.duration_min)
+
         # 점심창 검사 — HTTPException 시 skip
         try:
             _check_lunch_block(slot_start, p.duration_min)
@@ -101,17 +106,31 @@ def create_series(
             })
             continue
 
+        # 자원 충돌 검사 (사용자 §7-7 (i) 통합)
+        if p.resource_id:
+            res_conflict = check_resource_conflict(
+                db, resource_id=p.resource_id,
+                start_at=slot_start, end_at=slot_end,
+            )
+            if res_conflict:
+                conflicts.append({
+                    "start_at": slot_start.isoformat(),
+                    "reason": "resource_conflict",
+                })
+                continue
+
         # 슬롯 생성
         appt = models.Appointment(
             patient_id=p.patient_id,
             therapist_id=p.therapist_id,
             start_at=slot_start,
-            end_at=slot_start + __import__("datetime").timedelta(minutes=p.duration_min),
+            end_at=slot_end,
             duration_min=p.duration_min,
             treatment_codes=json.dumps(codes, ensure_ascii=False),
             memo=p.memo,
             status="reserved",
             series_id=series.id,
+            resource_id=p.resource_id,
         )
         db.add(appt)
         db.flush()

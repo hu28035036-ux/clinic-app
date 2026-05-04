@@ -117,6 +117,8 @@ APPOINTMENT_EXTENDED_PROPS_KEYS: Final[frozenset[str]] = frozenset(
         "no_show",
         # 20-3-4 (post-19-P / F-2): 반복 예약 시리즈 FK (단일 예약은 None)
         "series_id",
+        # 20-3-5 (post-19-P / F-3): 자원 (치료실) FK (자원 미지정은 None)
+        "resource_id",
     }
 )
 

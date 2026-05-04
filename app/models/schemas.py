@@ -114,6 +114,8 @@ class AppointmentIn(BaseModel):
     memo: str = ""
     assignments: List[AssignmentIn] = []
     is_new_patient: bool = False
+    # 20-3-5 (post-19-P / F-3): 자원 (치료실) FK. None = 자원 미지정
+    resource_id: Optional[str] = None
 
 class AppointmentUpdate(BaseModel):
     therapist_id: Optional[str] = None
@@ -124,6 +126,8 @@ class AppointmentUpdate(BaseModel):
     assignments: Optional[List[AssignmentIn]] = None
     is_new_patient: Optional[bool] = None
     version: Optional[int] = None  # 낙관적 락
+    # 20-3-5 (post-19-P / F-3): 자원 (치료실) FK
+    resource_id: Optional[str] = None
 
 class AssignmentChange(BaseModel):
     treatment_code: str
