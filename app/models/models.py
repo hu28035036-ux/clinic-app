@@ -43,6 +43,28 @@ class Employee(Base):
                                 foreign_keys="Appointment.therapist_id")
 
 
+class Doctor(Base):
+    """의사 별도 테이블 (post-19-P / 20-3-3 / F-1 (c) 가벼운 의사).
+
+    NOTE: 사용자 §5-7 (c) 결정 — *가벼운 의사만*. Department / Room /
+    DoctorSchedule / Patient.doctor_id 부재. 본 모델은 *외부 진료 의사 등록
+    후보 모델* 로, 기존 Employee.role="doctor" (도수치료 내부 의료직군) 와 별개.
+
+    # SAFETY: PII 원문 (license_no / phone) 은 응답 dict 와 audit_log 에 노출
+    # 신중 — admin 권한 게이트 + 마스킹 정책 후속 (20-3-3 v1 은 평문 저장).
+    """
+    __tablename__ = "doctors"
+    id = Column(String(32), primary_key=True, default=uid)
+    name = Column(String(50), nullable=False)
+    specialty = Column(String(100), nullable=True)
+    license_no = Column(String(30), nullable=True)
+    color = Column(String(20), nullable=False, default="#9CA3AF")
+    active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class EmployeeLeave(Base):
     __tablename__ = "employee_leaves"
     __table_args__ = (

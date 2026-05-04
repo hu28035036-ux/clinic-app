@@ -205,6 +205,13 @@ hidden += [
     'app.modules.health.service',
     'app.modules.health.router',
     'app.modules.notes.service',
+    # 20-3-3 F-1 (c) — Doctor 별도 테이블 + /api/doctors CRUD (가벼운 의사만)
+    # NOTE: Department / Room / DoctorSchedule / Patient.doctor_id 부재 (사용자 §5-7 (c) 결정)
+    # SAFETY: license_no / specialty 응답 노출 — admin 권한 게이트 (require_admin) + audit detail 에 비저장
+    'app.modules.doctors',
+    'app.modules.doctors.router',
+    'app.modules.doctors.service',
+    'app.modules.doctors.schemas',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',

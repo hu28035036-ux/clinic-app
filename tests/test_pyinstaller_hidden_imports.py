@@ -394,6 +394,11 @@ EXPECTED_19_X_MODULES_MODULES = (
     "app.modules.health.service",
     "app.modules.health.router",
     "app.modules.notes.service",
+    # 20-3-3 F-1 (c) — Doctor 별도 테이블 (가벼운 의사만)
+    "app.modules.doctors",
+    "app.modules.doctors.router",
+    "app.modules.doctors.service",
+    "app.modules.doctors.schemas",
 )
 
 

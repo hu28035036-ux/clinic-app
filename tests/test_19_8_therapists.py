@@ -529,28 +529,30 @@ def test_modules_therapists_importable():
 # ──────────────────────── 13. doctors / medical_staff 현재 기능 부재 확인 ─────
 
 
-def test_no_doctors_module_created():
-    """이번 19-8 세션에서 doctors / medical_staff 전용 모듈 *생성 ⊥*.
+def test_no_medical_staff_module_created():
+    """19-8 시점 단언 갱신 (post-19-P / 20-3-3 F-1 (c) 정합).
 
-    NOTE: 의사 전용 진료과 / 진료실 / 오더 / 처방 / EMR 기능이 *현재 부재* —
-    therapists 모듈이 양쪽 역할의 *공통 직원 도메인* 을 다룸. 향후 분리 후보.
+    NOTE: 19-8 시점에는 doctors / medical_staff 모듈 부재였으나, post-19-P /
+    20-3-3 에서 사용자 §5-7 (c) 결정으로 ``app/modules/doctors/`` *가벼운
+    의사만* 신설됨. medical_staff 통합 모듈은 여전히 부재.
     """
     from pathlib import Path
 
     modules_dir = Path(_rules.__file__).parent.parent
-    assert not (modules_dir / "doctors").exists()
+    # 20-3-3 F-1 (c) — doctors 신설됨
+    assert (modules_dir / "doctors").exists()
+    # medical_staff 통합 모듈은 여전히 부재 (post-(c) 후속 결정)
     assert not (modules_dir / "medical_staff").exists()
 
 
-def test_no_doctor_specific_endpoint_added(client):
-    """``/api/doctors`` / ``/api/medical-staff`` 엔드포인트 *부재*.
+def test_doctors_endpoint_added_after_20_3_3(client):
+    """``/api/doctors`` 엔드포인트가 20-3-3 F-1 (c) 에서 신설됨.
 
-    NOTE: 본 19-8 이 의사 전용 흐름을 새로 추가 ⊥. 의사 정보는 기존
-    ``GET /api/employees?role=doctor`` 로만 노출.
+    NOTE: 19-8 시점에는 부재 (404/405). post-19-P / 20-3-3 신설 후 200 응답.
+    Employee.role="doctor" 분기는 별개로 보존.
     """
     r = client.get("/api/doctors")
-    # 라우터가 이 경로를 정의하지 않았으므로 404 또는 405.
-    assert r.status_code in (404, 405)
+    assert r.status_code == 200  # 20-3-3 F-1 (c) 도입
 
 
 def test_existing_employee_role_doctor_endpoint_still_works(client):
