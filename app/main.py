@@ -9,6 +9,8 @@ from .modules.doctors import router as doctors_router
 from .modules.health import router as health_router, set_startup_time
 from .modules.resources import router as resources_router
 from .routers import ai as ai_router
+from .routers import ai_commands_router
+from .routers import ai_harness_router
 from .routers import api, pages
 from .services.backup import start_auto_backup
 from .services.sync import start_sync_worker
@@ -23,6 +25,8 @@ def create_app() -> FastAPI:
     app.include_router(pages.router)
     app.include_router(api.router)
     app.include_router(ai_router.router)   # v1.3: AI/RAG 라우터 (/api/ai/*)
+    app.include_router(ai_harness_router.router)   # Phase 6: AI 명령 하네스 (/api/ai/harness/*)
+    app.include_router(ai_commands_router.router)  # Post-Phase 11: SSOT § 11 commands (/api/ai/commands/*)
     app.include_router(health_router)      # 20-2 F-13: /api/health (post-19-P)
     app.include_router(doctors_router)     # 20-3-3 F-1 (c): /api/doctors (post-19-P)
     app.include_router(appointment_series_router)  # 20-3-4 F-2: /api/appointment-series

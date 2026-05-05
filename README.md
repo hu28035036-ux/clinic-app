@@ -2,9 +2,26 @@
 
 > 도수치료 전문 병원을 위한 **환자·예약·직원·통계** 통합 관리 시스템
 > Windows 단독 실행형 · 로컬 SQLite · 멀티-PC 동기화 지원
-> **현재 버전: v1.3.3** (2026-05-01)
+> **현재 버전: v1.3.5** (2026-05-05)
 
 이 저장소는 **소스 코드** 저장소입니다. 배포본(ZIP)과 자동 업데이트 매니페스트는 별도 리포(`hu28035036-ux/clinic-updates`)에 있습니다.
+
+---
+
+## ✨ v1.3.5 주요 변경 (2026-05-05)
+
+- 🎨 **전체 UI/UX 모더화** (CompteExpress CRM 톤, Phase A~M) — 디자인 토큰 / 폰트 / 헤더·탭 카드형 / 가독성 보강 / 헤더 흰글씨 충돌 fix
+- 🛡️ **AI 안전 게이트 강화** — `approve` endpoint stored-state 게이트 (executed/rejected/failed → 409), create_leave Gate 1
+- 🤖 **AI 인증 정책 변경** — 일반 사용자도 AI 예약/휴무 도우미 사용 가능 (anonymous), 관리자 로그만 엄격
+- 🗑️ **AI 도우미 탭 (RAG Q&A) UI 제거** — 백엔드 보존
+- 🍱 **예약표 엑셀 점심시간 반영** — 옵션 ② (보고서 가독성 우선, 점심 슬롯 = 점심 라벨 우선)
+- 💻 **dev 서버 통합** — `venv\Scripts\python.exe run.py` 한 줄로 자동 더미 시드 + 격리 DB
+- 🔔 **비밀번호 변경 권장 알림 fix** — 탭 변경 시마다 ❌ → 관리자 로그인 시점 1회만
+- 🤝 **Codex 외부 검증 워크플로우** — `codex.cmd exec --sandbox read-only --ephemeral` + Claude 독립 재검토
+- 🧹 **프로젝트 정리** — 580 MB 회수 (broken venv / build / dist / 과거 버전 / .claude worktrees / Drive sync)
+- 🛠️ **회귀 / 안정성** — 단위 + 통합 2156 passed / ruff clean / DB 안전검사 강화
+
+상세는 `CHANGELOG.txt` / `docs/ui/UI_DESIGN_TOKENS.md` / `docs/codex_reviews/` 참조.
 
 ---
 
@@ -101,8 +118,33 @@
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
-python run.py         # 개발 모드 실행 (http://127.0.0.1:8000)
+pip install -r requirements-dev.txt
 ```
+
+### dev 서버 실행 (한 명령)
+```powershell
+venv\Scripts\python.exe run.py            # 개발 모드 자동 — 격리 DB + 더미 자동 시드
+venv\Scripts\python.exe run.py --prod     # 운영 DB 사용 (개발 PC 에서 실제 데이터 작업할 때만)
+venv\Scripts\python.exe run.py --check    # DB 점검만 (서버 안 띄움)
+```
+
+- **소스에서 실행**: 자동 개발 모드 — 격리 DB (`tests\temp\dev_clinic.db`) + 더미 (환자 50 / 치료사 8 / 의사 2 / 치료항목 alias)
+- **PyInstaller 빌드본**: 자동 운영 모드 — `%APPDATA%\도수치료예약\clinic.db` (실제 운영 DB)
+- 시드는 **1회 멱등** — 격리 DB 가 비어있을 때만 시드, 두 번째부터 재사용
+- 격리 DB 초기화: `tests\temp\dev_clinic.db` 와 `tests\temp\dev_appdata\` 삭제 후 다음 실행 시 자동 재시드
+- 관리자 비번: `admin1234`
+- 브라우저: http://127.0.0.1:8000/
+
+> ⚠ `python run.py` (시스템 Python) 호출 시 `ModuleNotFoundError: No module named 'uvicorn'`
+> → 의존성은 `venv` 안에만 설치되어 있음. 반드시 `venv\Scripts\python.exe run.py` 사용.
+> 또는 PowerShell 에서 venv 활성화: `.\venv\Scripts\Activate.ps1` 후 `python run.py`.
+
+### 보조 진입점 (선택)
+```powershell
+.\dev_run.bat              # run.py 와 같지만 .bat 호출 (cmd 호환)
+.\dev_run.ps1              # PowerShell 진입점
+```
+> `run.py` 통합 이후 보조 — 사용 안 해도 무방.
 
 ### 배포 빌드
 ```bash
@@ -136,7 +178,9 @@ pyinstaller --noconfirm dosu_clinic.spec
 
 | 버전 | 날짜 | 핵심 변경 |
 |------|------|----------|
-| **v1.3.3** | **2026-05-01** | **AI/RAG v1 후속 보강** — 휴무 UNIQUE 제약 (m011) + outcome 50자 + /api/ai/health/public |
+| **v1.3.5** | **2026-05-05** | **UI/UX 모더화 (Phase A~M) + AI 안전 게이트** — CompteExpress 톤 + 가독성 보강 + approve stored-state 게이트 + AI 인증 정책 + AI 도우미 탭 UI 제거 + Codex 외부 검증 |
+| v1.3.4 | 2026-05-05 | AI 명령 도우미 (Phase 1~12) — AI 예약 / 휴무 도우미 + commands API + 안전 정책 |
+| v1.3.3 | 2026-05-01 | AI/RAG v1 후속 보강 — 휴무 UNIQUE 제약 (m011) + outcome 50자 + /api/ai/health/public |
 | v1.3.2 | 2026-04-30 | 직원 관리 강화 — 휴무 연차/월차 (m009) + 치료사 입사일 (m010) |
 | v1.3.1 | 2026-04-30 | 보안 + 안정성 패치 — 자동업데이트 hang fix + 인증 누수 + DB 복원 + SMS 비밀 |
 | v1.3.0 | 2026-04-30 | **AI/RAG 1차 통합** — AI 도우미 탭 + SMS 초안/점검 + PII 보호 |

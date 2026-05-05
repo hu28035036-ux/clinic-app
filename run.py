@@ -1,5 +1,13 @@
-"""진입점 - 메인 PC 자동 설정 버전.
-첫 실행 시 자동으로 메인 모드로 세팅되어 바로 사용 가능.
+"""진입점 - 메인 PC 자동 설정 + 개발 모드 자동 더미 시드.
+
+- 빌드본 (PyInstaller frozen) : 운영 DB (`%APPDATA%\\도수치료예약\\clinic.db`) 사용 — 기존 동작 그대로.
+- 소스에서 직접 실행 (개발 PC) : 자동 개발 모드
+    * 격리 DB:      tests/temp/dev_clinic.db
+    * 격리 APPDATA: tests/temp/dev_appdata/
+    * 더미 자동 시드 (환자 50 / 치료사 8 / 의사 2 / 치료항목 alias) — 1회 멱등
+    * 운영 DB 절대 미접근
+
+운영 DB 로 띄우고 싶을 때 (개발 PC 에서도): `python run.py --prod`
 """
 import os, sys, time, threading, webbrowser, socket, ctypes
 
@@ -19,6 +27,23 @@ if "--check" in sys.argv:
         except Exception:
             pass
     sys.exit(0)
+
+# ──────── 개발 모드 자동 감지 (app import 전 환경변수 설정) ────────
+# 빌드본은 sys.frozen=True → 운영 DB 강제. 소스 실행만 격리 DB.
+_IS_FROZEN = getattr(sys, "frozen", False)
+_FORCE_PROD = "--prod" in sys.argv
+_DEV_MODE = (not _IS_FROZEN) and (not _FORCE_PROD)
+
+if _DEV_MODE:
+    from pathlib import Path as _Path
+    _root = _Path(__file__).resolve().parent
+    _temp = _root / "tests" / "temp"
+    _temp.mkdir(parents=True, exist_ok=True)
+    _dev_db = _temp / "dev_clinic.db"
+    _dev_appdata = _temp / "dev_appdata"
+    _dev_appdata.mkdir(parents=True, exist_ok=True)
+    os.environ["DOSU_DB_PATH"] = str(_dev_db)
+    os.environ["APPDATA"] = str(_dev_appdata)
 
 import uvicorn
 from pathlib import Path
@@ -117,11 +142,61 @@ def _run_check_mode():
     run_check()
 
 
+def _seed_dev_db_if_empty():
+    """개발 모드에서 격리 DB 의 환자 테이블이 비어있으면 더미 시드 (멱등).
+
+    호출 전제: `_DEV_MODE=True` 일 때만 의미 있음. 환경변수 (DOSU_DB_PATH/APPDATA) 는
+    이미 module-top 에서 격리 경로로 설정됨.
+    """
+    if not _DEV_MODE:
+        return
+    # 마이그레이션 + 환자 테이블 존재 검사
+    try:
+        from app.database import init_db, SessionLocal
+        init_db()
+        from app.models import models
+        db = SessionLocal()
+        try:
+            if db.query(models.Patient).count() > 0:
+                return  # 이미 시드됨 — 멱등
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[WARN] 더미 시드 검사 실패 (무시하고 진행): {e}")
+        return
+
+    # 시드 실행 (subprocess — 동일 환경변수 상속, 격리 DB 에 INSERT)
+    import subprocess
+    seed_script = Path(__file__).resolve().parent / "scripts" / "seed_dev_dummy.py"
+    if not seed_script.exists():
+        print(f"[WARN] 시드 스크립트 없음: {seed_script}")
+        return
+    print("\n[INFO] 개발 모드: 더미 데이터 시드 중 (1회) ...")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(seed_script)],
+            env=os.environ.copy(),
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace',
+            timeout=60,
+        )
+        if result.returncode == 0:
+            print("[OK] 더미 시드 완료 (환자 50 / 치료사 8 / 의사 2 / 치료항목 alias)\n")
+        else:
+            print(f"[WARN] 시드 실패 (exit {result.returncode}): {result.stderr[:300]}\n")
+    except Exception as e:
+        print(f"[WARN] 시드 실행 실패: {e}\n")
+
+
 def main():
     # DB 점검 모드: 별도 독립 실행 경로
     if "--check" in sys.argv:
         _run_check_mode()
         return
+
+    # 개발 모드: 격리 DB 에 더미 자동 시드 (1회 멱등)
+    if _DEV_MODE:
+        _seed_dev_db_if_empty()
 
     cfg = _ensure_main_mode()
     port = int(cfg.get("port", 8000))
@@ -143,6 +218,13 @@ def main():
     print("\n" + "="*60)
     print("병원 예약 관리 - 메인 서버 실행 중")
     print("="*60)
+    if _DEV_MODE:
+        print("⚙ 개발 모드 (격리 DB + 더미 데이터)")
+        print(f"   DB:      {os.environ.get('DOSU_DB_PATH')}")
+        print(f"   APPDATA: {os.environ.get('APPDATA')}")
+        print(f"   관리자비번: admin1234")
+        print(f"   운영 DB 로 띄우려면: python run.py --prod")
+        print("="*60)
     print(f"이 PC에서:    http://127.0.0.1:{port}")
     print(f"다른 PC/폰:   http://{local_ip}:{port}")
     print("="*60)

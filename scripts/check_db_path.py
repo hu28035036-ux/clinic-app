@@ -65,10 +65,11 @@ def main() -> int:
         print("       (테스트 중에는 이 경로가 보이면 안 됩니다 — conftest.py 를 확인하세요.)")
         return 0
 
-    print(f"[?] 알 수 없는 DB 경로: {raw}")
+    print(f"[X] 알 수 없는 DB 경로: {raw}")
     print("    경로에 'temp' / 'test' 도 없고, 운영 패턴도 아닙니다.")
     print("    의도한 경로인지 확인이 필요합니다.")
-    return 0
+    print("    배포 게이트는 알 수 없는 경로를 *불통과* 처리합니다 (v1.3.5+ Codex MEDIUM fix).")
+    return 1
 
 
 if __name__ == "__main__":

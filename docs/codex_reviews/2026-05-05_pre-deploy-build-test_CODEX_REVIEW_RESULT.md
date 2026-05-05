@@ -1,0 +1,18 @@
+**Findings**
+
+1. **High: AI approve endpoint can approve a rejected or already executed command.**  
+   [app/routers/ai_commands_router.py](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/app/routers/ai_commands_router.py:619) loads the audit row but does not check the stored `row["status"]` before executing. For `create_leave`, execution starts directly after intent/field checks at [line 623](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/app/routers/ai_commands_router.py:623). For `create_appointment`, Gate 1 reruns the pipeline and checks the recomputed status at [line 694](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/app/routers/ai_commands_router.py:694), not the persisted audit status. A command changed to `rejected` at [line 775](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/app/routers/ai_commands_router.py:775) can therefore be approved later if the raw text still validates. Same risk for repeated approve causing duplicate appointments/leaves. Add a hard stored-state gate: approve only from `needs_approval` and block `rejected`, `executed`, `validation_failed`, etc. Add tests for `reject -> approve` and `approve -> approve again`.
+
+2. **Medium: release version sources are inconsistent.**  
+   Runtime is `APP_VERSION = "1.3.4"` in [app/config.py](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/app/config.py:10), but [README.md](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/README.md:5), [VERSION.txt](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/VERSION.txt:3), and [versions/INDEX.txt](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/versions/INDEX.txt:5) still advertise `v1.3.3`. The deployment checklist itself flags this at [docs/DEPLOYMENT_CHECKLIST.md](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/docs/DEPLOYMENT_CHECKLIST.md:161). This should be fixed before packaging so the exe, docs, changelog, and release archive agree.
+
+3. **Medium: DB path safety script does not fail unknown paths.**  
+   [scripts/check_db_path.py](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/scripts/check_db_path.py:68) prints an unknown DB path warning but returns `0` at [line 71](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/scripts/check_db_path.py:71). As a release gate, that can pass a misconfigured `DOSU_DB_PATH` that is neither test/temp nor the expected production `%APPDATA%` pattern. Unknown paths should return nonzero, with an explicit override only if intentional.
+
+**Verified By Inspection**
+
+`dosu_clinic.spec` includes OpenAI/Anthropic `collect_submodules` fail-fast and `collect_data_files` at [dosu_clinic.spec](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/dosu_clinic.spec:21) and [line 303](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/dosu_clinic.spec:303). Static/templates/knowledge are bundled at [line 289](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/dosu_clinic.spec:289), and migrations are glob-registered at [line 271](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/dosu_clinic.spec:271).
+
+Test DB isolation is present in [tests/conftest.py](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/tests/conftest.py:38) and [line 45](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/tests/conftest.py:45). `employees.birth_date` / `phone` exist in [app/models/models.py](/abs/path/C:/Users/user/Desktop/새%20폴더/병원예약관리/병원예약관리/app/models/models.py:30). `dist/` and `build/` are currently absent, so cleanup appears already applied.
+
+I did not rerun the full pytest/ruff suite in this session; command execution is constrained and the full suite writes temp/cache artifacts. I treated the supplied `2143 passed / ruff passed` report as input and focused on static pre-deploy review.

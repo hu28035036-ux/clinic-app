@@ -2,7 +2,37 @@
   도수치료예약 - 배포 버전 기록
 ================================================================
 
-[ v1.3.3 ]  2026-05-01  (최신 · AI/RAG v1 후속 보강)
+[ v1.3.5 ]  2026-05-05  (최신 · UI/UX 모더화 + AI 인증 정책 + 안전 게이트)
+  위치: (빌드 대기 — 사용자 동의 후 PyInstaller 빌드)
+  주요 변경 (v1.3.4 → v1.3.5):
+    🎨 전체 UI/UX 모더화 (Phase A~M, CompteExpress CRM 톤)
+       · 디자인 토큰 13 + 신규 2 (--accent-soft / --disabled-bg)
+       · 폰트 시스템 (Pretendard fallback) + typography scale
+       · 헤더/탭 카드형 + 메인 max-width 1480px + 사이드바 그리드
+       · 버튼 그림자/lift/icon-btn/ghost-btn + 그림자/라운드/스페이싱 토큰
+       · 가독성 보강 — status text 토큰 4종 (success/warning/danger/info)
+       · 헤더 흰글씨 !important 충돌 fix (환자/직원/예약문자 헤더)
+    🛡️ AI 안전 게이트 강화 (Codex HIGH fix)
+       · approve endpoint stored-state 게이트
+       · executed/rejected/failed 상태 재 approve 차단 (409)
+       · 중복 등록 / 거절 우회 방지
+    🤖 AI 인증 정책 변경
+       · 일반 사용자도 AI 예약 도우미 사용 가능 (anonymous)
+       · logs / harness 만 관리자 엄격
+    🗑️ AI 도우미 탭 (RAG Q&A) UI 제거
+       · 백엔드 (manual_qa / RAG / m012/m013 / knowledge/) 보존
+    💻 dev 서버 통합
+       · venv\Scripts\python.exe run.py 한 줄로 자동 더미 시드
+       · sys.frozen 자동 감지 (빌드본은 운영 DB)
+    🔔 비밀번호 변경 권장 알림 fix
+       · 탭 변경 시마다 ❌ → 관리자 로그인 시점 1회만
+    🤝 Codex 외부 검증 워크플로우
+       · codex.cmd exec --sandbox read-only --ephemeral
+       · REQUEST/RESULT 11+9 항목 + Claude 독립 재검토
+    🧹 프로젝트 정리
+       · 580 MB 회수 (broken venv / build / dist / 과거 버전 / .claude worktrees / Drive sync 등)
+
+[ v1.3.3 ]  2026-05-01  (이전 · AI/RAG v1 후속 보강)
   위치: versions\v1.3.3\dosu_clinic_v1.3.3_20260501.zip
   주요 변경 (v1.3.2 → v1.3.3):
     🛡️ 직원 휴무 중복 차단 (m011)

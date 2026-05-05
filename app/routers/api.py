@@ -4512,6 +4512,38 @@ def export_manual_schedule(date: str, db: Session = Depends(get_db)):
 
     cols = list(therapists) + [None]  # 마지막은 미배정
 
+    # ── 점심시간 슬롯 식별 (v1.3.5+ 사용자 요청) ──
+    # cfg.lunch_enabled / lunch_start / lunch_end 가 설정돼 있으면 그 슬롯들을
+    # 회색 배경 + "점심시간 HH:MM~HH:MM" 라벨로 표시. UI 보드와 동일 톤.
+    # v1.3.5+ Codex Medium fix: HH:MM 의 분 단위 범위 (0-59) 명시 검증.
+    # 예: "12:75" 같은 입력이 13:15 로 암묵 변환되는 것 차단 → graceful.
+    lunch_slots: set[int] = set()
+    lunch_label_text = ""
+    if cfg.get("lunch_enabled"):
+        try:
+            ls_str = (cfg.get("lunch_start") or "").strip()
+            le_str = (cfg.get("lunch_end") or "").strip()
+            sh, sm = ls_str.split(":")
+            eh, em = le_str.split(":")
+            sh_i, sm_i, eh_i, em_i = int(sh), int(sm), int(eh), int(em)
+            if not (
+                0 <= sh_i <= 23 and 0 <= sm_i <= 59
+                and 0 <= eh_i <= 23 and 0 <= em_i <= 59
+            ):
+                raise ValueError(f"invalid HH:MM range: {ls_str}/{le_str}")
+            l_start = sh_i * 60 + sm_i
+            l_end = eh_i * 60 + em_i
+            if 0 <= l_start < l_end <= 24 * 60:
+                for _ri, _m in enumerate(times):
+                    _slot_end = _m + SLOT
+                    # 슬롯 [_m, _slot_end) 가 점심창 [l_start, l_end) 와 겹치면 점심
+                    if not (_slot_end <= l_start or _m >= l_end):
+                        lunch_slots.add(_ri)
+                lunch_label_text = f"점심시간 {ls_str}~{le_str}"
+        except Exception:
+            lunch_slots = set()
+            lunch_label_text = ""
+
     # ─ 셀 배치
     cell_map = {}  # (row_idx, col_idx) -> (text, span)
     UNASSIGNED_HEX = "#8B5CF6"  # 보라 (UI 미배정 컬럼과 동일 톤)
@@ -4543,9 +4575,19 @@ def export_manual_schedule(date: str, db: Session = Depends(get_db)):
         if snapped not in times:
             continue  # 그리드 밖
         row_idx = times.index(snapped)
+        # v1.3.5+ 사용자 옵션 ②: 점심 슬롯 = 보고서에서 점심 표시 우선 (예약 가리기).
+        # 예약 *시작* 이 점심 슬롯이면 cell_map 등록 ❌ → 그 셀은 점심 라벨/회색.
+        if row_idx in lunch_slots:
+            continue
         span = max(1, (m_dur + SLOT - 1) // SLOT)
         if row_idx + span > len(times):
             span = len(times) - row_idx
+        # 일반 시작 → 점심 슬롯에 *걸치는* span 은 점심 직전까지 자름
+        # (예: 12:00 시작 60분 예약, 12:30 가 점심 → span 1 로 자름)
+        for _dr in range(1, span):
+            if (row_idx + _dr) in lunch_slots:
+                span = _dr
+                break
 
         # 컬럼 매칭 (담당 치료사 / 미배정)
         col_idx = len(cols) - 1  # 기본: 미배정
@@ -4603,11 +4645,16 @@ def export_manual_schedule(date: str, db: Session = Depends(get_db)):
 
     # 데이터 행 + 병합
     skip = set()
+    LUNCH_FG = "E5E7EB"  # 점심/비활성 회색 (UI --disabled-bg 정합)
+    # v1.3.5+ Codex Medium fix: 라벨이 *어디서든 첫 빈 점심 셀* 에 1회 작성되도록 추적.
+    # 첫 점심 슬롯 첫 컬럼이 *예약 점유* 일 때 라벨이 손실되던 버그 fix.
+    lunch_label_written = False
     for ri, m in enumerate(times):
         excel_row = ri + 2
+        is_lunch = ri in lunch_slots
         tc = ws.cell(row=excel_row, column=1, value=_min_to_hm(m))
         tc.font = font; tc.alignment = align; tc.border = border
-        tc.fill = PatternFill("solid", fgColor="F8F9FA")
+        tc.fill = PatternFill("solid", fgColor=LUNCH_FG if is_lunch else "F8F9FA")
 
         for ci, t in enumerate(cols):
             if (ri, ci) in skip:
@@ -4615,24 +4662,33 @@ def export_manual_schedule(date: str, db: Session = Depends(get_db)):
             cell = ws.cell(row=excel_row, column=2 + ci)
             cell.font = font; cell.alignment = align; cell.border = border
 
-            entry = cell_map.get((ri, ci))
-            if not entry:
+            # v1.3.5+ 사용자 옵션 ②: 점심 슬롯 *우선* — entry 가 있어도 점심 표시 (가독성).
+            # entry skip 은 cell_map 빌드 단계에서 처리 (시작 점심 = 등록 ❌, span 자르기).
+            # 그래도 안전망: 여기서도 is_lunch 면 entry 무시.
+            if is_lunch:
+                cell.fill = PatternFill("solid", fgColor=LUNCH_FG)
+                if not lunch_label_written and lunch_label_text:
+                    cell.value = lunch_label_text
+                    lunch_label_written = True
                 continue
-            text, span = entry
-            cell.value = text
-            base = UNASSIGNED_HEX if t is None else (t.color or "#9CA3AF")
-            light = _lighten_hex(base, 0.85)
-            cell.fill = PatternFill("solid", fgColor=light)
 
-            if span > 1:
-                end_row = excel_row + span - 1
-                ws.merge_cells(start_row=excel_row, start_column=2 + ci,
-                               end_row=end_row, end_column=2 + ci)
-                for dr in range(1, span):
-                    skip.add((ri + dr, ci))
-                    sub = ws.cell(row=excel_row + dr, column=2 + ci)
-                    sub.font = font; sub.alignment = align; sub.border = border
-                    sub.fill = PatternFill("solid", fgColor=light)
+            entry = cell_map.get((ri, ci))
+            if entry:
+                text, span = entry
+                cell.value = text
+                base = UNASSIGNED_HEX if t is None else (t.color or "#9CA3AF")
+                light = _lighten_hex(base, 0.85)
+                cell.fill = PatternFill("solid", fgColor=light)
+
+                if span > 1:
+                    end_row = excel_row + span - 1
+                    ws.merge_cells(start_row=excel_row, start_column=2 + ci,
+                                   end_row=end_row, end_column=2 + ci)
+                    for dr in range(1, span):
+                        skip.add((ri + dr, ci))
+                        sub = ws.cell(row=excel_row + dr, column=2 + ci)
+                        sub.font = font; sub.alignment = align; sub.border = border
+                        sub.fill = PatternFill("solid", fgColor=light)
 
     # 행 높이 0.6cm ≈ 17pt 고정
     ws.row_dimensions[1].height = 22  # 헤더만 약간 크게

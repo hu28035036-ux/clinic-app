@@ -1,0 +1,103 @@
+{
+  "total_iterations": 10,
+  "all_same_passed_count": true,
+  "all_pass": true,
+  "passed_set": [
+    2114
+  ],
+  "failed_set": [
+    0
+  ],
+  "runs": [
+    {
+      "iteration": 1,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 23.7
+    },
+    {
+      "iteration": 2,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 22.9
+    },
+    {
+      "iteration": 3,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 22.1
+    },
+    {
+      "iteration": 4,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 22.4
+    },
+    {
+      "iteration": 5,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 22.2
+    },
+    {
+      "iteration": 6,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 22.5
+    },
+    {
+      "iteration": 7,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 22.6
+    },
+    {
+      "iteration": 8,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 22.6
+    },
+    {
+      "iteration": 9,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 22.5
+    },
+    {
+      "iteration": 10,
+      "passed": 2114,
+      "skipped": 1,
+      "xfailed": 10,
+      "failed": 0,
+      "exit_code": 0,
+      "elapsed_sec": 22.8
+    }
+  ]
+}

@@ -1,0 +1,318 @@
+{# AI 휴무 도우미 카드 (정규식 기반, 외부 LLM 미사용 — Phase 8 ai_leave).
+   self-contained inline `<script>` — 외부 ai_leave_helper.js 로드 실패 시에도 동작 보장.
+#}
+<script>
+(function () {
+  function aiLeaveHelperFactory() {
+    return {
+      open: true, busy: false, raw_text: "", error: "",
+      command_id: null, result: null, approve_memo: "", approved_payload: null,
+
+      init() {},
+      _token() {
+        return localStorage.getItem("dosu_admin_token") || window.adminToken || "";
+      },
+      _headers() {
+        const t = this._token();
+        const h = { "Content-Type": "application/json" };
+        if (t) h["X-Admin-Token"] = t;
+        return h;
+      },
+      statusBadgeClass() {
+        if (!this.result) return "ai-helper-badge--info";
+        const s = this.result.status;
+        if (s === "executed" || s === "needs_approval") return "ai-helper-badge--success";
+        if (s === "validation_failed" || s === "rejected" || s === "failed") return "ai-helper-badge--danger";
+        return "ai-helper-badge--warning";
+      },
+      statusBadgeText() {
+        const s = this.result ? this.result.status : "";
+        const map = {
+          needs_approval: "승인 대기", validation_failed: "검증 실패",
+          executed: "등록됨", rejected: "거부됨", failed: "실패",
+          needs_clarification: "정보 부족",
+          patient_selection_required: "치료사 선택 필요",
+        };
+        return map[s] || s || "대기";
+      },
+
+      async onParse() {
+        this.error = ""; this.approved_payload = null;
+        const txt = (this.raw_text || "").trim();
+        if (!txt) return;
+        const today = new Date();
+        this.busy = true;
+        try {
+          const r = await fetch("/api/ai/commands/parse", {
+            method: "POST", headers: this._headers(),
+            body: JSON.stringify({
+              raw_text: txt,
+              current_calendar_year: today.getFullYear(),
+              current_calendar_month: today.getMonth() + 1,
+              today_iso: today.toISOString().slice(0, 10),
+            }),
+          });
+          if (r.status === 401) {
+            this.error = "관리자 인증이 필요합니다. 우측 상단 🔒 버튼으로 로그인 후 다시 시도해주세요.";
+            return;
+          }
+          const body = await r.json();
+          if (!r.ok || !body.ok) { this.error = body.message || "분석 실패"; return; }
+          if (body.result && body.result.intent !== "create_leave") {
+            this.error = "휴무 명령으로 인식되지 않았습니다. '휴무' / '반차' / '연차' / '오프' 키워드를 포함해주세요.";
+            return;
+          }
+          this.command_id = body.command_id;
+          this.result = body.result;
+        } catch (e) { this.error = "네트워크 오류: " + e.message; }
+        finally { this.busy = false; }
+      },
+
+      async onSelectTherapist(therapist_id) {
+        this.error = "동명 치료사가 있어 자동 선택 ⊥. 명령에 치료사 식별자를 추가해주세요.";
+        void therapist_id;
+      },
+
+      async onApprove() {
+        if (!this.command_id) return;
+        this.error = ""; this.busy = true;
+        try {
+          const r = await fetch(`/api/ai/commands/${this.command_id}/approve`, {
+            method: "POST", headers: this._headers(),
+            body: JSON.stringify({ memo: this.approve_memo || null }),
+          });
+          const body = await r.json();
+          if (!r.ok) { this.error = body.detail || body.message || "승인 실패"; return; }
+          if (!body.ok) {
+            this.error = body.error_message ||
+              (body.error === "missing_fields" ? "치료사/날짜/휴무유형 모두 필요합니다." : "승인 실패");
+            return;
+          }
+          this.approved_payload = body.result_payload || {};
+          if (this.result) this.result.status = body.execution_status || "executed";
+          if (typeof window.refreshLeaveCalendar === "function") {
+            try { window.refreshLeaveCalendar(); } catch (e) {}
+          }
+        } catch (e) { this.error = "네트워크 오류: " + e.message; }
+        finally { this.busy = false; }
+      },
+
+      async onReject() {
+        if (!this.command_id) return;
+        this.error = ""; this.busy = true;
+        try {
+          const r = await fetch(`/api/ai/commands/${this.command_id}/reject`, {
+            method: "POST", headers: this._headers(),
+            body: JSON.stringify({ reason: "사용자 취소" }),
+          });
+          const body = await r.json();
+          if (!r.ok || !body.ok) { this.error = body.message || "거부 실패"; return; }
+          if (this.result) this.result.status = "rejected";
+        } catch (e) { this.error = "네트워크 오류: " + e.message; }
+        finally { this.busy = false; }
+      },
+
+      onReset() {
+        this.raw_text = ""; this.error = "";
+        this.command_id = null; this.result = null;
+        this.approve_memo = ""; this.approved_payload = null;
+      },
+    };
+  }
+  window.aiLeaveHelper = aiLeaveHelperFactory;
+  function registerLeave() {
+    if (window.Alpine && typeof window.Alpine.data === "function") {
+      window.Alpine.data("aiLeaveHelper", aiLeaveHelperFactory);
+      return true;
+    }
+    return false;
+  }
+  if (!registerLeave()) document.addEventListener("alpine:init", registerLeave);
+})();
+</script>
+<div class="ai-helper-card ai-helper-card--leave"
+     id="ai-leave-helper-card"
+     x-data="aiLeaveHelper">
+
+  <div class="ai-helper-header">
+    <div class="ai-helper-title">
+      <span class="ai-helper-icon">⚡</span>
+      <span>AI 휴무 도우미 (정규식)</span>
+      <span class="ai-helper-badge ai-helper-badge--info" x-show="!command_id">대기</span>
+      <span class="ai-helper-badge"
+            x-show="command_id"
+            :class="statusBadgeClass()"
+            x-text="statusBadgeText()"></span>
+    </div>
+    <button type="button" class="ai-helper-toggle"
+            :aria-expanded="open ? 'true' : 'false'"
+            @click="open = !open"
+            :title="open ? '접기' : '펼치기'">
+      <span x-text="open ? '⌃' : '⌄'"></span>
+    </button>
+  </div>
+
+  <div class="ai-helper-body" x-show="open" x-cloak>
+
+    <!-- 자연어 입력 -->
+    <div class="ai-helper-input-row">
+      <input type="text"
+             class="ai-helper-input"
+             x-model="raw_text"
+             placeholder='예: "박치료사 5월 30일 종일 휴무" / "김치료사 다음주 월요일 오전반차"'
+             @keyup.enter="onParse()"
+             :disabled="busy">
+      <button type="button"
+              class="ai-helper-btn ai-helper-btn--primary"
+              @click="onParse()"
+              :disabled="busy || !raw_text.trim()">
+        <span x-show="!busy">분석</span>
+        <span x-show="busy">처리 중…</span>
+      </button>
+      <button type="button"
+              class="ai-helper-btn ai-helper-btn--ghost"
+              @click="onReset()"
+              :disabled="busy">초기화</button>
+    </div>
+    <div class="ai-helper-hint">
+      외부 LLM 미사용 (정규식 기반) — API 키 없이 동작. 휴무 / 반차 / 연차 / 오프 키워드 인식.
+    </div>
+
+    <!-- 에러 -->
+    <template x-if="error">
+      <div class="ai-helper-msg ai-helper-msg--danger" x-text="error"></div>
+    </template>
+
+    <!-- 분석 결과 -->
+    <template x-if="result">
+      <div class="ai-helper-result">
+
+        <!-- 요약 -->
+        <div class="ai-helper-summary">
+          <div class="ai-helper-summary-item">
+            <div class="ai-helper-summary-label">치료사</div>
+            <div class="ai-helper-summary-value"
+                 x-text="result.therapist_name || '-'"></div>
+          </div>
+          <div class="ai-helper-summary-item">
+            <div class="ai-helper-summary-label">날짜</div>
+            <div class="ai-helper-summary-value"
+                 x-text="result.leave_date || result.leave_date_text || '-'"></div>
+          </div>
+          <div class="ai-helper-summary-item">
+            <div class="ai-helper-summary-label">휴무 유형</div>
+            <div class="ai-helper-summary-value"
+                 x-text="result.leave_type_display || '-'"></div>
+          </div>
+          <div class="ai-helper-summary-item">
+            <div class="ai-helper-summary-label">상태</div>
+            <div class="ai-helper-summary-value" x-text="statusBadgeText()"></div>
+          </div>
+        </div>
+
+        <!-- 치료사 후보 다수 -->
+        <template x-if="result.therapist_candidates && result.therapist_candidates.length > 1 && !result.therapist_id">
+          <div class="ai-helper-candidate-block">
+            <div class="ai-helper-candidate-title">
+              동명 치료사 <span x-text="result.therapist_candidates.length"></span>명 — 선택
+            </div>
+            <div class="ai-helper-candidate-list">
+              <template x-for="c in result.therapist_candidates" :key="c.id">
+                <button type="button"
+                        class="ai-helper-candidate"
+                        :disabled="busy"
+                        @click="onSelectTherapist(c.id)">
+                  <div class="ai-helper-candidate-name" x-text="c.name"></div>
+                  <div class="ai-helper-candidate-sub" x-text="'역할: ' + (c.role || '-')"></div>
+                </button>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- 치료사 미발견 -->
+        <template x-if="result.therapist_not_found">
+          <div class="ai-helper-msg ai-helper-msg--danger">
+            <strong>치료사를 찾을 수 없습니다.</strong>
+            <div>치료사 이름을 다시 확인해주세요. (예: "박치료사")</div>
+          </div>
+        </template>
+
+        <!-- 검증 — 충돌 예약 안내 / 중복 휴무 -->
+        <template x-if="result.validation && result.validation.issues.length > 0">
+          <div class="ai-helper-msg"
+               :class="result.validation.can_approve ? 'ai-helper-msg--warning' : 'ai-helper-msg--danger'">
+            <ul>
+              <template x-for="i in result.validation.issues" :key="i.code">
+                <li>
+                  <span class="ai-helper-issue-code" x-text="i.code"></span>
+                  <span x-text="i.message"></span>
+                </li>
+              </template>
+            </ul>
+          </div>
+        </template>
+
+        <!-- 충돌 예약 목록 (별도 고지 — § 5.3) -->
+        <template x-if="result.validation
+                       && result.validation.conflicting_appointments
+                       && result.validation.conflicting_appointments.length > 0">
+          <div class="ai-helper-msg ai-helper-msg--info">
+            <strong>해당 시간대 기존 예약 — 별도 안내</strong>
+            <ul>
+              <template x-for="c in result.validation.conflicting_appointments" :key="c.appointment_id">
+                <li>
+                  <code x-text="c.start_at"></code>
+                  ~
+                  <code x-text="c.end_at"></code>
+                  (예약 ID <code x-text="c.appointment_id.substring(0, 8)"></code>)
+                </li>
+              </template>
+            </ul>
+          </div>
+        </template>
+
+        <!-- 승인 카드 -->
+        <template x-if="result.status === 'needs_approval' && result.preview">
+          <div class="ai-helper-approval">
+            <div class="ai-helper-approval-title">휴무 등록 후보</div>
+            <div class="ai-helper-approval-prompt">이 휴무를 등록하시겠습니까?</div>
+            <div class="ai-helper-approval-memo">
+              <label>
+                <span>메모 (선택)</span>
+                <input type="text" class="ai-helper-input ai-helper-input--sm"
+                       x-model="approve_memo" placeholder="메모">
+              </label>
+            </div>
+            <div class="ai-helper-approval-actions">
+              <button type="button"
+                      class="ai-helper-btn ai-helper-btn--primary"
+                      @click="onApprove()" :disabled="busy">
+                휴무 등록 (승인)
+              </button>
+              <button type="button"
+                      class="ai-helper-btn ai-helper-btn--ghost"
+                      @click="onReject()" :disabled="busy">
+                취소
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 등록 완료 -->
+        <template x-if="approved_payload">
+          <div class="ai-helper-msg ai-helper-msg--success">
+            <strong>휴무 후보가 등록되었습니다.</strong>
+            <div>휴무 ID: <code x-text="approved_payload.leave_id || '-'"></code></div>
+            <div>
+              <button type="button" class="ai-helper-btn ai-helper-btn--ghost ai-helper-btn--sm"
+                      @click="onReset()">새 명령</button>
+            </div>
+          </div>
+        </template>
+
+      </div>
+    </template>
+
+  </div>
+</div>

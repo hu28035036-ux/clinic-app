@@ -1,42 +1,58 @@
 :root {
   /* ═══════════════════════════════════════════════════════
      공식 디자인 토큰 (프로젝트 표준 명명)
-     네이비 헤더/탭 + 밝은 본문 + 가독성 개선
+     v1.3.5+ Phase A — 사용자 명시 13 색상 + 2 신규 (CompteExpress CRM 참고)
+     - 토큰명 변경 ⊥  (기존 사용처 233곳 — 회귀 위험으로 명명 보존)
+     - 값만 사용자 명시 팔레트로 갱신
+     - 단일 원천: docs/ui/UI_DESIGN_TOKENS.md
      ═══════════════════════════════════════════════════════ */
 
   /* 기본 배경/구조 */
-  --bg-page:      #F4F7FB;
+  --bg-page:      #F5F7FA;   /* (구) #F4F7FB → 사용자 #F5F7FA */
   --bg-card:      #FFFFFF;
   --bg-input:     #FFFFFF;
 
   /* 상단/탭/네비게이션 (어두운 네이비) */
-  --nav-bg:         #1F2A37;
-  --tab-bg:         #243447;
+  --nav-bg:         #1F2937;   /* (구) #1F2A37 → 사용자 #1F2937 */
+  --tab-bg:         #273449;   /* (구) #243447 → 사용자 #273449 */
   --tab-hover:      #2D425A;
-  --tab-active:     #1E88C8;
+  --tab-active:     #3B82F6;   /* (구) #1E88C8 → 사용자 포인트 블루 #3B82F6 */
   --tab-text:       #FFFFFF;
-  --tab-text-muted: #E8EEF5;
+  --tab-text-muted: #E8EEF5;   /* 사용자 카드 헤더 블루그레이 (동일) */
 
   /* 경계 */
-  --border-color:   #D9E2EC;
+  --border-color:   #D9E2EC;   /* 사용자 명시 (동일) */
   --divider-color:  #E6EDF3;
 
-  /* 텍스트 (가독성 한 단계 ↑ — 흰 배경 위 연한 글씨가 또렷이 보이도록) */
-  --text-main:   #25313C;
-  --text-sub:    #5F6B76;
-  --text-muted:  #6E7A86;   /* 사용자 원안 #7E8A97 → 한 단계 진하게 (가독성 보강) */
-  --text-title:  #1F2A37;
+  /* 텍스트 (사용자 명시: 기본 #1F2937 / 보조 #6B7280)
+     Phase K — 흰 배경 위 가독성 보강:
+     - text-sub 를 #6B7280 → #4B5563 (gray-600) 으로 진하게 (contrast 4.5 → 6.4:1)
+     - text-muted 는 흐림 의도 그대로 유지 (#6B7280) */
+  --text-main:   #1F2937;
+  --text-sub:    #4B5563;   /* Phase K: 가독성 개선 (구 #6B7280) */
+  --text-muted:  #6B7280;   /* 흐림 의도 그대로 (placeholder / 약한 라벨) */
+  --text-title:  #1F2937;
 
-  /* 포인트/버튼 */
-  --primary:        #1E9CD7;
-  --primary-hover:  #1687BC;
+  /* 포인트/버튼 (사용자 포인트 블루 #3B82F6) */
+  --primary:        #3B82F6;   /* (구) #1E9CD7 → 사용자 #3B82F6 (Tailwind blue-500) */
+  --primary-hover:  #2563EB;   /* (구) #1687BC → blue-600 (대비 가독성) */
   --secondary:      #22B8CF;
 
-  /* 상태색 */
-  --success: #22A06B;
-  --warning: #F0A43A;
-  --danger:  #E45858;
+  /* 신규 토큰 — Phase A */
+  --accent-soft:   #DBEAFE;    /* 부드러운 포인트 블루 (Tailwind blue-100) */
+  --disabled-bg:   #E5E7EB;    /* 휴무/비활성 배경 (Tailwind gray-200) */
+
+  /* 상태색 — 솔리드 배경 / 진행바 / 큰 영역 용도 (사용자 명시값 유지) */
+  --success: #10B981;   /* emerald-500 */
+  --warning: #F59E0B;   /* amber-500   */
+  --danger:  #EF4444;   /* red-500     */
   --info:    #4A90E2;
+
+  /* Phase K — 상태색 *텍스트 전용* 토큰 (흰 배경 / soft bg 위 contrast 5:1+ 보장) */
+  --success-text: #047857;   /* emerald-700 (흰 배경 contrast 5.1:1) */
+  --warning-text: #B45309;   /* amber-700   (흰 배경 contrast 5.0:1, F59E0B 의 2.5:1 → 보강) */
+  --danger-text:  #B91C1C;   /* red-700     (흰 배경 contrast 6.5:1) */
+  --info-text:    #1D4ED8;   /* blue-700    (흰 배경 contrast 7.4:1) */
 
   /* 표 */
   --table-head:         #F7FAFC;
@@ -902,7 +918,7 @@ input, select, textarea {
   color: var(--gray-900);
 }
 input::placeholder, textarea::placeholder {
-  color: #9CA3AF; font-size: 13px;
+  color: var(--text-sub);  /* Phase L: hardcoded → token */ font-size: 13px;
 }
 
 /* 헤더 상단바 폰트 */
@@ -1131,7 +1147,7 @@ input::placeholder, textarea::placeholder {
 
 .leave-cell {
   background: #E5E7EB !important;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-size: 12px;
   font-weight: 600;
   text-align: center;
@@ -1148,12 +1164,12 @@ input::placeholder, textarea::placeholder {
 
 .ther-leave-head {
   background: #F3F4F6;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
 }
 
 .leave-cell-large {
   background: #E5E7EB !important;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-size: 14px;
   font-weight: 700;
   text-align: center;
@@ -1381,7 +1397,7 @@ input::placeholder, textarea::placeholder {
 
 /* disabled option 회색 표시 */
 select option:disabled {
-  color: #9CA3AF;
+  color: var(--text-sub);  /* Phase L: hardcoded → token */
   background: #F3F4F6;
 }
 
@@ -1812,7 +1828,7 @@ button.danger {
 .tx-badge-doctor { background: #FEE2E2; color: #991B1B; }
 .tx-badge-therapist { background: #DBEAFE; color: #1E40AF; }
 .tx-badge-on { background: #D1FAE5; color: #065F46; }
-.tx-badge-off { background: #F3F4F6; color: #6B7280; }
+.tx-badge-off { background: #F3F4F6; color: var(--text-sub);  /* Phase L */ }
 
 .role-radios {
   display: flex; gap: 12px; padding: 6px 0;
@@ -2029,7 +2045,7 @@ button.mini.danger {
   justify-content: center;
   height: 100%;
   font-weight: 600;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-size: 13px;
   letter-spacing: 1px;
 }
@@ -2037,7 +2053,7 @@ button.mini.danger {
   background: repeating-linear-gradient(
     45deg, #F9FAFB, #F9FAFB 6px, #F3F4F6 6px, #F3F4F6 12px
   );
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-size: 12px;
   text-align: center;
   font-weight: 500;
@@ -2142,7 +2158,7 @@ button.mini.danger {
 .pqs-empty {
   padding: 16px;
   text-align: center;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-size: 13px;
 }
 .pqs-empty a {
@@ -2218,7 +2234,7 @@ button.mini.danger {
 }
 .t-tx {
   font-size: 11.5px;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-weight: 500;
 }
 
@@ -2290,7 +2306,7 @@ button.mini.danger {
 }
 .emp-cap-chip.off {
   background: #F3F4F6;
-  color: #9CA3AF;
+  color: var(--text-sub);  /* Phase L: hardcoded → token */
   text-decoration: line-through;
 }
 
@@ -2333,7 +2349,7 @@ button.mini.danger {
 }
 .sms-mini-box small {
   font-size: 11px;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
 }
 .sms-mini-box .pid-results {
   margin-top: 6px;
@@ -2656,7 +2672,7 @@ button.mini.danger {
 }
 .bk-size {
   text-align: right;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-size: 11px;
 }
 .bk-name {
@@ -2786,7 +2802,7 @@ button.mini.danger {
   border: none;
   cursor: pointer;
   background: #fff;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   transition: background 0.18s, color 0.18s;
   line-height: 1.6;
 }
@@ -2818,7 +2834,7 @@ button.mini.danger {
   border: 1.5px solid #D1D5DB;
   border-radius: 20px;
   background: #fff;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
@@ -2890,7 +2906,7 @@ button.mini.danger {
   transition: border-color 0.15s;
 }
 .color-detail-btn:hover {
-  border-color: #6B7280;
+  border-color: var(--text-sub);  /* Phase L */
   background: #F3F4F6;
 }
 .color-preview-row {
@@ -2898,7 +2914,7 @@ button.mini.danger {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
 }
 .color-preview-dot {
   width: 18px;
@@ -2971,7 +2987,7 @@ button.mini.danger {
 }
 .caps-section-label {
   font-size: 12px;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-weight: 600;
   margin-bottom: 6px;
   letter-spacing: 0.01em;
@@ -2992,7 +3008,7 @@ button.mini.danger {
 }
 .emp-color-label {
   font-size: 12px;
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-weight: 600;
   margin-bottom: 8px;
   letter-spacing: 0.01em;
@@ -3243,75 +3259,84 @@ input::placeholder, textarea::placeholder, select::placeholder { color:#6A7683; 
    원칙: 구조·배치 변경 없이 색상+작은 내부 여백만 최소 추가.
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── 1) 좌측 사이드 서브 박스 제목 (미니캘린더 · 범례) ── */
+/* ── 1) 좌측 사이드 서브 박스 제목 (미니캘린더 · 범례) ──
+   Phase M (v1.3.5+) — 가독성 fix: 어두운 배경 → 밝은 배경 + 진한 글씨 (CompteExpress 톤)
+   원인: Phase C 가 일부 헤더 background 를 밝게 변경했지만 흰 글씨 !important 가 그대로 → contrast 1:1
+*/
 .mini-cal-wrap > h3,
 .legend-box > h3 {
-  background: var(--subhead-bg);
-  color: var(--subhead-text) !important;
+  background: var(--tab-text-muted);   /* #E8EEF5 밝은 블루그레이 */
+  color: var(--text-title) !important; /* #1F2937 진한 회색 (contrast 11:1) */
   padding: 6px 10px;
   border-radius: 6px;
   margin: 0 0 10px;
-  /* 기존 font-size/font-weight/letter-spacing 유지 */
 }
 
 /* ── 2) 금일 예약 환자 / 금일 예약 취소 헤더 바 ── */
 .today-header {
-  background: var(--subhead-bg);
-  color: var(--subhead-text);
+  background: var(--tab-text-muted);   /* Phase M: 밝은 톤 */
+  color: var(--text-title);
   padding: 6px 12px;
   border-radius: 6px;
   margin-bottom: 10px;
-  /* 기존 display:flex / justify-content:space-between / align-items 유지 */
 }
 .today-header h3,
 .today-header .today-date,
 .today-list.today-canceled .today-header h3 {
-  color: var(--subhead-text) !important;
+  color: var(--text-title) !important;
 }
-.today-header .today-date { opacity: 0.82; }
+.today-header .today-date {
+  opacity: 1;
+  color: var(--text-sub) !important;   /* 진한 보조 톤 */
+}
 /* 취소 목록은 살짝 다른 변형 (톤 차이 미세하게) */
 .today-list.today-canceled .today-header {
-  background: var(--subhead-hover);
+  background: #FCE7E7;   /* 매우 연한 코랄 — 취소 의미 톤 */
 }
 
-/* ── 3) 관리자 탭 각 시트(sheet) 헤더 ── */
+/* ── 3) 시트 헤더 (.sheet-head) — 환자관리 / 직원관리 / 개별문자 / 일괄안내 등 ──
+   Phase M: Phase C 의 background 변경 + 원래 흰글씨 !important 충돌 fix
+*/
 .sheet-head {
-  background: var(--subhead-bg);
-  color: var(--subhead-text);
-  padding: 10px 16px;
-  border-radius: 8px;
+  background: var(--bg-card);   /* 흰 카드 배경 그대로 */
+  color: var(--text-title);
+  padding: 12px 16px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   margin-bottom: 14px;
-  border-bottom: none;  /* 배경 띠가 생기므로 기존 밑줄 제거 */
-  /* 기존 display:flex / justify-content:space-between / align-items:center 유지 */
+  border-bottom: 1px solid var(--border-color);   /* 분리감 — 띠 없이 선만 */
 }
 .sheet-head h2,
 .sheet-head h2 small,
 .sheet-head .muted,
 .sheet-head small {
-  color: var(--subhead-text) !important;
+  color: var(--text-title) !important;   /* Phase M: 흰글씨 → 진한 글씨 */
 }
 .sheet-head small,
-.sheet-head .muted { opacity: 0.82; }
+.sheet-head .muted {
+  opacity: 1;
+  color: var(--text-sub) !important;   /* 보조 텍스트는 살짝 연한 진한 톤 */
+}
 /* 헤더 안 우측 툴바의 input/button 은 기존 스타일 유지 (반전되지 않도록) */
 .sheet-head .sheet-toolbar input,
 .sheet-head .sheet-toolbar select,
 .sheet-head .sheet-toolbar button {
-  color: var(--ink);
+  color: var(--text-main);
 }
 
-/* ── 4) 관리자 시스템 설정 카드 헤더 ── */
-/* .settings-card 는 overflow:hidden + border-radius:12px 이라
-   헤더가 자동으로 카드 상단 모서리에 fit. 음수 margin 불필요. */
+/* ── 4) 관리자 시스템 설정 카드 헤더 ──
+   Phase M: .sheet-head 와 동일 톤으로 통일 (밝은 배경 + 진한 글씨) */
 .settings-card-head {
-  background: var(--subhead-bg);
-  border-bottom: none;
-  /* 기존 padding: 12px 16px 그대로 유지 */
+  background: var(--tab-text-muted);   /* #E8EEF5 밝은 블루그레이 */
+  border-bottom: 1px solid var(--border-color);
 }
 .settings-card-head h3,
 .settings-card-head small {
-  color: var(--subhead-text) !important;
+  color: var(--text-title) !important;   /* Phase M: 흰글씨 → 진한 글씨 */
 }
-.settings-card-head small { opacity: 0.82; }
+.settings-card-head small {
+  opacity: 1;
+  color: var(--text-sub) !important;
+}
 
 
 /* ═══════════════════════════════════════════════════════════════
@@ -3564,7 +3589,7 @@ button.primary, button.danger {
   font-size: 13px;
 }
 .ai-leave-label {
-  color: #6B7280;
+  color: var(--text-sub);  /* Phase L */
   font-size: 11.5px;
   font-weight: 500;
 }
@@ -3623,4 +3648,1027 @@ button.primary, button.danger {
 }
 @media (max-width: 600px) {
   .ai-leave-preview-grid { grid-template-columns: 1fr; }
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   Phase B (v1.3.5+) — 탭/네비 다크 톤 정리 (CompteExpress 참고)
+   - 기존 정의 보존, 후속 정의로 시각 일관성만 강화
+   - 활성 탭 명확화 (포인트 블루 4px line + 배경 진하게)
+   - .tabs-nav 패딩 통일, 글자 크기 정렬
+   - 상단 .topbar-info 다크 톤 정합
+   ═══════════════════════════════════════════════════════ */
+
+.tabs-nav {
+  background: var(--nav-bg);
+  border-bottom: 1px solid var(--nav-bg);
+  padding: 0 16px;
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.tab-btn {
+  color: var(--tab-text-muted);
+  background: transparent;
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  border: 0;
+  border-bottom: 4px solid transparent;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+}
+
+.tab-btn:hover {
+  color: var(--tab-text);
+  background: var(--tab-hover);
+}
+
+.tab-btn.active {
+  color: var(--tab-text);
+  background: var(--tab-bg);
+  border-bottom-color: var(--tab-active);
+}
+
+/* 상단 정보 바 — 어두운 톤과 자연스럽게 이어지는 밝은 회색 */
+.topbar-info {
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border-color);
+  padding: 10px 24px;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.topbar-info code {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--text-main);
+  font-size: 12px;
+}
+
+/* 모바일 대응 — 패딩 / 글자 크기 자연 축소 */
+@media (max-width: 720px) {
+  .tab-btn { padding: 10px 12px; font-size: 13px; }
+  .topbar-info { padding: 8px 16px; font-size: 12px; }
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   Phase C (v1.3.5+) — 표/카드 일관 스타일
+   - 사이드바 카드 (mini-cal / legend / today-list) 헤더 톤 통일
+   - 카드 border-radius / padding / border 통일
+   - 표 헤더 #E8EEF5 / 행 hover 정합
+   - 기존 정의 보존, 후속 정의로 시각 일관성 강화
+   ═══════════════════════════════════════════════════════ */
+
+/* 사이드바 카드 (미니캘린더 / 범례 / 금일 예약) */
+.mini-cal-wrap, .legend-box, .today-list {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
+}
+
+.mini-cal-wrap h3, .legend-box h3, .today-list h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-title);
+  letter-spacing: -0.01em;
+}
+
+/* 카드 헤더 영역 (today-list 의 .today-header 등) — 메인 탭보다 밝은 블루그레이 톤 */
+.today-header,
+.sheet-head {
+  background: var(--tab-text-muted);
+  border-radius: 8px 8px 0 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.today-header h3,
+.sheet-head h2 {
+  color: var(--text-title);
+}
+
+/* 카드 안 텍스트가 밖으로 넘치지 않게 — 말줄임 */
+.today-items > div,
+.legend-box .lg-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 표 헤더 / 행 정합 */
+table.app-table thead th,
+.sheet table thead th {
+  background: var(--tab-text-muted);
+  color: var(--text-title);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+}
+
+table.app-table tbody td,
+.sheet table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--divider-color);
+  font-size: 13.5px;
+  color: var(--text-main);
+  vertical-align: middle;
+}
+
+table.app-table tbody tr:hover,
+.sheet table tbody tr:hover {
+  background: var(--accent-soft);
+}
+
+/* sheet (메인 카드) 둥근 모서리 통일 */
+.sheet {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   Phase D (v1.3.5+) — 버튼 / 입력 / 체크박스 통일
+   - 버튼 높이·padding·radius 통일 (기존 정의 보존, 후속 우선 적용)
+   - 입력창 (input/select/textarea) 높이 / 테두리 / 폰트 통일
+   - 체크박스 + 라벨 세로 중앙 정렬
+   - 위험/취소 버튼 색상 보존 (--danger)
+   - 보조 버튼 outline 스타일
+   ═══════════════════════════════════════════════════════ */
+
+/* 공통 버튼 기본형 */
+button.btn,
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-create,
+button.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+  vertical-align: middle;
+}
+
+/* primary — 저장 / 등록 / 확인 */
+.btn-primary,
+.btn-create,
+button.primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.btn-primary:hover,
+.btn-create:hover,
+button.primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  transform: none;
+}
+
+/* secondary — outline / 보조 */
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-main);
+  border-color: var(--border-color);
+}
+.btn-secondary:hover {
+  background: var(--bg-page);
+  border-color: var(--text-sub);
+}
+
+/* danger — 삭제 / 취소 */
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.btn-danger:hover {
+  background: #DC2626;
+  border-color: #DC2626;
+}
+
+/* mini 버튼 (표 안 / 작은 영역) */
+button.mini, .btn.mini {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  border-radius: 6px;
+}
+
+/* 입력창 통일 */
+input[type="text"],
+input[type="number"],
+input[type="search"],
+input[type="date"],
+input[type="time"],
+input[type="email"],
+input[type="tel"],
+input[type="password"],
+select,
+textarea {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-input);
+  font-size: 13.5px;
+  color: var(--text-main);
+  transition: border-color .15s, box-shadow .15s;
+  vertical-align: middle;
+}
+
+textarea {
+  height: auto;
+  min-height: 72px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+input:disabled, select:disabled, textarea:disabled {
+  background: var(--disabled-bg);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* 체크박스 + 라벨 세로 중앙 정렬 */
+label.check, label.checkbox-label,
+.check-row, .checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--text-main);
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+input[type="checkbox"], input[type="radio"] {
+  height: 16px;
+  width: 16px;
+  margin: 0;
+  vertical-align: middle;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   Phase F (v1.3.5+) — 화면별 미세 조정
+   - 통계 카드 (stat-card / summary-card) 일관
+   - 관리자 위험 영역 (.danger-zone) 시각 강조
+   - 섹션 제목 (.section-title) 통일
+   - 환자 / 직원 / 의사 검색 결과 카드 정합
+   - 기존 정의 보존, 후속 정의로 시각 일관성 강화
+   ═══════════════════════════════════════════════════════ */
+
+/* 통계 카드 / 요약 지표 */
+.stat-card,
+.summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stat-card .stat-label,
+.summary-card .summary-label {
+  font-size: 12.5px;
+  color: var(--text-sub);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.stat-card .stat-value,
+.summary-card .summary-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-title);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.stat-card .stat-sub,
+.summary-card .summary-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 관리자 화면 위험 영역 — 백업 / 복원 / 데이터 변환 */
+.danger-zone,
+.admin-danger-section {
+  border: 1px solid var(--danger);
+  background: #FEF2F2;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-top: 16px;
+}
+
+.danger-zone .section-title,
+.admin-danger-section .section-title {
+  color: var(--danger-text);   /* Phase K: 흰 배경 위 contrast 보강 (#EF4444 3.7 → #B91C1C 6.5) */
+  font-weight: 600;
+}
+
+/* 섹션 제목 통일 */
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-title);
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+}
+
+/* 환자 / 직원 검색 결과 카드 (검색 패널) */
+.patient-quick-search,
+.employee-search-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+/* 색상 선택 팝업 — 직원 / 의사 색상 */
+.color-picker-wrap,
+.color-pick-popup {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.08);
+  padding: 8px;
+}
+
+/* 휴무 슬롯 / 비활성 영역 — 사용자 명시 휴무 톤 */
+.leave-slot,
+.disabled-slot,
+.cell-leave {
+  background: var(--disabled-bg);
+  color: var(--text-muted);
+}
+
+/* 노쇼 배지 (F-10) — 위험 톤 명확 (Phase K: 텍스트 contrast 보강) */
+.no-show-badge {
+  background: #FEE2E2;
+  color: var(--danger-text);
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 통계 카드 그리드 — 6번째 카드까지 균형 (F-10 노쇼 통계 포함) */
+.stats-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+  .stat-card .stat-value,
+  .summary-card .summary-value {
+    font-size: 20px;
+  }
+  .stats-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   Phase G (v1.3.5+) — 글로벌 폰트 시스템 (Pretendard fallback)
+   - 한글 환경 우선: Pretendard → Apple SD Gothic Neo → Malgun Gothic → system
+   - Typography scale 토큰 (--fs-xs ~ --fs-3xl)
+   - 글자 무게 토큰 (--fw-regular ~ --fw-bold)
+   - 행간 토큰 (--lh-tight ~ --lh-loose)
+   - 오프라인 단독 실행 환경 — CDN 의존 ⊥, 시스템 폰트 fallback
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  /* 폰트 패밀리 */
+  --font-sans: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic",
+               system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR",
+               sans-serif;
+  --font-mono: "JetBrains Mono", "D2Coding", Consolas, "Courier New", monospace;
+
+  /* 글자 크기 */
+  --fs-xs:   11px;
+  --fs-sm:   12.5px;
+  --fs-base: 13.5px;
+  --fs-md:   14.5px;
+  --fs-lg:   16px;
+  --fs-xl:   18px;
+  --fs-2xl:  22px;
+  --fs-3xl:  28px;
+
+  /* 글자 무게 */
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  /* 행간 */
+  --lh-tight:  1.25;
+  --lh-base:   1.5;
+  --lh-loose:  1.7;
+
+  /* 자간 (한글 가독성 — 살짝 좁게) */
+  --ls-tight:  -0.02em;
+  --ls-normal: -0.01em;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-base);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-main);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  color: var(--text-title);
+  letter-spacing: var(--ls-tight);
+  margin: 0;
+}
+
+h1 { font-size: var(--fs-3xl); font-weight: var(--fw-bold); line-height: var(--lh-tight); }
+h2 { font-size: var(--fs-2xl); font-weight: var(--fw-semibold); line-height: var(--lh-tight); }
+h3 { font-size: var(--fs-lg);  font-weight: var(--fw-semibold); line-height: var(--lh-tight); }
+h4 { font-size: var(--fs-md);  font-weight: var(--fw-semibold); line-height: var(--lh-base); }
+
+p, span, div, label {
+  font-family: var(--font-sans);
+  letter-spacing: var(--ls-normal);
+}
+
+button, input, select, textarea {
+  font-family: var(--font-sans);
+  letter-spacing: var(--ls-normal);
+}
+
+code, pre {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+/* 텍스트 utility */
+.text-xs   { font-size: var(--fs-xs); }
+.text-sm   { font-size: var(--fs-sm); }
+.text-base { font-size: var(--fs-base); }
+.text-lg   { font-size: var(--fs-lg); }
+.text-xl   { font-size: var(--fs-xl); }
+
+.font-medium    { font-weight: var(--fw-medium); }
+.font-semibold  { font-weight: var(--fw-semibold); }
+.font-bold      { font-weight: var(--fw-bold); }
+
+.text-muted     { color: var(--text-muted); }
+.text-sub       { color: var(--text-sub); }
+.text-title     { color: var(--text-title); }
+
+
+/* ═══════════════════════════════════════════════════════
+   Phase H (v1.3.5+) — 헤더 / 탭 / 메인 영역 모던화 (CompteExpress 톤)
+   - topbar 더 모던 (큰 패딩 / 그림자 / 좌-중-우 정렬)
+   - tabs-nav 카드형 띄움 (다크 배경 + 둥근 모서리)
+   - 메인 콘텐츠 max-width / 가운데 정렬 / 양옆 큰 여백
+   - 버튼 모던화 — 그림자 / hover lift / 아이콘 버튼 패턴
+   - 기존 클래스명 의존 인라인 JS 영향 ⊥ (시각만 변경)
+   ═══════════════════════════════════════════════════════ */
+
+/* ──── 전역 ──── */
+html, body {
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+/* ──── 상단 정보 바 (topbar-info) — 모던 헤더 ──── */
+.topbar-info {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  padding: 12px 32px;
+  font-size: var(--fs-sm);
+  color: var(--text-sub);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 3px rgba(31, 41, 55, 0.04);
+}
+
+.topbar-info b {
+  font-weight: var(--fw-semibold);
+  color: var(--text-title);
+}
+
+.topbar-info code {
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  padding: 3px 8px;
+  border-radius: 6px;
+  color: var(--text-main);
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  font-weight: var(--fw-medium);
+}
+
+.topbar-info .addr-chip {
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ──── 탭 네비 — 카드형 ──── */
+.tabs-nav {
+  background: var(--nav-bg);
+  border-bottom: 0;
+  padding: 4px 24px;
+  margin: 16px 24px 0;
+  border-radius: 14px;
+  display: flex;
+  gap: 2px;
+  align-items: stretch;
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.08);
+}
+
+.tab-btn {
+  color: var(--tab-text-muted);
+  background: transparent;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md);
+  letter-spacing: var(--ls-normal);
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: color .15s, background .15s, transform .12s;
+  margin: 4px 0;
+}
+
+.tab-btn:hover {
+  color: var(--tab-text);
+  background: var(--tab-hover);
+}
+
+.tab-btn.active {
+  color: #fff;
+  background: var(--tab-active);
+  border-bottom: 0;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+}
+
+/* ──── 메인 콘텐츠 영역 — max-width + 가운데 정렬 + 큰 여백 ──── */
+.tab-pane,
+section.tab-pane {
+  max-width: 1480px;
+  margin: 24px auto;
+  padding: 0 24px;
+  background: transparent;
+}
+
+.sheet,
+.layout {
+  max-width: 1480px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ──── 버튼 모던화 (Phase D 위에 그림자 / lift / 아이콘 버튼 추가) ──── */
+
+button.btn,
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-create,
+button.primary {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-normal);
+  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
+}
+
+.btn-primary,
+.btn-create,
+button.primary {
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.25);
+}
+
+.btn-primary:hover,
+.btn-create:hover,
+button.primary:hover {
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active,
+.btn-create:active,
+button.primary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(59, 130, 246, 0.2);
+}
+
+.btn-danger {
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25);
+}
+.btn-danger:hover {
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-secondary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.08);
+}
+
+/* 아이콘 전용 버튼 (32x32) */
+button.btn-icon, .btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-sub);
+  cursor: pointer;
+  transition: all .15s;
+}
+
+button.btn-icon:hover, .btn-icon:hover {
+  background: var(--bg-page);
+  color: var(--text-main);
+  border-color: var(--text-sub);
+}
+
+/* Ghost 버튼 — 외곽선 없이 텍스트만 */
+.btn-ghost {
+  background: transparent;
+  color: var(--text-sub);
+  border: 0;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-base);
+}
+.btn-ghost:hover {
+  background: var(--bg-page);
+  color: var(--text-main);
+}
+
+/* mini 버튼도 그림자 추가 */
+button.mini, .btn.mini {
+  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
+}
+
+/* 모바일 — 메인 영역 / 탭 카드 패딩 축소 */
+@media (max-width: 720px) {
+  .tabs-nav { margin: 8px 12px 0; padding: 2px 8px; }
+  .tab-pane, section.tab-pane { padding: 0 12px; margin: 12px auto; }
+  .topbar-info { padding: 10px 16px; gap: 8px; }
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   Phase I (v1.3.5+) — 카드 그림자 시스템 강화 / 라운드 통일
+   - shadow 토큰 (--shadow-sm / --shadow-md / --shadow-lg / --shadow-xl)
+   - 카드 패딩 / 라운드 단계별 토큰 (--radius-sm/md/lg/xl)
+   - sheet / mini-cal-wrap / today-list / legend-box / stat-card 일관 강화
+   - hover 시 lift 효과 추가 (subtle)
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  /* 그림자 토큰 — 다층 */
+  --shadow-xs:  0 1px 2px rgba(31, 41, 55, 0.04);
+  --shadow-sm:  0 1px 3px rgba(31, 41, 55, 0.06), 0 1px 2px rgba(31, 41, 55, 0.04);
+  --shadow-md:  0 4px 6px -1px rgba(31, 41, 55, 0.08), 0 2px 4px -1px rgba(31, 41, 55, 0.04);
+  --shadow-lg:  0 10px 15px -3px rgba(31, 41, 55, 0.08), 0 4px 6px -2px rgba(31, 41, 55, 0.04);
+  --shadow-xl:  0 20px 25px -5px rgba(31, 41, 55, 0.10), 0 10px 10px -5px rgba(31, 41, 55, 0.04);
+
+  /* 라운드 토큰 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 999px;
+
+  /* 간격 (스페이싱) 토큰 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+}
+
+/* sheet (메인 카드) — 더 큰 그림자 + 라운드 강화 */
+.sheet {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-6);
+  margin-bottom: var(--space-5);
+}
+
+/* 사이드바 카드 — subtle 그림자 + hover lift */
+.mini-cal-wrap, .legend-box, .today-list {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s, transform .2s;
+}
+
+.mini-cal-wrap:hover, .legend-box:hover, .today-list:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* 통계 / 요약 카드 — 더 강한 패딩 */
+.stat-card,
+.summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s, transform .2s;
+}
+
+.stat-card:hover,
+.summary-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+/* AI 도우미 카드 — sheet 톤과 일관 */
+.ai-helper-card {
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+  padding: var(--space-5) !important;
+}
+
+/* 카드 내부 hr / 분리선 부드럽게 */
+.sheet hr,
+.mini-cal-wrap hr,
+.today-list hr {
+  border: 0;
+  border-top: 1px solid var(--divider-color);
+  margin: var(--space-3) 0;
+}
+
+/* 모달 / 팝업 — 큰 그림자 */
+.modal,
+.popup,
+.color-picker-wrap,
+.color-pick-popup {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   Phase J (v1.3.5+) — 사이드바 그리드 / 메인 캘린더 정렬
+   - .layout (예약 화면) 사이드바 + 메인 캘린더 간격 정리
+   - 사이드바 카드 일정 간격 (gap)
+   - 메인 캘린더 패딩 / radius 통일
+   - CompteExpress 톤: 사이드바도 카드형으로 띄움
+   ═══════════════════════════════════════════════════════ */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: var(--space-5);
+  padding: 0;
+  background: transparent;
+}
+
+.layout aside.sidebar,
+.sidebar {
+  background: transparent;
+  border-right: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* 사이드바 안 신규 환자 등록 버튼 — 카드 위에 띄움 */
+.sidebar .btn-create {
+  width: 100%;
+  margin-bottom: var(--space-2);
+  height: 44px;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+.sidebar .btn-create:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* 메인 캘린더 영역 — 카드형 */
+.main-cal {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-cal > #day-board {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 환자 빠른 검색 패널 — 메인 캘린더 위에 띄움 */
+.patient-quick-search {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.patient-quick-search .pqs-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.patient-quick-search input[type="text"],
+.patient-quick-search input[type="search"] {
+  flex: 1;
+  min-width: 240px;
+}
+
+/* 모바일 — 그리드 1열로 */
+@media (max-width: 1024px) {
+  .layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+}
+
+/* 카드 안 표 / 캘린더가 카드 라운드를 깨지 않게 */
+.main-cal table,
+.sheet table {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* FullCalendar / 외부 캘린더 컨테이너 모서리 정합 */
+.main-cal .fc,
+.main-cal #day-board {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   Phase L (v1.3.5+) — 전수 가독성 보강 (모든 탭 + 모든 hardcoded)
+   - .muted 클래스 → var(--text-sub) (#4B5563) 로 진하게 (이전 #6B7280 흐림 의도 → 가독성 우선)
+   - <small> 태그 일관 색상
+   - placeholder 가독성 보강
+   - 모든 hardcoded #9CA3AF / #6B7280 / #6E7A86 는 sed 로 #4B5563 또는 var(--text-sub) 로 교체됨
+   - 의도된 흐림 (disabled / placeholder) 만 --text-muted 유지
+   ═══════════════════════════════════════════════════════ */
+
+/* 핵심: .muted 클래스 — 후속 우선 정의 */
+.muted,
+.text-muted-cls,
+small.muted {
+  color: var(--text-sub);   /* Phase L: #6B7280 → #4B5563 (가독성 우선) */
+}
+
+/* <small> 태그 — 작은 글씨도 충분히 보이게 */
+small {
+  color: var(--text-sub);
+  font-size: var(--fs-sm);
+}
+
+/* placeholder — 진짜 흐림 의도 (입력 안내) */
+input::placeholder,
+textarea::placeholder,
+select::placeholder {
+  color: var(--text-muted);   /* 흐림 의도 보존 */
+}
+
+/* 비활성 / disabled 만 흐림 유지 */
+.disabled, [disabled], button:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* 표 안 회색 텍스트 — 보조 정보도 충분히 보이게 */
+table td.muted,
+table td .muted,
+.data-table td.muted,
+.sheet table td.muted {
+  color: var(--text-sub) !important;
+  font-style: normal;   /* 이전 italic + 흐림 → 의도 부족, 진하게 + 정상 */
+}
+
+/* 탭 헤더 카운트 배지 (예: "환자 (1234)") */
+.tab-btn .muted,
+.tab-btn span.muted {
+  color: var(--tab-text-muted);   /* 다크 탭 배경 위 #E8EEF5 (충분히 밝음) */
+}
+
+/* 통계 / 카드 안 부가 라벨 */
+.stat-card .stat-sub,
+.stat-card .stat-label,
+.summary-card .summary-sub,
+.summary-card .summary-label {
+  color: var(--text-sub);
+  font-weight: var(--fw-medium);
+}
+
+/* AI 도우미 카드 안 보조 텍스트 */
+.ai-helper-hint,
+.ai-helper-summary-label,
+.ai-helper-candidate-sub,
+.ai-helper-approval-prompt {
+  color: var(--text-sub) !important;
+}
+
+/* 표 헤더 글씨 굵게 + 진하게 */
+table thead th,
+.sheet table thead th,
+.data-table thead th {
+  color: var(--text-title);
+  font-weight: var(--fw-semibold);
+}
+
+/* 카드 안 라벨 + 텍스트 */
+label, .label, .form-label {
+  color: var(--text-main);
+  font-weight: var(--fw-medium);
 }

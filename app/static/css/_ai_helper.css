@@ -1,0 +1,394 @@
+/* AI 도우미 카드 스타일 — 단위 컴포넌트 (§ 15.3) + 디자인 토큰 (§ 16.3) 정합.
+   기존 main.html / app.css 의 스타일과 충돌 회피를 위해 prefix `ai-helper-*` 사용.
+   변수 미정의 환경에서도 동작하도록 fallback 색 명시.
+*/
+
+:root {
+  /* Phase E (v1.3.5+) — app.css :root 토큰과 단일 원천 정합.
+     이전 그린 톤 색상은 사용자 명시 블루 팔레트로 전환.
+     fallback 값은 app.css 가 로드되지 않은 환경 대비 (블루 톤 동일값). */
+  --ai-helper-card: var(--bg-card, #FFFFFF);
+  --ai-helper-bg: var(--bg-page, #F5F7FA);
+  --ai-helper-surface: var(--tab-text-muted, #E8EEF5);
+  --ai-helper-primary: var(--primary, #3B82F6);
+  --ai-helper-primary-hover: var(--primary-hover, #2563EB);
+  --ai-helper-primary-soft: var(--accent-soft, #DBEAFE);
+  --ai-helper-text: var(--text-main, #1F2937);
+  --ai-helper-text-secondary: var(--text-sub, #6B7280);
+  --ai-helper-text-muted: var(--text-muted, #6B7280);
+  --ai-helper-border: var(--border-color, #D9E2EC);
+  /* 솔리드 배경 / 진행바 / 큰 아이콘 용도 — 사용자 명시값 */
+  --ai-helper-success: var(--success, #10B981);
+  --ai-helper-success-soft: #D1FAE5;
+  --ai-helper-warning: var(--warning, #F59E0B);
+  --ai-helper-warning-soft: #FEF3C7;
+  --ai-helper-danger: var(--danger, #EF4444);
+  --ai-helper-danger-soft: #FEE2E2;
+  --ai-helper-info: var(--info, #4A90E2);
+  --ai-helper-info-soft: #DBEAFE;
+  /* Phase K — 텍스트 전용 진한 토큰 (soft bg 위 contrast 5:1+ 보장) */
+  --ai-helper-success-text: var(--success-text, #047857);
+  --ai-helper-warning-text: var(--warning-text, #B45309);
+  --ai-helper-danger-text:  var(--danger-text, #B91C1C);
+  --ai-helper-info-text:    var(--info-text, #1D4ED8);
+  --ai-helper-disabled: var(--disabled-bg, #E5E7EB);
+
+  --ai-helper-radius-card: 12px;
+  --ai-helper-radius-input: 8px;
+  --ai-helper-radius-button: 8px;
+  --ai-helper-radius-badge: 999px;
+
+  --ai-helper-card-shadow: 0 1px 2px rgba(20, 30, 24, 0.04),
+                          0 4px 8px rgba(20, 30, 24, 0.04);
+  --ai-helper-focus-ring: 0 0 0 3px rgba(31, 61, 43, 0.18);
+}
+
+/* ──────── 카드 ──────── */
+.ai-helper-card {
+  background: var(--ai-helper-card);
+  border: 1px solid var(--ai-helper-border);
+  border-radius: var(--ai-helper-radius-card);
+  box-shadow: var(--ai-helper-card-shadow);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  font-family: "Pretendard", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ai-helper-text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+[x-cloak] { display: none !important; }
+
+/* ──────── 헤더 ──────── */
+.ai-helper-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-helper-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ai-helper-text);
+}
+
+.ai-helper-icon {
+  color: var(--ai-helper-primary);
+  font-size: 18px;
+}
+
+.ai-helper-toggle {
+  background: transparent;
+  border: 1px solid var(--ai-helper-border);
+  width: 32px; height: 32px;
+  border-radius: var(--ai-helper-radius-button);
+  cursor: pointer;
+  color: var(--ai-helper-text-secondary);
+  font-size: 14px;
+}
+.ai-helper-toggle:hover {
+  background: var(--ai-helper-surface);
+  color: var(--ai-helper-text);
+}
+
+/* ──────── 배지 ──────── */
+.ai-helper-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  height: 22px;
+  line-height: 18px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--ai-helper-radius-badge);
+  background: var(--ai-helper-surface);
+  color: var(--ai-helper-text-secondary);
+  border: 1px solid var(--ai-helper-border);
+}
+.ai-helper-badge--info {
+  background: var(--ai-helper-info-soft);
+  color: var(--ai-helper-info-text);   /* Phase K: contrast 보강 */
+  border-color: transparent;
+}
+.ai-helper-badge--success {
+  background: var(--ai-helper-success-soft);
+  color: var(--ai-helper-success-text);
+  border-color: transparent;
+}
+.ai-helper-badge--warning {
+  background: var(--ai-helper-warning-soft);
+  color: var(--ai-helper-warning-text);
+  border-color: transparent;
+}
+.ai-helper-badge--danger {
+  background: var(--ai-helper-danger-soft);
+  color: var(--ai-helper-danger-text);
+  border-color: transparent;
+}
+
+/* ──────── 본문 ──────── */
+.ai-helper-body {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ──────── 입력 ──────── */
+.ai-helper-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ai-helper-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--ai-helper-border);
+  border-radius: var(--ai-helper-radius-input);
+  background: var(--ai-helper-card);
+  color: var(--ai-helper-text);
+  font-size: 14px;
+  outline: none;
+}
+.ai-helper-input:focus {
+  border-color: var(--ai-helper-primary);
+  box-shadow: var(--ai-helper-focus-ring);
+}
+.ai-helper-input--sm {
+  height: 32px;
+}
+.ai-helper-input:disabled {
+  background: var(--ai-helper-surface);
+  color: var(--ai-helper-text-muted);
+  cursor: not-allowed;
+}
+
+.ai-helper-hint {
+  font-size: 13px;
+  color: var(--ai-helper-text-muted);
+}
+
+/* ──────── 버튼 ──────── */
+.ai-helper-btn {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--ai-helper-radius-button);
+  border: 1px solid var(--ai-helper-border);
+  background: var(--ai-helper-card);
+  color: var(--ai-helper-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ai-helper-btn:disabled {
+  background: var(--ai-helper-disabled);
+  color: var(--ai-helper-text-muted);
+  cursor: not-allowed;
+}
+.ai-helper-btn:hover:not(:disabled) {
+  background: var(--ai-helper-surface);
+}
+.ai-helper-btn--primary {
+  background: var(--ai-helper-primary);
+  color: #FFFFFF;
+  border-color: transparent;
+}
+.ai-helper-btn--primary:hover:not(:disabled) {
+  background: var(--ai-helper-primary-hover);
+}
+.ai-helper-btn--ghost {
+  background: transparent;
+  border-color: var(--ai-helper-border);
+}
+.ai-helper-btn--sm {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+/* ──────── 메시지 ──────── */
+.ai-helper-msg {
+  padding: 12px 16px;
+  border-radius: var(--ai-helper-radius-input);
+  border-left: 4px solid var(--ai-helper-border);
+  background: var(--ai-helper-surface);
+  color: var(--ai-helper-text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ai-helper-msg ul {
+  margin: 4px 0 0 16px;
+  padding: 0;
+}
+.ai-helper-msg--info {
+  background: var(--ai-helper-info-soft);
+  border-left-color: var(--ai-helper-info);
+  color: var(--ai-helper-info-text);    /* Phase K: contrast 보강 */
+}
+.ai-helper-msg--success {
+  background: var(--ai-helper-success-soft);
+  border-left-color: var(--ai-helper-success);
+  color: var(--ai-helper-success-text);
+}
+.ai-helper-msg--warning {
+  background: var(--ai-helper-warning-soft);
+  border-left-color: var(--ai-helper-warning);
+  color: var(--ai-helper-warning-text);
+}
+.ai-helper-msg--danger {
+  background: var(--ai-helper-danger-soft);
+  border-left-color: var(--ai-helper-danger);
+  color: var(--ai-helper-danger-text);
+}
+.ai-helper-issue-code {
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.05);
+}
+
+/* ──────── 결과 / 요약 ──────── */
+.ai-helper-result {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ai-helper-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--ai-helper-surface);
+  border: 1px solid var(--ai-helper-border);
+  border-radius: var(--ai-helper-radius-input);
+}
+.ai-helper-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ai-helper-summary-item--wide {
+  grid-column: span 4;
+}
+.ai-helper-summary-label {
+  font-size: 12px;
+  color: var(--ai-helper-text-muted);
+}
+.ai-helper-summary-value {
+  font-size: 14px;
+  color: var(--ai-helper-text);
+  font-weight: 500;
+}
+.ai-helper-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  margin: 2px;
+  border-radius: var(--ai-helper-radius-badge);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+.ai-helper-tag--ok {
+  background: var(--ai-helper-success-soft);
+  color: var(--ai-helper-success-text);    /* Phase K: contrast 보강 */
+}
+.ai-helper-tag--warn {
+  background: var(--ai-helper-warning-soft);
+  color: var(--ai-helper-warning-text);
+}
+.ai-helper-muted { color: var(--ai-helper-text-muted); }
+
+/* ──────── 환자 후보 ──────── */
+.ai-helper-candidate-block {
+  padding: 12px 16px;
+  border: 1px solid var(--ai-helper-border);
+  border-radius: var(--ai-helper-radius-input);
+  background: var(--ai-helper-card);
+}
+.ai-helper-candidate-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ai-helper-text);
+  margin-bottom: 8px;
+}
+.ai-helper-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-helper-candidate {
+  text-align: left;
+  background: var(--ai-helper-card);
+  border: 1px solid var(--ai-helper-border);
+  border-radius: var(--ai-helper-radius-input);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.ai-helper-candidate:hover:not(:disabled) {
+  background: var(--ai-helper-primary-soft);
+  border-color: var(--ai-helper-primary);
+}
+.ai-helper-candidate:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.ai-helper-candidate-name {
+  font-weight: 600;
+  color: var(--ai-helper-text);
+  margin-bottom: 2px;
+}
+.ai-helper-candidate-sub {
+  font-size: 13px;
+  color: var(--ai-helper-text-secondary);
+}
+
+/* ──────── 승인 ──────── */
+.ai-helper-approval {
+  padding: 16px;
+  border: 1px solid var(--ai-helper-primary);
+  border-radius: var(--ai-helper-radius-input);
+  background: var(--ai-helper-primary-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-helper-approval-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ai-helper-primary);
+}
+.ai-helper-approval-prompt {
+  font-size: 13px;
+  color: var(--ai-helper-text-secondary);
+}
+.ai-helper-approval-memo label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ai-helper-text-secondary);
+}
+.ai-helper-approval-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ──────── 반응형 ──────── */
+@media (max-width: 900px) {
+  .ai-helper-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ai-helper-summary-item--wide {
+    grid-column: span 2;
+  }
+}

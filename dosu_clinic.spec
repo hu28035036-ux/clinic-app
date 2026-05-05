@@ -31,6 +31,8 @@ hidden += _ai_sdk_modules
 hidden += [
     'app', 'app.main', 'app.config', 'app.database',
     'app.routers.pages', 'app.routers.api', 'app.routers.ai',
+    'app.routers.ai_harness_router',
+    'app.routers.ai_commands_router',
     'app.models.models', 'app.models.schemas', 'app.models.constants',
     'app.services.sync', 'app.services.auth',
     'app.services.backup', 'app.services.seed',
@@ -224,6 +226,25 @@ hidden += [
     'app.modules.resources.router',
     'app.modules.resources.service',
     'app.modules.resources.schemas',
+    # AI 명령 모듈 (Phase 1+) — app/ai/* (예약 도우미 / 휴무 도우미 등)
+    # NOTE: 기존 app.services.ai (RAG / SMS draft) 와 분리된 신규 패키지.
+    'app.ai',
+    'app.ai.ai_command_schema',
+    'app.ai.ai_provider',
+    'app.ai.ai_audit',
+    'app.ai.ai_parser',
+    'app.ai.ai_resolver',
+    'app.ai.ai_validator',
+    'app.ai.ai_preview',
+    'app.ai.ai_new_patient_flow',
+    'app.ai.ai_executor',
+    'app.ai.ai_safety',
+    'app.ai.ai_harness',
+    'app.ai.ai_appointment_change',
+    'app.ai.ai_leave',
+    'app.ai.ai_sms_prepare',
+    'app.ai.ai_summary',
+    'app.ai.ai_ops',
     # 증분 마이그레이션 — importlib 로 동적 로드되므로 명시 hidden import 필수
     # ⚠ 새 마이그레이션 추가 시 깜빡 위험 → 아래에서 자동 글롭으로 대체.
     'app.migrations',
