@@ -2595,7 +2595,7 @@ def sync_push(batch: schemas.SyncBatch, db: Session = Depends(get_db),
     나머지 op 가 적용되도록 하되, 실패 op 는 별도 카운트로 응답.
     이전 코드는 apply_op 가 raise 시 루프 자체가 깨져 db.commit() 미호출 → 부분 상태 잔존 위험.
     """
-    from ..services.sync import apply_op
+    from ..services.sync import ENTITY_MAP, apply_op
     applied = 0
     failed = 0
     failures = []
@@ -2603,8 +2603,13 @@ def sync_push(batch: schemas.SyncBatch, db: Session = Depends(get_db),
         if isinstance(op.get("payload"), str):
             try: op["payload"] = json.loads(op["payload"])
             except Exception: op["payload"] = {}
+        if op.get("entity") not in ENTITY_MAP:
+            failed += 1
+            failures.append({"op_id": op.get("id"), "entity": op.get("entity"), "error": "unsupported sync entity"})
+            continue
         try:
             if apply_op(db, op):
+                db.commit()
                 applied += 1
         except Exception as e:
             failed += 1
@@ -2612,7 +2617,6 @@ def sync_push(batch: schemas.SyncBatch, db: Session = Depends(get_db),
             failures.append({"op_id": op.get("id"), "entity": op.get("entity"), "error": str(e)[:200]})
             # rollback 후에도 같은 세션을 계속 쓰려면 다음 op 부터 새로 시작
             continue
-    db.commit()
     return {"applied": applied, "failed": failed, "failures": failures}
 
 
