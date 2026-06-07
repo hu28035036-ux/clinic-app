@@ -304,9 +304,8 @@ def _match_therapist(db: Session, raw_name: str) -> _MatchResult:
     if len(norm_input) < 2 or len(norm_input) > 20:
         return _MatchResult(status="invalid_name")
 
-    # 1) active=True therapist
+    # 1) active=True employee
     active = db.query(_m.Employee).filter(
-        _m.Employee.role == "therapist",
         _m.Employee.active == True,    # noqa: E712 — SQLAlchemy boolean comparison
     ).all()
     matches = [e for e in active if _normalize_name(e.name) == norm_input]
@@ -315,18 +314,12 @@ def _match_therapist(db: Session, raw_name: str) -> _MatchResult:
     if len(matches) >= 2:
         return _MatchResult(status="multi_match", candidates=matches)
 
-    # 2) active=False therapist
+    # 2) active=False employee
     inactive = db.query(_m.Employee).filter(
-        _m.Employee.role == "therapist",
         _m.Employee.active == False,    # noqa: E712
     ).all()
     if any(_normalize_name(e.name) == norm_input for e in inactive):
         return _MatchResult(status="inactive_therapist")
-
-    # 3) 다른 role
-    other_role = db.query(_m.Employee).filter(_m.Employee.role != "therapist").all()
-    if any(_normalize_name(e.name) == norm_input for e in other_role):
-        return _MatchResult(status="not_therapist")
 
     return _MatchResult(status="no_match")
 
@@ -803,7 +796,7 @@ def _toctou_recheck(db: Session, payload: dict) -> Optional[str]:
     from ...models import models as _m
 
     emp = db.query(_m.Employee).filter(_m.Employee.id == payload["employee_id"]).first()
-    if emp is None or not emp.active or emp.role != "therapist":
+    if emp is None or not emp.active:
         return "therapist_changed"
 
     existing = db.query(_m.EmployeeLeave).filter(

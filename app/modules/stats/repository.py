@@ -170,12 +170,13 @@ def list_therapist_employees(db: Any) -> list[Any]:
     ``stats_manual_by_therapist`` (line 3702~3703) 정합.
     """
     from app.models import models as _m
+    from app.modules.therapists import service as _therapists_service
 
-    return (
+    rows = (
         db.query(_m.Employee)
-        .filter(_m.Employee.role == "therapist")
         .all()
     )
+    return [e for e in rows if _therapists_service.employee_can_manual(e)]
 
 
 def list_all_employees(db: Any) -> list[Any]:

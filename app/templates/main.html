@@ -57,13 +57,12 @@
   <button class="tab-btn active" onclick="switchTab('tab-reserve', this)">▦ 예약</button>
   <button class="tab-btn" onclick="switchTab('tab-patients', this)">◎ 환자 <span id="pm-count-badge" class="muted" style="font-weight:400;font-size:12px;">(…)</span></button>
   <button class="tab-btn" onclick="switchTab('tab-therapists', this)">◇ 직원</button>
-  <button class="tab-btn" onclick="switchTab('tab-sms', this)">✉ 예약 문자</button>
+  <button class="tab-btn" onclick="switchTab('tab-inventory', this)">▧ 재고관리</button>
   {% if config.mode=='main' %}<button class="tab-btn" id="admin-tab-btn" onclick="switchTab('tab-admin', this)" style="display:none">≡ 관리자</button>{% endif %}
 </nav>
 
 <section id="tab-reserve" class="tab-pane active">
   {# AI 예약 도우미 카드 — 예약관리 *내부* (§ 16.2). 전용 탭 ⊥. #}
-  {% include "_ai_appointment_helper.html" %}
   <div class="layout">
     <aside class="sidebar">
   <button class="btn-create" onclick="openNewPatientForReservation()">＋ 신규 환자 등록</button>
@@ -109,6 +108,7 @@
       <div id="day-board"></div>
     </main>
   </div>
+  {% include "_ai_appointment_helper.html" %}
 </section>
 
 <section id="tab-patients" class="tab-pane">
@@ -147,27 +147,12 @@
             <option value="name">정렬: 이름</option>
             <option value="birth_date">정렬: 생년월일</option>
           </select>
+          <button class="primary" onclick="editEmployeeCategory(null)">+ 과 추가</button>
+          <button class="primary" onclick="editEmployee({active:true})">+ 직원 추가</button>
         </div>
       </div>
 
-      <!-- 의사 박스 / 치료사 박스 2열 (모바일에선 세로 스택) -->
-      <div class="emp-boxes">
-        <div class="emp-box">
-          <div class="emp-box-head">
-            <h3>◇ 의사 관리</h3>
-            <button class="primary" onclick="editEmployee({role:'doctor', color:'#EF4444', active:true})">+ 신규 의사</button>
-          </div>
-          <div id="emp-doctor-list" class="emp-list"></div>
-        </div>
-
-        <div class="emp-box">
-          <div class="emp-box-head">
-            <h3>◇ 치료사 관리</h3>
-            <button class="primary" onclick="editEmployee({role:'therapist', color:'#3B82F6', active:true, can_eswt:true, can_manual:true})">+ 신규 치료사</button>
-          </div>
-          <div id="emp-therapist-list" class="emp-list"></div>
-        </div>
-      </div>
+      <div id="employee-category-list" class="emp-boxes"></div>
     </div>
   </div>
 
@@ -231,128 +216,19 @@
     </div>
   </div>
 </section>
-<section id="tab-sms" class="tab-pane">
 
-  <!-- 단계 F #14: 개별 문자 발송 — 환자 검색 / 연락처 / 환자 정보 박스 분리 -->
+<section id="tab-inventory" class="tab-pane">
   <div class="sheet">
     <div class="sheet-head">
-      <h2>✉ 개별 문자 발송</h2>
-    </div>
-
-    <div class="sms-single-grid">
-      <!-- 박스 1: 환자 검색 -->
-      <div class="sms-mini-box">
-        <div class="sms-mini-head">🔍 환자 검색</div>
-        <input id="sms1-search" type="text" placeholder="이름·차트·생년월일·연락처"
-               oninput="sms1Search()" autocomplete="off">
-        <div id="sms1-results" class="pid-results" style="display:none"></div>
-      </div>
-
-      <!-- 박스 2: 연락처 -->
-      <div class="sms-mini-box">
-        <div class="sms-mini-head">📞 연락처</div>
-        <input id="sms1-phone" type="tel" data-fmt="phone" maxlength="13" inputmode="tel"
-               placeholder="01012345678 → 010-1234-5678">
-        <small class="muted">미등록 환자도 번호만 입력해 보낼 수 있습니다</small>
-      </div>
-
-      <!-- 박스 3: 환자 정보 -->
-      <div class="sms-mini-box">
-        <div class="sms-mini-head">👤 환자 정보</div>
-        <div id="sms1-selected" class="pid-selected">
-          <span class="muted">검색 결과에서 선택하세요</span>
-        </div>
-        <input type="hidden" id="sms1-pid" value="">
-      </div>
-    </div>
-
-    <!-- 템플릿 선택 + 본문 -->
-    <div class="sms-body-section">
-      <div class="sms-tpl-row">
-        <label class="sf-label">템플릿 선택</label>
-        <select id="sms1-tpl" onchange="sms1ApplyTemplate()">
-          <option value="">(선택 안 함)</option>
-        </select>
-        <button onclick="sms1ResetTemplate()">🔄 변수 다시 채우기</button>
-      </div>
-      <div class="sms-single-edit-grid">
-        <label>메시지 본문
-          <textarea id="sms1-body" rows="7"
-                    oninput="sms1RenderPreview()"
-                    placeholder="템플릿을 선택하면 자동으로 채워집니다"></textarea>
-        </label>
-        <div class="sms-preview-wrap">
-          <div class="sms-preview-head">📱 변환 예시</div>
-          <div id="sms1-preview" class="sms-preview-card">
-            <span class="muted">템플릿을 선택하면 미리보기가 표시됩니다</span>
-          </div>
-          <div class="sms-preview-foot muted">
-            실제 발송될 모습입니다. 환자 미선택 시 예시 값으로 채워집니다.
-          </div>
-        </div>
-      </div>
-      <div class="sms-variables">
-        <span class="muted">사용 가능 변수:</span>
-        <code>{환자명}</code> <code>{차트번호}</code> <code>{생년월일}</code> <code>{연락처}</code>
-        <code>{병원명}</code> <code>{병원전화}</code>
-        <code>{다음예약날짜}</code> <code>{다음예약시간}</code> <code>{다음예약항목}</code>
-        <code>{마지막내원일}</code>
-      </div>
-      <div style="display:flex; gap:8px; margin-top:10px; justify-content:flex-end">
-        <button class="primary" onclick="sms1Send()">📨 발송</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 내일 예약 일괄 발송 -->
-  <div class="sheet" style="margin-top:18px">
-    <div class="sheet-head">
-      <h2>▤ 내일 예약 일괄 안내</h2>
+      <h2>▧ 재고관리</h2>
       <div class="sheet-toolbar">
-        <button class="primary" onclick="loadSmsTargets()">내일 예약 불러오기</button>
-        <button id="btn-sms-validate" onclick="smsValidateChecked()">🔍 발송 전 점검</button>
-        <button id="btn-sms-aidraft" onclick="smsAiDraftChecked()">✨ AI 초안 생성</button>
-        <span id="ai-status-badge" class="muted" style="margin-left:6px; font-size:12px"></span>
-      </div>
-      <div class="muted" style="margin-top:6px; font-size:12px">
-        AI 초안은 참고용입니다. 발송 전 예약시간 / 치료항목 / 환자명을 반드시 확인하세요. AI 가 직접 문자 발송을 하지는 않습니다.
+        <button class="small" onclick="loadInventorySheet()">새로고침</button>
       </div>
     </div>
-
-    <!-- 단계 F: 일괄 안내도 템플릿 선택 가능 (선택 시 본문 덮어씀) -->
-    <div class="sms-tpl-row" style="margin-bottom:10px">
-      <label class="sf-label">일괄 템플릿</label>
-      <select id="bulk-tpl" onchange="bulkApplyTemplate()">
-        <option value="">(기본 안내 — 자동 생성된 문구)</option>
-      </select>
-      <small class="muted">선택하면 모든 행 본문이 템플릿으로 교체됩니다</small>
-    </div>
-
-    <!-- AI: 발송 전 점검 결과 요약 패널 -->
-    <div id="sms-validate-panel" style="display:none; margin-bottom:10px"></div>
-
-    <div id="sms-results">
-      <p class="muted">내일 예약 환자를 불러오세요.</p>
-    </div>
-
-    <div id="sms-footer" style="display:none; margin-top:16px; text-align:right">
-      <button class="primary" onclick="smsSend()">선택 대상 문자 발송</button>
+    <div id="inventory-list">
+      <p class="muted" style="padding:12px">재고 데이터를 불러오세요.</p>
     </div>
   </div>
-
-  <!-- 단계 F #15: 문자 템플릿 관리 카드 -->
-  <div class="sheet" style="margin-top:18px">
-    <div class="sheet-head">
-      <h2>✉ 문자 템플릿 관리</h2>
-      <div class="sheet-toolbar">
-        <button class="primary" onclick="addSmsTemplate()">+ 새 템플릿</button>
-      </div>
-    </div>
-    <div id="sms-templates-list">
-      <p class="muted">불러오는 중...</p>
-    </div>
-  </div>
-
 </section>
 
 {# AI 도우미 탭 (업무 매뉴얼 Q&A) — v1.3.5+ 사용자 요청으로 *UI 만* 제거.
@@ -362,67 +238,72 @@
 <section id="tab-admin" class="tab-pane">
   <div class="sub-tabs">
     <button class="sub-tab active" onclick="switchAdminTab('treatments', this)">◫ 치료항목</button>
-    <button class="sub-tab" onclick="switchAdminTab('sms', this)">✉ 문자나라</button>
     <button class="sub-tab" onclick="switchAdminTab('aggregate', this)">▥ 집계</button>
-    <button class="sub-tab" onclick="switchAdminTab('stats', this)">▣ 통계</button>
+    <button class="sub-tab" onclick="switchAdminTab('settlement', this)">정산</button>
+    <button class="sub-tab" onclick="switchAdminTab('stats', this)">▣ 매출</button>
     <button class="sub-tab" onclick="switchAdminTab('system', this)">≡ 시스템</button>
     <button class="sub-tab" onclick="switchAdminTab('convert', this)">⇅ 데이터변환</button>
     <button class="sub-tab" onclick="switchAdminTab('ai', this)">🤖 AI 설정</button>
   </div>
   <div id="admin-stats" class="admin-pane">
     <div class="sheet">
-      <div class="sheet-head"><h2>▣ 예약 통계</h2>
-        <div class="sheet-toolbar" style="flex-wrap:wrap;gap:6px;align-items:center;">
-          <input id="stat-from" type="date" style="width:150px">
-          <span>~</span>
-          <input id="stat-to" type="date" style="width:150px">
-          <button class="primary" onclick="loadStats()">조회</button>
-          <button class="small" onclick="downloadStatsXlsx()" title="조회 기간의 도수치료 통계를 엑셀로 다운로드">📊 엑셀 다운로드</button>
-          <span style="width:8px;display:inline-block;"></span>
-          <button class="small" onclick="applyStatsPreset('today')">오늘</button>
-          <button class="small" onclick="applyStatsPreset('week')">최근 7일</button>
-          <button class="small" onclick="applyStatsPreset('month_now')">이번 달</button>
-          <button class="small" onclick="applyStatsPreset('month_prev')">지난 달</button>
-          <button class="small" onclick="applyStatsPreset('30d')">최근 30일</button>
-        </div>
+      <div class="sheet-head">
+        <h2>매출 관리</h2>
       </div>
-      <div id="stats-loading" style="display:none; padding:20px; color:#4B5563;">불러오는 중...</div>
-      <div id="stats-body" style="display:none;">
-        <!-- 상단 카드 5개 (전체 기준 고정) -->
-        <div class="stats-section">
-          <h3 class="stats-section-title" id="stats-cards-title">• 이달 요약</h3>
-          <div id="stats-cards" class="stats-cards-grid"></div>
+      <div class="revenue-sub-tabs">
+        <button class="revenue-sub-tab active" onclick="switchRevenueTab('records', this)">매출 기록</button>
+        <button class="revenue-sub-tab" onclick="switchRevenueTab('stats', this)">매출 통계</button>
+      </div>
+
+      <div id="revenue-pane-records" class="revenue-pane active">
+        <div class="stats-filter-bar revenue-toolbar">
+          <input id="rev-record-from" type="date" style="width:150px">
+          <span>~</span>
+          <input id="rev-record-to" type="date" style="width:150px">
+          <select id="rev-record-category" style="width:150px"></select>
+          <button class="primary" onclick="loadRevenueRecords()">조회</button>
+          <button class="small" onclick="saveRevenueRecords()">저장</button>
+          <span class="toolbar-spacer"></span>
+          <button class="small" onclick="applyRevenuePreset('record','today')">오늘</button>
+          <button class="small" onclick="applyRevenuePreset('record','week')">최근 7일</button>
+          <button class="small" onclick="applyRevenuePreset('record','month_now')">이번 달</button>
+          <button class="small" onclick="applyRevenuePreset('record','month_prev')">지난 달</button>
         </div>
-        <!-- 중간 분석 (도수치료 중심 · 3개 카드) -->
-        <div class="stats-section">
-          <div class="stats-analysis-header">
-            <h3 class="stats-section-title" style="margin:0;">▣ 분석</h3>
-          </div>
-          <div id="stats-charts" class="stats-charts-grid"></div>
+        <div class="settlement-note">매일 실제 매출을 입력합니다. 이 기록이 매출 통계의 기준이 됩니다.</div>
+        <div id="revenue-record-loading" style="display:none; padding:14px; color:#4B5563;">불러오는 중...</div>
+        <div id="revenue-record-body"></div>
+      </div>
+
+      <div id="revenue-pane-stats" class="revenue-pane">
+        <div class="stats-filter-bar revenue-toolbar">
+          <input id="rev-stat-from" type="date" style="width:150px">
+          <span>~</span>
+          <input id="rev-stat-to" type="date" style="width:150px">
+          <select id="rev-stat-category" style="width:150px"></select>
+          <button class="primary" onclick="loadRevenueStats()">조회</button>
+          <span class="toolbar-spacer"></span>
+          <button class="small" onclick="applyRevenuePreset('stat','today')">오늘</button>
+          <button class="small" onclick="applyRevenuePreset('stat','week')">최근 7일</button>
+          <button class="small" onclick="applyRevenuePreset('stat','month_now')">이번 달</button>
+          <button class="small" onclick="applyRevenuePreset('stat','month_prev')">지난 달</button>
+          <button class="small" onclick="applyRevenuePreset('stat','30d')">최근 30일</button>
         </div>
-        <!-- 하단 날짜별 표 (기본 접힘 · 토글 버튼으로 펼침) -->
-        <div class="stats-section">
-          <h3 class="stats-section-title" style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;" onclick="toggleDailyStatsTable()">
-            <span id="stats-table-caret" style="display:inline-block;transition:transform 0.15s;font-size:12px;color:#4B5563;">▶</span>
-            <span>▤ 날짜별 통계표</span>
-            <span id="stats-table-hint" class="muted" style="font-size:12px;font-weight:normal;">— 클릭하면 펼쳐집니다</span>
-          </h3>
-          <div id="stats-table-wrap" style="display:none;">
-            <div id="stats-table" style="overflow-x:auto;"></div>
-          </div>
-        </div>
+        <div id="revenue-stat-loading" style="display:none; padding:14px; color:#4B5563;">불러오는 중...</div>
+        <div id="revenue-stat-body"></div>
       </div>
     </div>
   </div>
 <div id="admin-aggregate" class="admin-pane">
     <div class="sheet">
       <div class="sheet-head">
-        <h2>▥ 치료사별 집계</h2>
+        <h2>▥ 과별 집계</h2>
         <div class="sheet-toolbar" style="flex-wrap:wrap;gap:6px;align-items:center;">
           <input id="agg-from" type="date" style="width:150px">
           <span>~</span>
           <input id="agg-to" type="date" style="width:150px">
+          <select id="agg-category" onchange="loadAggregate()" style="width:150px"></select>
           <button class="primary" onclick="loadAggregate()">조회</button>
+          <button class="small" onclick="applyAggregateToSettlement()">정산 반영</button>
           <span style="width:8px;display:inline-block;"></span>
           <button class="small" onclick="applyAggPreset('today')">오늘</button>
           <button class="small" onclick="applyAggPreset('week')">최근 7일</button>
@@ -435,6 +316,30 @@
       <div id="agg-body"></div>
     </div>
   </div>
+  <div id="admin-settlement" class="admin-pane">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2>정산</h2>
+        <div class="sheet-toolbar" style="flex-wrap:wrap;gap:6px;align-items:center;">
+          <input id="settle-from" type="date" style="width:150px">
+          <span>~</span>
+          <input id="settle-to" type="date" style="width:150px">
+          <select id="settle-category" onchange="loadSettlement()" style="width:150px"></select>
+          <button class="primary" onclick="loadSettlement()">조회</button>
+          <button class="small" onclick="downloadSettlementXlsx()">엑셀</button>
+          <button class="small" onclick="printSettlement()">인쇄</button>
+          <span style="width:8px;display:inline-block;"></span>
+          <button class="small" onclick="applySettlementPreset('today')">오늘</button>
+          <button class="small" onclick="applySettlementPreset('week')">최근 7일</button>
+          <button class="small" onclick="applySettlementPreset('month_now')">이번 달</button>
+          <button class="small" onclick="applySettlementPreset('month_prev')">지난 달</button>
+          <button class="small" onclick="applySettlementPreset('30d')">최근 30일</button>
+        </div>
+      </div>
+      <div id="settle-loading" style="display:none;padding:20px;color:#4B5563;">불러오는 중...</div>
+      <div id="settle-body"></div>
+    </div>
+  </div>
   <div id="admin-treatments" class="admin-pane active">
     <div class="sheet">
       <div class="sheet-head">
@@ -445,9 +350,6 @@
       </div>
       <div id="treatments-list"></div>
     </div>
-  </div>
-  <div id="admin-sms" class="admin-pane">
-    <div class="sheet"><div class="sheet-head"><h2>✉ 문자나라 연동 설정</h2></div><div id="sms-setting-form"></div></div>
   </div>
   <div id="admin-convert" class="admin-pane">
     <div class="sheet">
@@ -515,40 +417,138 @@ const CFG = {
   lunchStart: "{{ config.lunch_start or '12:30' }}",
   lunchEnd:   "{{ config.lunch_end   or '13:30' }}"
 };
-let THERAPISTS = [], PATIENTS = [], LAST_APPTS = {}, SMS_TARGETS = [], THERAPIST_LEAVES = [];
-// AI 보조: 발송 전 점검 결과 캐시 (appointment_id → {blockers:[], warnings:[]})
-let SMS_VALIDATE_RESULTS = {};
+let THERAPISTS = [], PATIENTS = [], LAST_APPTS = {}, THERAPIST_LEAVES = [];
+const BOARD_EMPLOYEE_FILTER_KEY = 'dosu_board_selected_employee_ids';
 // AI 보조: /api/ai/health 캐시
 let AI_HEALTH = null;
 // 대량 데이터 대응: id → 환자 객체 Map (O(1) 조회). loadMasters() 에서 채워짐.
 let PATIENTS_BY_ID = new Map();
-let EMPLOYEES_ALL = [];   // 의사+치료사 전체 (예약 모달 등에서 사용)
-let DOCTORS = [];         // role=doctor
+let EMPLOYEES_ALL = [];   // 전체 직원 (예약 모달 등에서 사용)
+let DOCTORS = [];         // 진료항목 처리 가능 직원
 let CURRENT_CATEGORY = 'manual';  // 레거시 호환용. 4단계에서 제거 예정.
 let MINI_APPT_COUNTS = {};
 let MINI_LEAVE_MAP = {};
 let MINI_RENDER_KEY = 0;
 
-// 치료항목 상수 — 서버 /api/treatment-meta 에서 로드 (폴백: 하드코딩 기본 시드)
+function getBoardSelectableEmployees(){
+  return THERAPISTS
+    .filter(t => t.active !== false)
+    .filter(t => t.can_manual !== false);
+}
+
+function readBoardSelectedEmployeeIds(){
+  try {
+    const raw = localStorage.getItem(BOARD_EMPLOYEE_FILTER_KEY);
+    if(raw === null) return null;
+    const parsed = JSON.parse(raw);
+    if(!Array.isArray(parsed)) return null;
+    return parsed.map(String);
+  } catch(e){
+    return null;
+  }
+}
+
+function getBoardVisibleTherapists(){
+  const candidates = getBoardSelectableEmployees();
+  const selected = readBoardSelectedEmployeeIds();
+  if(selected === null) return candidates;
+  const selectedSet = new Set(selected);
+  return candidates.filter(t => selectedSet.has(t.id));
+}
+
+function getBoardVisibleTherapistsIncludingCurrent(currentId){
+  const visible = getBoardVisibleTherapists();
+  if(!currentId || visible.some(t => t.id === currentId)) return visible;
+  const current = THERAPISTS.find(t => t.id === currentId);
+  return current ? [...visible, current] : visible;
+}
+
+function boardEmployeeFilterLabel(){
+  const total = getBoardSelectableEmployees().length;
+  const selected = readBoardSelectedEmployeeIds();
+  if(selected === null) return `전체 ${total}`;
+  return `${getBoardVisibleTherapists().length}/${total}`;
+}
+
+function renderBoardEmployeePicker(){
+  const employees = getBoardSelectableEmployees();
+  const selected = readBoardSelectedEmployeeIds();
+  const selectedSet = selected === null ? null : new Set(selected);
+  const rows = employees.map(t => {
+    const checked = selectedSet === null || selectedSet.has(t.id);
+    return `<label class="board-employee-option">
+      <input type="checkbox" class="board-employee-chk" value="${t.id}" ${checked?'checked':''}>
+      <span class="color-dot" style="background:${t.color||'#9CA3AF'}"></span>
+      <span>${t.name}</span>
+    </label>`;
+  }).join('');
+  return `<div class="board-employee-picker" id="board-employee-picker" style="display:none" onclick="event.stopPropagation()">
+    <div class="board-employee-picker-head">
+      <b>예약표 표시 직원</b>
+      <span class="muted">${employees.length}명</span>
+    </div>
+    <div class="board-employee-picker-list">
+      ${rows || '<div class="muted" style="padding:8px">표시 가능한 직원 없음</div>'}
+    </div>
+    <div class="board-employee-picker-actions">
+      <button class="mini" onclick="setBoardEmployeeSelection('all')">전체</button>
+      <button class="mini" onclick="setBoardEmployeeSelection('none')">해제</button>
+      <button class="primary mini" onclick="applyBoardEmployeeSelection()">적용</button>
+    </div>
+  </div>`;
+}
+
+function toggleBoardEmployeePicker(event){
+  event.stopPropagation();
+  const picker = document.getElementById('board-employee-picker');
+  if(!picker) return;
+  picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+}
+
+function closeBoardEmployeePicker(){
+  const picker = document.getElementById('board-employee-picker');
+  if(picker) picker.style.display = 'none';
+}
+
+function setBoardEmployeeSelection(mode){
+  if(mode === 'all'){
+    localStorage.removeItem(BOARD_EMPLOYEE_FILTER_KEY);
+  } else if(mode === 'none'){
+    localStorage.setItem(BOARD_EMPLOYEE_FILTER_KEY, JSON.stringify([]));
+  }
+  renderDayBoard();
+}
+
+function applyBoardEmployeeSelection(){
+  const ids = Array.from(document.querySelectorAll('.board-employee-chk:checked')).map(x => x.value);
+  localStorage.setItem(BOARD_EMPLOYEE_FILTER_KEY, JSON.stringify(ids));
+  renderDayBoard();
+}
+
+document.addEventListener('click', closeBoardEmployeePicker);
+
+// 치료항목 메타 — 서버 /api/treatment-meta 에서 로드 (프론트 하드코딩 폴백 없음)
 let TX_META = {
-  treatment_codes: ['injection','cartilage','eswt','manual30','manual60'],
-  treatment_names: {injection:'주사', cartilage:'연골주사', eswt:'체외충격파', manual30:'도수치료30분', manual60:'도수치료60분'},
-  treatment_short: {injection:'주', cartilage:'연골', eswt:'충', manual30:'도수6', manual60:'도수12'},
-  treatment_minutes: {injection:10, cartilage:10, eswt:10, manual30:30, manual60:60},
-  treatment_role: {injection:'doctor', cartilage:'doctor', eswt:'therapist', manual30:'therapist', manual60:'therapist'},
-  treatment_show: {injection:true, cartilage:true, eswt:true, manual30:true, manual60:true},
-  doctor_treatments: ['injection','cartilage'],
-  therapist_treatments: ['eswt','manual30','manual60'],
-  manual_treatments: ['manual30','manual60'],
-  count_increment: {injection:1, cartilage:1, eswt:1, manual30:1, manual60:1},
-  eswt_code: 'eswt',
+  treatment_codes: [],
+  treatment_names: {},
+  treatment_category: {},
+  treatment_category_name: {},
+  treatment_short: {},
+  treatment_minutes: {},
+  treatment_role: {},
+  treatment_show: {},
+  doctor_treatments: [],
+  therapist_treatments: [],
+  manual_treatments: [],
+  count_increment: {},
+  eswt_code: '',
   all_treatments: [],
+  employee_categories: [],
 };
 
 // 호환용 (이전 코드가 TX_MINUTES 참조 시)
 let TX_MINUTES = TX_META.treatment_minutes;
 let MANUAL_SLOT_LIMIT = null;
-let SMS_TEMPLATE = '';
 
 async function loadTreatmentMeta(){
   try {
@@ -556,41 +556,40 @@ async function loadTreatmentMeta(){
     if(m && m.treatment_codes) {
       TX_META = m;
       TX_MINUTES = m.treatment_minutes || TX_MINUTES;
+      if(Array.isArray(m.employee_categories)) EMPLOYEE_CATEGORIES = m.employee_categories;
     }
   } catch(e){}
   try {
     const s = await (await fetch('/api/system-settings')).json();
     if(s){
       MANUAL_SLOT_LIMIT = s.manual_slot_limit;
-      SMS_TEMPLATE = s.sms_template || '';
     }
   } catch(e){}
 }
 
-// 호환: 기존 코드가 참조할 수 있는 옛 상수들
-const TREATMENTS = {
-  manual: [
-    {code:'eswt', name:'체외충격파', duration:10},
-    {code:'manual30', name:'도수치료30분', duration:30},
-    {code:'manual60', name:'도수치료60분', duration:60},
-  ],
-  treatment: [
-    {code:'injection', name:'주사', duration:10},
-    {code:'cartilage', name:'연골주사', duration:10},
-    {code:'eswt', name:'체외충격파', duration:10},
-  ],
-};
-const TREATMENT_SHORT = {
-  '주사':'주', '연골주사':'연골', '체외충격파':'충',
-  '도수치료30분':'도수6', '도수치료60분':'도수12',
-  '도수치료 30분(6)':'도수6', '도수치료 60분(12)':'도수12',
-};
+// 호환: 기존 코드가 참조할 수 있는 옛 상수들. 실제 값은 TX_META(DB) 기준.
+const TREATMENTS = { manual: [], treatment: [] };
+
+function treatmentNameToCode(name){
+  const target = (name || '').trim();
+  if(!target) return '';
+  for(const [code, txName] of Object.entries(TX_META.treatment_names || {})){
+    if(txName === target) return code;
+  }
+  return '';
+}
+
+function treatmentShortByName(name){
+  const code = treatmentNameToCode(name);
+  if(!code) return (name || '').trim();
+  return TX_META.treatment_short[code] || TX_META.treatment_names[code] || code;
+}
 
 function shortTreatments(memo){
   if(!memo) return '';
   const m = memo.match(/^\[([^\]]+)\]/);
   if(!m) return '';
-  return m[1].split(',').map(s => TREATMENT_SHORT[s.trim()] || s.trim()).join('·');
+  return m[1].split(',').map(s => treatmentShortByName(s)).join('·');
 }
 
 // 예약 객체 → 치료항목 코드 배열 (새 스키마 또는 레거시 메모 양쪽 지원)
@@ -600,23 +599,56 @@ function apptTreatmentCodes(ep){
   }
   const m = (ep && ep.memo || '').match(/^\[([^\]]+)\]/);
   if(!m) return [];
-  const nameToCode = {
-    '주사':'injection', '연골주사':'cartilage', '체외충격파':'eswt',
-    '도수치료30분':'manual30', '도수치료60분':'manual60',
-    '도수치료 30분(6)':'manual30', '도수치료 60분(12)':'manual60',
-  };
-  return m[1].split(',').map(s => nameToCode[s.trim()]).filter(Boolean);
+  return m[1].split(',').map(s => treatmentNameToCode(s)).filter(Boolean);
 }
 
 function txShort(code){ return TX_META.treatment_short[code] || code; }
 function txName(code){ return TX_META.treatment_names[code] || code; }
+function txByCode(code){ return (TX_META.all_treatments || []).find(t => t.code === code) || null; }
+function txCategoryId(code){ return (TX_META.treatment_category || {})[code] || ''; }
+function txCategoryName(code){ return (TX_META.treatment_category_name || {})[code] || ''; }
+function activeTreatmentCategories(){
+  const cats = (TX_META.employee_categories || EMPLOYEE_CATEGORIES || []).filter(c => c.active !== false);
+  const used = new Set((TX_META.treatment_codes || []).map(code => txCategoryId(code)).filter(Boolean));
+  if(!used.size) return cats;
+  return cats.filter(c => used.has(c.id));
+}
+function treatmentCodesForCategory(categoryId){
+  const codes = TX_META.treatment_codes || [];
+  const assigned = codes.filter(code => txCategoryId(code));
+  if(!categoryId || assigned.length) return codes.filter(code => !categoryId || txCategoryId(code) === categoryId);
+  const cats = TX_META.employee_categories || EMPLOYEE_CATEGORIES || [];
+  const cat = cats.find(c => c.id === categoryId) || {};
+  if(cat.default_can_doctor_treatment && !cat.default_can_manual){
+    return codes.filter(isDoctorCode);
+  }
+  const therapistCodes = codes.filter(isTherapistCode);
+  return therapistCodes.length ? therapistCodes : codes;
+}
+function employeeCanSelectedTreatments(employee, codes){
+  if(!employee || !codes || !codes.length) return true;
+  const selectedIds = employee.treatment_ids || [];
+  if(employee.treatment_override_enabled === true){
+    return codes.every(code => {
+      const tx = txByCode(code);
+      return tx && selectedIds.includes(tx.id);
+    });
+  }
+  if(employee.category_id){
+    return codes.every(code => {
+      const categoryId = txCategoryId(code);
+      return !categoryId || categoryId === employee.category_id;
+    });
+  }
+  return true;
+}
 function isManualCode(code){
   // 도수치료 = 치료사 역할 + 체외충격파 제외
-  return TX_META.treatment_role[code] === 'therapist' && code !== TX_META.eswt_code;
+  return TX_META.treatment_role[code] === 'therapist' && !isEswtCode(code);
 }
 function isDoctorCode(code){ return TX_META.treatment_role[code] === 'doctor'; }
 function isTherapistCode(code){ return TX_META.treatment_role[code] === 'therapist'; }
-function isEswtCode(code){ return code === TX_META.eswt_code; }
+function isEswtCode(code){ return !!TX_META.eswt_code && code === TX_META.eswt_code; }
 
 // 예약탭이 현재 화면에 보이는지 판정 — 백그라운드 polling 가드용
 // (다른 탭 보고 있을 땐 예약 fetch 를 쉬어서 서버 부담·네트워크 낭비 줄임)
@@ -641,6 +673,9 @@ function switchTab(id, btn){
       loadTherapistsSheet();
     }
   }
+  else if(id==='tab-inventory'){
+    loadInventorySheet();
+  }
   else if(id==='tab-reserve'){
     // 복귀 시 즉시 최신화 — 다른 탭 보는 동안 polling 이 쉬었으므로 stale 데이터 방지.
     // fire-and-forget: 사용자 체감 속도 우선 (await 쓰면 탭 전환이 멈춘 듯 보임).
@@ -649,7 +684,6 @@ function switchTab(id, btn){
     try { if (window._miniCal) reloadMiniCalendar(window._miniCal.getDate()); } catch(e) {}
   }
   else if(id==='tab-admin') loadTreatmentsCard();
-  else if(id==='tab-sms'){ loadSmsTabData(); }
 }
 
 async function switchCategory(cat, btn){
@@ -662,17 +696,17 @@ async function switchCategory(cat, btn){
 
 async function switchAdminTab(name, btn){
   // 통계·시스템·데이터변환은 관리자 비밀번호 인증 필요
-  if(name==='stats' || name==='system' || name==='convert'){
+  if(name==='stats' || name==='system' || name==='convert' || name==='settlement'){
     if(!await ensureAdmin()) return;  // 취소 시 전환하지 않음
   }
   document.querySelectorAll('#tab-admin .sub-tab').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.admin-pane').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('admin-'+name).classList.add('active');
-  if(name==='sms') loadSmsSettingForm();
   if(name==='system'){ loadSystemForm(); loadAboutBox(); }
   if(name==='treatments') loadTreatmentsCard();
   if(name==='aggregate') initAggregate();
+  if(name==='settlement') initSettlement();
   if(name==='stats') initStats();
   if(name==='convert') dcReset();
   if(name==='ai') loadAiSettingForm();
@@ -699,7 +733,7 @@ async function openLeaveModal(dateStr){
     selectedKindMap[x.therapist_id] = x.leave_kind || 'annual';
   });
 
-  const rows = THERAPISTS
+  const rows = EMPLOYEES_ALL
   .filter(t => t.active !== false)
   .map(t => `
     <div class="leave-row">
@@ -890,8 +924,8 @@ async function loadMasters(){
   try {
     EMPLOYEES_ALL = await (await fetch('/api/employees')).json();
   } catch(e){ EMPLOYEES_ALL = []; }
-  THERAPISTS = EMPLOYEES_ALL.filter(e => e.role === 'therapist');
-  DOCTORS = EMPLOYEES_ALL.filter(e => e.role === 'doctor');
+  THERAPISTS = EMPLOYEES_ALL.filter(e => e.can_manual !== false || e.can_eswt !== false);
+  DOCTORS = EMPLOYEES_ALL.filter(e => e.can_doctor_treatment === true);
 
   // ─── 대량(수만 건) 대응 ───
   //   예전: PATIENTS 80K light 로드(2초+11MB)를 기다려서 첫 렌더가 지연
@@ -934,6 +968,35 @@ async function _reloadPatientsCache(){
 function _upsertPatientCache(p){
   if(!p || !p.id) return;
   PATIENTS_BY_ID.set(p.id, p);
+}
+
+const PM_RECENT_KEY = 'dosu_recent_patient_searches';
+
+function _pmRememberRecentPatient(p){
+  if(!p || !p.id) return;
+  const existing = _pmLoadRecentPatients().filter(x => x.id !== p.id);
+  const compact = {
+    id: p.id,
+    chart_no: p.chart_no || '',
+    name: p.name || '',
+    gender: p.gender || '',
+    phone: p.phone || '',
+    birth_date: p.birth_date || '',
+    memo: p.memo || '',
+    counts_show: p.counts_show || [],
+  };
+  localStorage.setItem(PM_RECENT_KEY, JSON.stringify([compact, ...existing].slice(0, 10)));
+}
+
+function _pmLoadRecentPatients(){
+  try {
+    const raw = JSON.parse(localStorage.getItem(PM_RECENT_KEY) || '[]');
+    if(!Array.isArray(raw)) return [];
+    return raw
+      .filter(p => p && p.id)
+      .map(p => Object.assign({}, p, PATIENTS_BY_ID.get(p.id) || {}))
+      .slice(0, 10);
+  } catch(e){ return []; }
 }
 
 async function loadTherapistLeaves(date=''){
@@ -1476,6 +1539,10 @@ async function renderDayBoard(){
     <button class="mini" onclick="goToday()">오늘</button>
     <button class="mini" onclick="moveDay(1)">다음 ▶</button>
     <h3 class="board-date">${fmtDateKr(date)}</h3>
+    <div class="board-employee-filter">
+      <button class="mini" onclick="toggleBoardEmployeePicker(event)">표시 직원 <span class="badge gray">${boardEmployeeFilterLabel()}</span></button>
+      ${renderBoardEmployeePicker()}
+    </div>
     <button class="mini" onclick="downloadManualScheduleXlsx()" title="현재 날짜의 도수치료 예약을 A4 가로 엑셀로 다운로드">📊 도수치료 엑셀</button>
   </div>`;
 
@@ -1489,9 +1556,7 @@ async function renderDayBoard(){
     { id: COL_ESWT,   name: '⚡ 체외충격파(공용)', color: '#F97316', isFixed: true },
     { id: COL_MANUAL, name: '💆 치료사 미배정',  color: '#8B5CF6', isFixed: true },
   ];
-  const activeThers = THERAPISTS
-    .filter(t => t.active !== false)
-    .filter(t => t.can_manual !== false);
+  const activeThers = getBoardVisibleTherapists();
   const therCols = activeThers.map(t => ({
     id: t.id, name: t.name, color: t.color || '#9CA3AF', isFixed: false,
     can_eswt: t.can_eswt !== false, can_manual: t.can_manual !== false,
@@ -1552,8 +1617,8 @@ async function renderDayBoard(){
         //   (주사/연골주사 + 앞으로 추가되는 모든 의사 역할 항목 자동 포함)
         //   의사 개인 열로 분기 없음, 모두 의사 공용 풀
         targetCol = COL_DOC;
-      } else if(code === 'eswt'){
-        const hid = assignMap['eswt'];
+      } else if(isEswtCode(code)){
+        const hid = assignMap[TX_META.eswt_code];
         if(hid){
           // 그 치료사가 헤더에 있고, 그 시간 휴무 아닐 때만 치료사 열
           const exists = therCols.find(c => c.id === hid);
@@ -1616,7 +1681,7 @@ async function renderDayBoard(){
         // 도수치료(미배정) 공용 열 내부에서 드래그 대상으로 표시
         isManualUnassigned: (targetCol === COL_MANUAL),
         // 체외충격파 셀 이동 대상
-        isEswt: (code === 'eswt'),
+        isEswt: isEswtCode(code),
       };
       cellsByCol[targetCol][slot] = (cellsByCol[targetCol][slot] || []);
       cellsByCol[targetCol][slot].push(item);
@@ -1836,7 +1901,7 @@ function attachBoardDnD(){
         if(!line) return true;  // 라인 밖은 필터
         const code = line.dataset.code;
         // 체외충격파/도수치료 모두 어떤 열에서든 드래그 가능 (반복 이동 허용)
-        if(code === 'eswt') return false;
+        if(isEswtCode(code)) return false;
         if(isManualCode(code)) return false;  // 모든 도수치료 시간항목 드래그 허용
         return true;  // 주사/연골 드래그 불가
       },
@@ -1867,7 +1932,7 @@ function attachBoardDnD(){
         }
 
         // 체외충격파: 같은 group 안에서 치료사 열 ↔ 공용 열 이동
-        if(code === 'eswt'){
+        if(isEswtCode(code)){
           await handleEswtDrop(apptId, toColId, newSlotMin);
         } else if(isManualCode(code)){
           // 도수치료 미배정 → 치료사 열로만 이동 허용 (모든 시간항목)
@@ -1940,6 +2005,8 @@ function _apptHasOtherCodes(apptId, draggedCode){
 }
 
 async function handleEswtDrop(apptId, toColId, newSlotMin){
+  const eswtCode = TX_META.eswt_code;
+  if(!eswtCode){ alert('체외충격파 항목이 설정되어 있지 않습니다.'); refresh(); return; }
   let handlerId = null;
   if(toColId === '__eswt__'){
     handlerId = null;  // 공용
@@ -1947,11 +2014,17 @@ async function handleEswtDrop(apptId, toColId, newSlotMin){
     alert('체외충격파는 치료사 열 또는 체외충격파 공용 열로만 이동할 수 있습니다.');
     refresh(); return;
   } else {
+    const t = THERAPISTS.find(x => x.id === toColId);
+    if(!t){ alert('치료사 정보를 찾을 수 없습니다.'); refresh(); return; }
+    if(t.can_eswt === false || !employeeCanSelectedTreatments(t, [eswtCode])){
+      alert(`${t.name} 선생님은 이 체외충격파 항목을 담당할 수 없습니다.`);
+      refresh(); return;
+    }
     handlerId = toColId;  // 치료사 id
   }
 
   const timeChanged = (newSlotMin !== null && newSlotMin !== undefined && !Number.isNaN(newSlotMin));
-  const hasOther = _apptHasOtherCodes(apptId, 'eswt');
+  const hasOther = _apptHasOtherCodes(apptId, eswtCode);
 
   // 시간이 바뀌었고 예약에 다른 치료가 더 있으면 → 분리 이동 (원본의 다른 치료는 자리 유지)
   if(timeChanged && hasOther){
@@ -1959,7 +2032,7 @@ async function handleEswtDrop(apptId, toColId, newSlotMin){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        treatment_code: 'eswt',
+        treatment_code: eswtCode,
         start_at: _slotToStartAtISO(newSlotMin),
         handler_id: handlerId,
       }),
@@ -1980,7 +2053,7 @@ async function handleEswtDrop(apptId, toColId, newSlotMin){
   const r = await fetch(`/api/appointments/${apptId}/assign`, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ treatment_code:'eswt', handler_id: handlerId }),
+    body: JSON.stringify({ treatment_code: eswtCode, handler_id: handlerId }),
   });
   if(!r.ok){ alert(await r.text()); }
   refresh();
@@ -1988,6 +2061,8 @@ async function handleEswtDrop(apptId, toColId, newSlotMin){
 
 async function handleManualDrop(apptId, toColId, newSlotMin, draggedCodeArg){
   // 도수치료는 appointments.therapist_id 로 관리 → PUT
+  const draggedCode = draggedCodeArg || (TX_META.manual_treatments || [])[0];
+  if(!draggedCode){ alert('도수치료 항목이 설정되어 있지 않습니다.'); refresh(); return; }
   let newTid = null;
   if(toColId === '__manual__'){
     newTid = null;  // 공용 미배정
@@ -2002,12 +2077,14 @@ async function handleManualDrop(apptId, toColId, newSlotMin, draggedCodeArg){
       alert(`${t.name} 선생님은 도수치료 담당이 아닙니다.`);
       refresh(); return;
     }
+    if(!employeeCanSelectedTreatments(t, [draggedCode])){
+      alert(`${t.name} 선생님은 이 치료항목을 담당할 수 없습니다.`);
+      refresh(); return;
+    }
     newTid = toColId;
   }
 
   const timeChanged = (newSlotMin !== null && newSlotMin !== undefined && !Number.isNaN(newSlotMin));
-  // 드래그된 도수 코드 (manual30 / manual60 / manual90 등) — 드래그 이벤트에서 직접 전달
-  const draggedCode = draggedCodeArg || 'manual30';
   const hasOther = _apptHasOtherCodes(apptId, draggedCode);
 
   // 시간이 바뀌었고 예약에 다른 치료가 더 있으면 → 분리 이동
@@ -2107,6 +2184,7 @@ function quickCreateFor(pid){
   setTimeout(()=>{
     const p = PATIENTS_BY_ID.get(pid);
     if(!p){ const s=document.getElementById('f-pid'); if(s) s.value=pid; return; }
+    _pmRememberRecentPatient(p);
     pidPick(p.id, p.chart_no||'-', p.name||'?', p.birth_date||'-', p.phone||'-');
   }, 60);
 }
@@ -2399,6 +2477,33 @@ async function countManualOnSlot(dateStr, startMin, excludeApptId){
 
 // 현재 예약 모달 상태 (치료사 선택 자동화용)
 let _modalState = { manualTherapistAuto: null, patientId: null, newPatientUserTouched: false };
+let _pendingCreateReservationState = null;
+
+function renderCreateTreatmentChecks(categoryId, checkedCodes = []){
+  const checkedSet = new Set(checkedCodes || []);
+  const codes = treatmentCodesForCategory(categoryId);
+  if(!codes.length){
+    return '<div class="muted" style="padding:8px 4px;font-size:12px;">선택한 과에 활성 치료항목이 없습니다.</div>';
+  }
+  return codes.map(code => {
+    const name = TX_META.treatment_names[code] || code;
+    const dur = TX_MINUTES[code] || 30;
+    return `<label class="chk-item">
+      <input type="checkbox" class="f-tx-chk" value="${code}"
+             data-name="${escapeAttr(name)}" data-dur="${dur}"
+             ${checkedSet.has(code)?'checked':''}
+             onchange="onTxCheckChange()">
+      <span>${escapeHtml(name)} <em>(${dur}분)</em></span>
+    </label>`;
+  }).join('');
+}
+
+function onCreateTreatmentCategoryChange(){
+  const catId = _v('f-treatment-category');
+  const box = document.getElementById('f-tx-list');
+  if(box) box.innerHTML = renderCreateTreatmentChecks(catId);
+  onTxCheckChange();
+}
 
 function openCreate(startStr, endStr){
   const sd = new Date(startStr);
@@ -2408,19 +2513,17 @@ function openCreate(startStr, endStr){
 
   _modalState = { manualTherapistAuto: null, patientId: null, newPatientUserTouched: false };
 
-  // 치료항목 체크박스 (5개)
-  const trChecks = TX_META.treatment_codes.map(code => {
-    const name = TX_META.treatment_names[code];
-    const dur = TX_MINUTES[code] || 30;
-    return `<label class="chk-item">
-      <input type="checkbox" class="f-tx-chk" value="${code}"
-             data-name="${name}" data-dur="${dur}"
-             onchange="onTxCheckChange()">
-      <span>${name} <em>(${dur}분)</em></span>
-    </label>`;
-  }).join('');
+  const cats = activeTreatmentCategories();
+  const selectedCatId = (cats[0] && cats[0].id) || '';
+  const categoryOptions = cats.length
+    ? cats.map(c => `<option value="${c.id}" ${c.id===selectedCatId?'selected':''}>${escapeHtml(c.name||'')}</option>`).join('')
+    : '<option value="">활성 과 없음</option>';
+  const trChecks = renderCreateTreatmentChecks(selectedCatId);
 
-  showModal(`<h3>새 예약</h3>
+  showModal(`<div class="modal-title-row">
+      <h3>새 예약</h3>
+      <button class="mini" type="button" onclick="openNewPatientFromCreateModal()">+ 신규 환자 등록</button>
+    </div>
     <div class="patient-picker">
       <label>환자 <small class="muted">(이름/차트/연락처 검색)</small></label>
       <input id="f-pid-search" type="text" placeholder="검색어 입력"
@@ -2431,8 +2534,9 @@ function openCreate(startStr, endStr){
     </div>
 
     <div class="chk-group">
-      <div class="chk-label">치료항목 <small class="muted">(복수 선택)</small></div>
-      ${trChecks}
+      <div class="chk-label">과 / 치료항목 <small class="muted">(선택한 과 항목만 표시)</small></div>
+      <select id="f-treatment-category" onchange="onCreateTreatmentCategoryChange()">${categoryOptions}</select>
+      <div id="f-tx-list" class="tx-check-list">${trChecks}</div>
     </div>
 
     <div class="row-3">
@@ -2471,6 +2575,87 @@ function openCreate(startStr, endStr){
     </div>`);
 }
 
+function captureCreateReservationState(){
+  const date = _v('f-date') || '';
+  const time = _v('f-time') || '';
+  const duration = parseInt(_v('f-dur') || '0') || CFG.slotMinutes || 30;
+  return {
+    date,
+    time,
+    duration,
+    categoryId: _v('f-treatment-category') || '',
+    codes: [...document.querySelectorAll('.f-tx-chk:checked')].map(x => x.value),
+    therapistId: _v('f-tid') || '',
+    eswtHandlerId: _v('f-eswt-tid') || '',
+    patientId: _v('f-pid') || '',
+    patientSelectedHtml: document.getElementById('f-pid-selected')?.innerHTML || '',
+    memo: _v('f-memo') || '',
+    patientMemo: _v('f-patient-memo') || '',
+    isNewPatient: document.getElementById('f-is-new')?.checked || false,
+  };
+}
+
+function _reservationStateRange(state){
+  const fallback = new Date();
+  fallback.setMinutes(0, 0, 0);
+  if(fallback.getHours() < 9) fallback.setHours(9);
+  const start = state && state.date && state.time
+    ? new Date(`${state.date}T${state.time}:00`)
+    : fallback;
+  const dur = Math.max(5, parseInt(state?.duration || CFG.slotMinutes || 30));
+  const end = new Date(start.getTime() + dur * 60000);
+  return [toLocal(start), toLocal(end)];
+}
+
+function openNewPatientFromCreateModal(){
+  _pendingCreateReservationState = captureCreateReservationState();
+  openNewPatientForReservation(true);
+}
+
+async function restoreCreateReservationAfterPatient(newP){
+  const state = _pendingCreateReservationState;
+  _pendingCreateReservationState = null;
+  if(!state){
+    quickCreateFor(newP.id);
+    return;
+  }
+  const [startStr, endStr] = _reservationStateRange(state);
+  openCreate(startStr, endStr);
+  setTimeout(async () => {
+    const catSel = document.getElementById('f-treatment-category');
+    if(catSel && state.categoryId && [...catSel.options].some(o => o.value === state.categoryId)){
+      catSel.value = state.categoryId;
+      const box = document.getElementById('f-tx-list');
+      if(box) box.innerHTML = renderCreateTreatmentChecks(state.categoryId, state.codes || []);
+    }
+    if(document.getElementById('f-date')) document.getElementById('f-date').value = state.date || document.getElementById('f-date').value;
+    if(document.getElementById('f-time')) document.getElementById('f-time').value = state.time || document.getElementById('f-time').value;
+    if(document.getElementById('f-dur')) document.getElementById('f-dur').value = state.duration || document.getElementById('f-dur').value;
+    if(document.getElementById('f-memo')) document.getElementById('f-memo').value = state.memo || '';
+    if(document.getElementById('f-patient-memo')) document.getElementById('f-patient-memo').value = state.patientMemo || '';
+    const newFlag = document.getElementById('f-is-new');
+    if(newFlag){
+      newFlag.checked = true;
+      newFlag.dataset.auto = '1';
+    }
+
+    _pmRememberRecentPatient(newP);
+    await pidPick(
+      newP.id,
+      newP.chart_no || '-',
+      newP.name || '?',
+      newP.birth_date || '-',
+      newP.phone || '-'
+    );
+
+    const tidSel = document.getElementById('f-tid');
+    if(tidSel && state.therapistId) tidSel.value = state.therapistId;
+    await onTherapistChange();
+    const eswtSel = document.getElementById('f-eswt-tid');
+    if(eswtSel && state.eswtHandlerId) eswtSel.value = state.eswtHandlerId;
+  }, 80);
+}
+
 // 치료항목 체크 변화 → 시간 합산·치료사 드롭다운 가시화·자동 선택 트리거
 async function onTxCheckChange(){
   const checks = [...document.querySelectorAll('.f-tx-chk:checked')];
@@ -2481,7 +2666,7 @@ async function onTxCheckChange(){
   if(total) document.getElementById('f-dur').value = total;
 
   const hasManual = codes.some(isManualCode);
-  const hasEswt = codes.includes('eswt');
+  const hasEswt = codes.some(isEswtCode);
   const box = document.getElementById('f-therapist-box');
   const eswtBox = document.getElementById('f-eswt-box');
 
@@ -2516,16 +2701,19 @@ async function rebuildTherapistSelect(codes){
   const offSet = date ? await fetchLeavesOn(date, startMin) : new Set();
 
   const hasManual = codes.some(isManualCode);
-  const hasEswt   = codes.includes('eswt');
+  const hasEswt   = codes.some(isEswtCode);
+  const mainTreatmentCodes = hasManual ? codes.filter(isManualCode) : codes.filter(isEswtCode);
 
+  const visibleTherapists = getBoardVisibleTherapists();
   const opts = ['<option value="">(미배정)</option>'];
-  THERAPISTS.forEach(t => {
+  visibleTherapists.forEach(t => {
     let disabled = false;
     const reasons = [];
     if(t.active === false){ disabled = true; reasons.push('비활성'); }
     if(hasManual && t.can_manual === false){ disabled = true; reasons.push('도수치료 불가'); }
     // 체외충격파만 있을 땐 체외충격파 가능 여부로 판정
     if(!hasManual && hasEswt && t.can_eswt === false){ disabled = true; reasons.push('체외충격파 불가'); }
+    if(!employeeCanSelectedTreatments(t, mainTreatmentCodes)){ disabled = true; reasons.push('치료항목 미선택'); }
     if(offSet.has(t.id)){ disabled = true; reasons.push('휴무'); }
 
     const label = `${t.name}${reasons.length?` (${reasons.join(', ')})`:''}`;
@@ -2538,8 +2726,9 @@ async function rebuildTherapistSelect(codes){
     const last = await fetchLastManualTherapist(_modalState.patientId);
     _modalState.manualTherapistAuto = last;
     if(last){
-      const cand = THERAPISTS.find(t => t.id === last);
-      if(cand && cand.active !== false && cand.can_manual !== false && !offSet.has(last)){
+      const cand = visibleTherapists.find(t => t.id === last);
+      if(cand && cand.active !== false && cand.can_manual !== false
+         && employeeCanSelectedTreatments(cand, mainTreatmentCodes) && !offSet.has(last)){
         sel.value = last;
         hint.textContent = `이전 담당자(${cand.name}) 자동 선택됨`;
       } else {
@@ -2561,7 +2750,7 @@ async function rebuildTherapistSelect(codes){
 async function onTherapistChange(){
   const codes = [...document.querySelectorAll('.f-tx-chk:checked')].map(c=>c.value);
   const hasManual = codes.some(isManualCode);
-  const hasEswt   = codes.includes('eswt');
+  const hasEswt   = codes.some(isEswtCode);
   if(!hasEswt) return;
 
   // 체외충격파+도수치료 동시: 체외충격파 담당 = 도수치료 담당 (단, 그 사람이 체외충격파 가능할 때)
@@ -2570,7 +2759,8 @@ async function onTherapistChange(){
     const eswtSel = document.getElementById('f-eswt-tid');
     if(tid){
       const t = THERAPISTS.find(x => x.id === tid);
-      if(t && t.can_eswt !== false) eswtSel.value = tid;
+      const eswtCodes = codes.filter(isEswtCode);
+      if(t && t.can_eswt !== false && employeeCanSelectedTreatments(t, eswtCodes)) eswtSel.value = tid;
       else eswtSel.value = '';  // 불가능하면 공용
     } else {
       eswtSel.value = '';
@@ -2586,13 +2776,15 @@ async function rebuildEswtSelect(codes){
   const time = _v('f-time');
   const startMin = time ? _tm(time) : 0;
   const offSet = date ? await fetchLeavesOn(date, startMin) : new Set();
+  const eswtCodes = codes.filter(isEswtCode);
 
   const opts = ['<option value="">(공용 미배정)</option>'];
-  THERAPISTS.forEach(t => {
+  getBoardVisibleTherapists().forEach(t => {
     let disabled = false;
     const reasons = [];
     if(t.active === false){ disabled = true; reasons.push('비활성'); }
     if(t.can_eswt === false){ disabled = true; reasons.push('체외충격파 불가'); }
+    if(!employeeCanSelectedTreatments(t, eswtCodes)){ disabled = true; reasons.push('치료항목 미선택'); }
     if(offSet.has(t.id)){ disabled = true; reasons.push('휴무'); }
     const label = `${t.name}${reasons.length?` (${reasons.join(', ')})`:''}`;
     opts.push(`<option value="${t.id}" ${disabled?'disabled':''}>${label}</option>`);
@@ -2633,6 +2825,7 @@ async function pidPick(id, chart, name, birth, phone){
   document.getElementById('f-pid-search').value = '';
   document.getElementById('f-pid-results').style.display = 'none';
   _modalState.patientId = id;
+  _pmRememberRecentPatient({id, chart_no: chart, name, birth_date: birth, phone});
 // 환자 누적 메모 불러오기
   const _foundPt = PATIENTS_BY_ID.get(id);
   const _pmEl = document.getElementById('f-patient-memo');
@@ -2701,8 +2894,11 @@ async function createAppt(){
   if(hasManual){
     // 가능 치료사 수 - 휴무자 수
     const offSet = await fetchLeavesOn(date, startMin);
-    const capableOnShift = THERAPISTS.filter(t =>
-      t.active !== false && t.can_manual !== false && !offSet.has(t.id)
+    const manualCodes = codes.filter(isManualCode);
+    const capableOnShift = getBoardVisibleTherapists().filter(t =>
+      t.active !== false && t.can_manual !== false
+      && employeeCanSelectedTreatments(t, manualCodes)
+      && !offSet.has(t.id)
     ).length;
     const limit = MANUAL_SLOT_LIMIT != null
       ? Math.min(MANUAL_SLOT_LIMIT, capableOnShift)
@@ -2738,8 +2934,8 @@ async function createAppt(){
   const assignments = [];
   for(const code of codes){
     if(isManualCode(code)) continue;
-    if(code === 'eswt'){
-      assignments.push({treatment_code: 'eswt', handler_id: eswtHandlerId || null});
+    if(isEswtCode(code)){
+      assignments.push({treatment_code: code, handler_id: eswtHandlerId || null});
     } else {
       // injection / cartilage: 미배정으로 시작 (의사가 나중에 배정)
       assignments.push({treatment_code: code, handler_id: null});
@@ -2811,7 +3007,7 @@ async function openAppt(aid){
   (ep.assignments || []).forEach(a => { assignMap[a.treatment_code] = a.handler_id; });
 
   const hasManual = codes.some(isManualCode);
-  const hasEswt = codes.includes('eswt');
+  const hasEswt = codes.some(isEswtCode);
   const hasDoctor = codes.some(isDoctorCode);
 
   // 20-3-1-UI (post-19-P / F-10): canceled + no_show=true 면 "노쇼" 배지로 대체
@@ -2837,8 +3033,8 @@ async function openAppt(aid){
   if(status === 'reserved'){
     assignSection += `<div class="approval-section active">
       <h4>담당 배정 <small class="muted">(언제든 수정 가능)</small></h4>
-      ${hasManual ? renderManualAssignRow(ep) : ''}
-      ${hasEswt ? renderEswtAssignRow(assignMap['eswt']) : ''}
+      ${hasManual ? renderManualAssignRow(ep, codes.filter(isManualCode)) : ''}
+      ${hasEswt ? renderEswtAssignRow(assignMap[TX_META.eswt_code], codes.filter(isEswtCode)) : ''}
       ${hasDoctor ? renderDoctorAssignRows(codes, assignMap) : ''}
       <button class="primary" onclick="saveAssignments('${aid}')">💾 담당 배정 저장</button>
     </div>`;
@@ -2852,7 +3048,7 @@ async function openAppt(aid){
       lines.push('도수치료 → 미배정');
     }
     if(hasEswt){
-      const hid = assignMap['eswt'];
+      const hid = assignMap[TX_META.eswt_code];
       if(hid){
         const h = THERAPISTS.find(x => x.id === hid);
         lines.push(`체외충격파 → ${h ? h.name : '미배정'}`);
@@ -2957,11 +3153,15 @@ async function openAppt(aid){
 }
 
 // 도수치료 담당 드롭다운
-function renderManualAssignRow(ep){
+function renderManualAssignRow(ep, manualCodes){
   const opts = ['<option value="">(미배정)</option>'];
-  THERAPISTS.forEach(t => {
-    const disabled = (t.active === false || t.can_manual === false);
-    const reason = disabled ? (t.active===false?'비활성':'도수치료 불가') : '';
+  getBoardVisibleTherapistsIncludingCurrent(ep.therapist_id).forEach(t => {
+    const reasons = [];
+    if(t.active === false) reasons.push('비활성');
+    if(t.can_manual === false) reasons.push('도수치료 불가');
+    if(!employeeCanSelectedTreatments(t, manualCodes)) reasons.push('치료항목 미선택');
+    const disabled = reasons.length > 0;
+    const reason = reasons.join(', ');
     opts.push(`<option value="${t.id}" ${t.id===ep.therapist_id?'selected':''} ${disabled?'disabled':''}>${t.name}${reason?` (${reason})`:''}</option>`);
   });
   return `<label>도수치료 담당
@@ -2970,11 +3170,15 @@ function renderManualAssignRow(ep){
 }
 
 // 체외충격파 담당 드롭다운
-function renderEswtAssignRow(currentHid){
+function renderEswtAssignRow(currentHid, eswtCodes){
   const opts = ['<option value="">(공용 미배정)</option>'];
-  THERAPISTS.forEach(t => {
-    const disabled = (t.active === false || t.can_eswt === false);
-    const reason = disabled ? (t.active===false?'비활성':'체외충격파 불가') : '';
+  getBoardVisibleTherapistsIncludingCurrent(currentHid).forEach(t => {
+    const reasons = [];
+    if(t.active === false) reasons.push('비활성');
+    if(t.can_eswt === false) reasons.push('체외충격파 불가');
+    if(!employeeCanSelectedTreatments(t, eswtCodes)) reasons.push('치료항목 미선택');
+    const disabled = reasons.length > 0;
+    const reason = reasons.join(', ');
     opts.push(`<option value="${t.id}" ${t.id===currentHid?'selected':''} ${disabled?'disabled':''}>${t.name}${reason?` (${reason})`:''}</option>`);
   });
   return `<label>체외충격파 담당
@@ -2989,8 +3193,11 @@ function renderDoctorAssignRows(codes, assignMap){
     const cur = assignMap[code];
     const opts = ['<option value="">(공용 미배정)</option>'];
     DOCTORS.forEach(d => {
-      const disabled = d.active === false;
-      opts.push(`<option value="${d.id}" ${d.id===cur?'selected':''} ${disabled?'disabled':''}>${d.name}${disabled?' (비활성)':''}</option>`);
+      const reasons = [];
+      if(d.active === false) reasons.push('비활성');
+      if(!employeeCanSelectedTreatments(d, [code])) reasons.push('치료항목 미선택');
+      const disabled = reasons.length > 0;
+      opts.push(`<option value="${d.id}" ${d.id===cur?'selected':''} ${disabled?'disabled':''}>${d.name}${reasons.length?` (${reasons.join(', ')})`:''}</option>`);
     });
     html += `<label>${txName(code)} 담당
       <select id="a-doc-${code}">${opts.join('')}</select>
@@ -3036,10 +3243,12 @@ async function saveAssignments(aid){
   const eswtSel = document.getElementById('a-eswt-tid');
   if(eswtSel){
     const hid = eswtSel.value || null;
+    const eswtCode = TX_META.eswt_code;
+    if(!eswtCode){ alert('체외충격파 항목이 설정되어 있지 않습니다.'); return; }
     const r = await fetch(`/api/appointments/${aid}/assign`, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ treatment_code:'eswt', handler_id: hid, version: ver }),
+      body: JSON.stringify({ treatment_code: eswtCode, handler_id: hid, version: ver }),
     });
     if(r.status === 409){ await handleConflict(r, aid); return; }
     if(!r.ok){ alert('체외충격파 담당 변경 실패\n' + await r.text()); return; }
@@ -3190,7 +3399,7 @@ function _formatPhone(digits){
 function _autoFormatInput(el){
   // [패치] 검색용 input 은 자동 포맷 대상에서 제외 (한글 입력 보장)
   const elId = el.id || '';
-  if(elId === 'pqs-input' || elId === 'pm-search' || elId === 'f-pid-search' || elId === 'sms1-search') return;
+  if(elId === 'pqs-input' || elId === 'pm-search' || elId === 'f-pid-search') return;
 
   // 자동 분류: id 또는 placeholder 또는 data-fmt 로 판단
   const id = elId.toLowerCase();
@@ -3200,8 +3409,7 @@ function _autoFormatInput(el){
   let kind = fmt;
   if(!kind){
     if(id.includes('birth') || id.includes('-birth') || ph.includes('생년월일')) kind = 'birth';
-    else if(id.includes('phone') || id.includes('-phone') || id === 'ss-send' || id === 'ss-clinic'
-            || id === 'sms1-phone' || ph.includes('010-') || ph.includes('02-')) kind = 'phone';
+    else if(id.includes('phone') || id.includes('-phone') || ph.includes('010-') || ph.includes('02-')) kind = 'phone';
   }
   if(!kind) return;
 
@@ -3316,7 +3524,7 @@ function pqsReserveFor(pid){
 
 // ─────── 단계 D #2: 신규 환자 등록 → 자동으로 예약 모달 열기 ───────
 
-function openNewPatientForReservation(){
+function openNewPatientForReservation(fromCreateModal=false){
   // 환자 편집 모달과 동일하지만 처방/완료 카운트는 숨기고 (counts 비움), 저장 후 자동 예약 진입
   showModal(`<h3>＋ 신규 환자 등록 <small class="muted">(등록 후 곧바로 예약)</small></h3>
     <label>이름 * <input id="np-name" placeholder="환자 이름"></label>
@@ -3340,11 +3548,46 @@ function openNewPatientForReservation(){
     </div>
     <label>환자 기록 <textarea id="np-memo" rows="2" placeholder="진료 메모 (선택)"></textarea></label>
     <div class="modal-actions">
-      <button onclick="closeModal()">취소</button>
+      <button onclick="${fromCreateModal ? 'cancelNewPatientFromCreateModal()' : 'closeModal()'}">취소</button>
       <button class="primary" onclick="saveNewPatientAndReserve()">💾 등록 후 예약</button>
     </div>
   `);
   setTimeout(() => document.getElementById('np-name').focus(), 80);
+}
+
+function cancelNewPatientFromCreateModal(){
+  const state = _pendingCreateReservationState;
+  _pendingCreateReservationState = null;
+  if(!state){
+    closeModal();
+    return;
+  }
+  const [startStr, endStr] = _reservationStateRange(state);
+  openCreate(startStr, endStr);
+  setTimeout(async () => {
+    const catSel = document.getElementById('f-treatment-category');
+    if(catSel && state.categoryId && [...catSel.options].some(o => o.value === state.categoryId)){
+      catSel.value = state.categoryId;
+      const box = document.getElementById('f-tx-list');
+      if(box) box.innerHTML = renderCreateTreatmentChecks(state.categoryId, state.codes || []);
+    }
+    if(document.getElementById('f-dur')) document.getElementById('f-dur').value = state.duration || '';
+    if(document.getElementById('f-memo')) document.getElementById('f-memo').value = state.memo || '';
+    if(document.getElementById('f-is-new')) document.getElementById('f-is-new').checked = state.isNewPatient || false;
+    if(state.patientId){
+      const pidInput = document.getElementById('f-pid');
+      const pidSelected = document.getElementById('f-pid-selected');
+      if(pidInput) pidInput.value = state.patientId;
+      if(pidSelected && state.patientSelectedHtml) pidSelected.innerHTML = state.patientSelectedHtml;
+      _modalState.patientId = state.patientId;
+    }
+    await onTxCheckChange();
+    const tidSel = document.getElementById('f-tid');
+    if(tidSel && state.therapistId) tidSel.value = state.therapistId;
+    await onTherapistChange();
+    const eswtSel = document.getElementById('f-eswt-tid');
+    if(eswtSel && state.eswtHandlerId) eswtSel.value = state.eswtHandlerId;
+  }, 80);
 }
 
 async function saveNewPatientAndReserve(){
@@ -3370,11 +3613,13 @@ async function saveNewPatientAndReserve(){
     return;
   }
   const newP = await r.json();
+  _upsertPatientCache(newP);
+  _pmRememberRecentPatient(newP);
   // 환자 캐시 갱신
   await loadMasters();
   closeModal();
   // 새 예약 모달을 그 환자로 자동 진입
-  quickCreateFor(newP.id);
+  await restoreCreateReservationAfterPatient(newP);
 }
 
 // 빈 셀 클릭 → 신규 예약 (#6: 공용 열도 클릭 가능)
@@ -3403,6 +3648,12 @@ const HISTORY_PAGE = 30;
 const PM_PAGE = 20;
 let _pmState = { q: '', type: 'name', hits: [], total: 0, offset: 0 };
 let _pmTimer = null;
+
+function _pmDoneCompact(p){
+  const items = (p.counts_show || []);
+  if(!items.length) return '-';
+  return items.map(c => `${c.short} ${c.done_count||0}`).join(' · ');
+}
 
 function pmSearchDebounced(){
   clearTimeout(_pmTimer);
@@ -3444,7 +3695,10 @@ async function _pmFetchPage(){
     st.hits = st.hits.concat(d.items || []);
     st.total = d.total || 0;
     st.offset = st.hits.length;
-    (d.items || []).forEach(_upsertPatientCache);
+    (d.items || []).forEach(p => {
+      _upsertPatientCache(p);
+      _pmRememberRecentPatient(p);
+    });
     _pmRender();
   } catch(e){
     document.getElementById('pm-results').innerHTML =
@@ -3453,6 +3707,51 @@ async function _pmFetchPage(){
 }
 
 function _pmRenderEmpty(){
+  const recent = _pmLoadRecentPatients();
+  if(recent.length){
+    const rowsHtml = recent.map(p => {
+      const last = LAST_APPTS[p.id];
+      const lastStr = last ? fmtDate24(new Date(last)) : '-';
+      const isOpen = (PM_OPEN_PID === p.id);
+      const gtag = (p.gender === 'M') ? '<span class="gender-tag m">M</span>'
+                : (p.gender === 'F') ? '<span class="gender-tag f">F</span>'
+                : '<span class="muted">-</span>';
+      const mainRow = `<tr class="pm-row ${isOpen?'open':''}" onclick="togglePatientHistory('${p.id}', event)">
+        <td>${escapeHtml(p.chart_no||'-')}</td>
+        <td><b>${escapeHtml(p.name||'')}</b></td>
+        <td style="text-align:center;">${gtag}</td>
+        <td>${escapeHtml(p.phone||'-')}</td>
+        <td>${escapeHtml(p.birth_date||'-')}</td>
+        <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.memo||'-')}</td>
+        <td class="tx-done-compact">${escapeHtml(_pmDoneCompact(p))}</td>
+        <td>${lastStr}</td>
+        <td onclick="event.stopPropagation()">
+          <button class="mini" onclick="editPatientById('${p.id}')">수정</button>
+          <button class="mini" onclick="quickCreateFor('${p.id}')">예약</button>
+          <button class="mini danger" onclick="delPatient('${p.id}')">삭제</button>
+        </td></tr>`;
+      const historyRow = isOpen ? `<tr class="pm-history-row"><td colspan="9">
+        <div id="pm-history-${p.id}" class="pm-history-box">
+          <div class="muted">치료이력 불러오는 중...</div>
+        </div>
+      </td></tr>` : '';
+      return mainRow + historyRow;
+    }).join('');
+    document.getElementById('pm-results').innerHTML = `
+      <div class="muted" style="padding:8px 12px;font-size:12px;background:#EEF6FC;border:1px solid #BBD7EE;border-radius:8px;margin-bottom:8px;">
+        최근 검색/선택 환자 <b>${recent.length}명</b>
+      </div>
+      <table class="data-table">
+        <thead><tr>
+          <th>차트번호</th><th>이름</th><th style="text-align:center;width:48px;">성별</th>
+          <th>연락처</th><th>생년월일</th>
+          <th>환자 기록</th><th>완료 횟수</th><th>마지막 예약</th><th>관리</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>`;
+    if(PM_OPEN_PID) renderHistoryBox(PM_OPEN_PID);
+    return;
+  }
   document.getElementById('pm-results').innerHTML = `
     <div class="muted" style="padding:16px 12px;font-size:13px;background:#EEF6FC;border:1px solid #BBD7EE;border-radius:8px;">
       위 검색창에 <b>이름 / 차트번호 / 연락처 / 생년월일</b> 중 하나를 입력하세요.
@@ -3465,13 +3764,6 @@ function _pmRender(){
   if(!st.q){ _pmRenderEmpty(); return; }
   const list = st.hits;
   const totalHits = st.total;
-
-  // 축약 완료 카운트: 표시 ON 인 치료항목만 → "주 n · 충 n · 도수6 n · ..."
-  const doneCompact = p => {
-    const items = (p.counts_show || []);
-    if(!items.length) return '-';
-    return items.map(c => `${c.short} ${c.done_count||0}`).join(' · ');
-  };
 
   const rowsHtml = list.map(p => {
     const last = LAST_APPTS[p.id];
@@ -3487,7 +3779,7 @@ function _pmRender(){
       <td>${p.phone||'-'}</td>
       <td>${p.birth_date||'-'}</td>
       <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.memo||'-'}</td>
-      <td class="tx-done-compact">${doneCompact(p)}</td>
+      <td class="tx-done-compact">${_pmDoneCompact(p)}</td>
       <td>${lastStr}</td>
       <td onclick="event.stopPropagation()">
         <button class="mini" onclick="editPatientById('${p.id}')">수정</button>
@@ -3543,6 +3835,8 @@ async function togglePatientHistory(pid, evt){
   }
   // 다른 행이 열려있으면 닫고 이 행 열기
   PM_OPEN_PID = pid;
+  const recentPatient = PATIENTS_BY_ID.get(pid) || _pmLoadRecentPatients().find(p => p.id === pid);
+  if(recentPatient) _pmRememberRecentPatient(recentPatient);
   PM_HISTORY_CACHE[pid] = null;
   pmSearch();
   // 데이터 로드 후 렌더
@@ -3653,6 +3947,8 @@ async function editPatientById(pid){
     const r = await fetch(`/api/patients/${pid}`);
     if(!r.ok){ alert('환자 정보를 불러오지 못했습니다: ' + r.status); return; }
     const p = await r.json();
+    _upsertPatientCache(p);
+    _pmRememberRecentPatient(p);
     return editPatient(p);
   } catch(e){ alert('오류: ' + e.message); }
 }
@@ -3761,20 +4057,24 @@ async function delPatient(pid){
   pmSearch();
 }
 
-// ─────── 직원 관리 (의사/치료사 박스 분리) ───────
+// ─────── 직원 관리 (과별 카드 + 권한 override) ───────
 
 let EMPLOYEES = [];  // 전체 직원 캐시
+let EMPLOYEE_CATEGORIES = [];
 
 async function loadEmployeesSheet(){
-  await loadMasters();  // THERAPISTS 는 치료사만 캐시 (기존 용도 유지)
-  // 의사+치료사 전체
+  await loadMasters();
   try {
-    EMPLOYEES = await (await fetch('/api/employees')).json();
-  } catch(e){ EMPLOYEES = []; }
+    [EMPLOYEES, EMPLOYEE_CATEGORIES] = await Promise.all([
+      (await fetch('/api/employees')).json(),
+      (await fetch('/api/employee-categories')).json(),
+    ]);
+  } catch(e){
+    EMPLOYEES = [];
+    EMPLOYEE_CATEGORIES = [];
+  }
 
   const sortKey = (document.getElementById('tm-sort')||{}).value || 'sort_order';
-  const doctors = EMPLOYEES.filter(e => e.role === 'doctor');
-  const therapists = EMPLOYEES.filter(e => e.role === 'therapist');
 
   // API 반환 순서(sort_order)를 기본으로 사용. 다른 키 선택 시 JS 정렬
   if(sortKey !== 'sort_order'){
@@ -3785,54 +4085,81 @@ async function loadEmployeesSheet(){
       if(av && !bv) return -1;
       return av.localeCompare(bv,'ko',{numeric:true});
     };
-    doctors.sort(sorter);
-    therapists.sort(sorter);
+    EMPLOYEES.sort(sorter);
   }
 
-  document.getElementById('emp-doctor-list').innerHTML =
-    renderEmployeeCards(doctors, 'doctor') ||
-    '<div class="muted" style="padding:12px">등록된 의사 없음</div>';
-  document.getElementById('emp-therapist-list').innerHTML =
-    renderEmployeeCards(therapists, 'therapist') ||
-    '<div class="muted" style="padding:12px">등록된 치료사 없음</div>';
+  const activeCats = [...EMPLOYEE_CATEGORIES]
+    .filter(c => c.active !== false)
+    .sort((a,b) =>
+    (a.sort_order||0) - (b.sort_order||0) || (a.name||'').localeCompare(b.name||'', 'ko')
+  );
+  const known = new Set(activeCats.map(c => c.id));
+  const uncategorized = EMPLOYEES.filter(e => !known.has(e.category_id));
+  let html = activeCats.map(c => {
+    const rows = EMPLOYEES.filter(e => e.category_id === c.id);
+    return renderEmployeeCategoryCard(c, rows);
+  }).join('');
+  if(uncategorized.length){
+    html += renderEmployeeCategoryCard({
+      id: '', name: '미분류', color: '#9CA3AF', active: true,
+      default_can_doctor_treatment: false, default_can_manual: true, default_can_eswt: true,
+    }, uncategorized);
+  }
+  document.getElementById('employee-category-list').innerHTML =
+    html || '<div class="muted" style="padding:12px">등록된 과가 없습니다.</div>';
 
   // 직접지정 모드일 때만 드래그 정렬 활성화
   if(sortKey === 'sort_order') initEmpSortable();
 }
 
-function renderEmployeeCards(list, role){
-  // 단계 E: 카드형 → 환자 탭처럼 테이블형으로 전환
-  if(!list.length) return '';
-  const isDoctor = role === 'doctor';
-  const capsCol = isDoctor ? '<th>처리 가능 (의사 항목)</th>' : '<th>치료 가능</th>';
-  // 치료사 테이블에만 입사일 컬럼 표시
-  const hireHead = isDoctor ? '' : '<th>입사일</th>';
+function capChip(label, on, inherited){
+  const cls = on ? 'on' : 'off';
+  const suffix = inherited ? ' 기본' : '';
+  return `<span class="emp-cap-chip ${cls}">${label}${suffix}</span>`;
+}
+
+function employeeTreatmentSummary(e){
+  const treatments = TX_META.all_treatments || [];
+  const txNames = (e.treatment_ids || [])
+    .map(id => treatments.find(t => t.id === id))
+    .filter(Boolean)
+    .map(t => t.short || t.name)
+    .join(' · ');
+  if(txNames) return txNames;
+  if(e.treatment_override_enabled) return '선택 항목 없음';
+  const categoryTreatments = treatments.filter(t =>
+    t && t.active !== false && t.category_id && t.category_id === e.category_id
+  );
+  return categoryTreatments.length ? '과 치료항목 전체' : '과 활성 치료항목 없음';
+}
+
+function renderEmployeeCategoryCard(category, list){
+  const defaults = [
+    capChip('도수치료', category.default_can_manual !== false, true),
+    capChip('체외충격파', category.default_can_eswt !== false, true),
+  ].join(' ');
+  const editButtons = category.id ? `
+    <button class="mini" onclick='editEmployeeCategory(${JSON.stringify(category).replace(/'/g,"&#39;")})'>과 수정</button>
+    <button class="mini" onclick="toggleEmployeeCategory('${category.id}', ${category.active===false?'true':'false'})">${category.active===false?'활성화':'비활성화'}</button>
+    <button class="mini danger" onclick="deleteEmployeeCategory('${category.id}')">과 삭제</button>
+    <button class="primary" onclick="editEmployee({category_id:'${category.id}', color:'${category.color||'#9CA3AF'}', active:true})">+ 직원 추가</button>
+  ` : '';
   const rows = list.map(e => {
-    let caps;
-    if(isDoctor){
-      const docTreatments = (TX_META.all_treatments||[]).filter(t => t.role==='doctor' && t.active);
-      caps = docTreatments.length
-        ? docTreatments.map(t => `<span class="emp-cap-chip on">${t.name}</span>`).join(' ')
-        : '<span class="muted">-</span>';
-    } else {
-      const eswtOn = e.can_eswt !== false;
-      const manualOn = e.can_manual !== false;
-      caps = `
-        <span class="emp-cap-chip ${eswtOn?'on':'off'}">체외충격파</span>
-        <span class="emp-cap-chip ${manualOn?'on':'off'}">도수치료</span>
-      `;
-    }
+    const caps = [
+      capChip('도수치료', e.can_manual === true, e.can_manual_override == null),
+      capChip('체외충격파', e.can_eswt === true, e.can_eswt_override == null),
+    ].join(' ');
+    const txNames = employeeTreatmentSummary(e);
     const statusBadge = e.active
       ? '<span class="badge green">● 활성</span>'
       : '<span class="badge gray">○ 비활성</span>';
-    const hireCell = isDoctor ? '' : `<td>${e.hire_date||'-'}</td>`;
     return `<tr data-id="${e.id}">
       <td class="drag-handle" title="드래그하여 순서 변경">⠿</td>
       <td><span class="color-dot" style="background:${e.color}"></span> <b>${e.name}</b></td>
       <td>${e.birth_date||'-'}</td>
       <td>${e.phone||'-'}</td>
-      ${hireCell}
-      <td>${caps}</td>
+      <td>${e.hire_date||'-'}</td>
+      <td>${caps}<div class="muted" style="font-size:11px;margin-top:3px">${escapeHtml(txNames)}</div></td>
       <td>${statusBadge}</td>
       <td>
         <button class="mini" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>수정</button>
@@ -3840,14 +4167,23 @@ function renderEmployeeCards(list, role){
       </td>
     </tr>`;
   }).join('');
-  return `<table class="data-table emp-table">
-    <thead><tr>
-      <th style="width:32px"></th>
-      <th>이름</th><th>생년월일</th><th>연락처</th>
-      ${hireHead}${capsCol}<th>상태</th><th>관리</th>
-    </tr></thead>
-    <tbody class="emp-sortable-body" data-role="${role}">${rows}</tbody>
-  </table>`;
+  return `<div class="emp-box">
+    <div class="emp-box-head">
+      <div>
+        <h3><span class="color-dot" style="background:${category.color||'#9CA3AF'}"></span> ${category.name}</h3>
+        <div>${defaults}</div>
+      </div>
+      <div class="sheet-toolbar">${editButtons}</div>
+    </div>
+    ${rows ? `<table class="data-table emp-table">
+      <thead><tr>
+        <th style="width:32px"></th>
+        <th>이름</th><th>생년월일</th><th>연락처</th><th>입사일</th>
+        <th>권한</th><th>상태</th><th>관리</th>
+      </tr></thead>
+      <tbody class="emp-sortable-body" data-category="${category.id||''}">${rows}</tbody>
+    </table>` : '<div class="muted" style="padding:12px">등록된 직원 없음</div>'}
+  </div>`;
 }
 
 async function _saveEmployeeOrder(tbody){
@@ -3874,6 +4210,385 @@ function initEmpSortable(){
       onEnd: () => _saveEmployeeOrder(tbody),
     });
   });
+}
+
+function boolSelectValue(v){
+  if(v === true) return 'true';
+  if(v === false) return 'false';
+  return '';
+}
+
+function readBoolSelect(id){
+  const v = document.getElementById(id)?.value;
+  if(v === 'true') return true;
+  if(v === 'false') return false;
+  return null;
+}
+
+function employeeCategoryOptions(selectedId){
+  const cats = (EMPLOYEE_CATEGORIES || []).filter(c => c.active !== false);
+  return cats.map(c => `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name}</option>`).join('');
+}
+
+const REPRESENTATIVE_COLORS = [
+  ['빨강','#EF4444'], ['주황','#F97316'], ['노랑','#EAB308'], ['연두','#84CC16'], ['초록','#22C55E'],
+  ['민트','#14B8A6'], ['하늘','#38BDF8'], ['파랑','#3B82F6'], ['남색','#6366F1'], ['보라','#A855F7'],
+];
+
+function renderColorSwatches(prefix, currentColor){
+  return REPRESENTATIVE_COLORS.map(([label, color]) =>
+    `<span class="color-swatch ${color.toUpperCase()===(currentColor||'').toUpperCase()?'selected':''}" title="${label}" style="background:${color}" data-color="${color}" onclick="selectNamedSwatch('${prefix}', this)"></span>`
+  ).join('');
+}
+
+function selectNamedSwatch(prefix, el){
+  document.querySelectorAll(`[data-color-prefix="${prefix}"] .color-swatch`).forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+  const input = document.getElementById(`${prefix}-color`);
+  if(input) input.value = el.dataset.color;
+  updateNamedColorPreview(prefix, el.dataset.color);
+}
+
+function openNamedDetailColor(prefix, event){
+  event.preventDefault();
+  document.getElementById(`${prefix}-color`)?.click();
+}
+
+function onNamedDetailColorChange(prefix, color){
+  document.querySelectorAll(`[data-color-prefix="${prefix}"] .color-swatch`).forEach(s => s.classList.remove('selected'));
+  updateNamedColorPreview(prefix, color);
+}
+
+function updateNamedColorPreview(prefix, color){
+  const dot = document.getElementById(`${prefix}-color-preview-dot`);
+  const txt = document.getElementById(`${prefix}-color-preview-text`);
+  if(dot) dot.style.background = color;
+  if(txt) txt.textContent = color;
+}
+
+function editEmployeeCategory(c){
+  c = c || {color:'#3B82F6', active:true, default_can_manual:true, default_can_eswt:true, default_can_doctor_treatment:false};
+  const color = c.color || '#3B82F6';
+  showModal(`<h3>${c.id?'과 수정':'새 과 추가'}</h3>
+    <label>과 이름 * <input id="ec-name" value="${c.name||''}"></label>
+    <div class="emp-color-section">
+      <div class="emp-color-label">• 과 색상</div>
+      <div class="color-swatches" data-color-prefix="ec">
+        ${renderColorSwatches('ec', color)}
+        <div class="color-detail-container">
+          <button class="color-detail-btn" title="세부 색상 선택" onclick="openNamedDetailColor('ec', event)">🎨</button>
+          <input class="color-hidden-input" id="ec-color" type="color" value="${color}" oninput="onNamedDetailColorChange('ec', this.value)">
+        </div>
+      </div>
+      <div class="color-preview-row">
+        <span class="color-preview-dot" id="ec-color-preview-dot" style="background:${color}"></span>
+        <span id="ec-color-preview-text" style="font-size:12px;color:#4B5563;">${color}</span>
+      </div>
+    </div>
+    <div class="caps-section">
+      <div class="caps-section-label">과 기본 권한</div>
+      <div class="caps-row">
+        <label class="chk-item"><input id="ec-manual" type="checkbox" ${c.default_can_manual!==false?'checked':''}> <span>도수치료</span></label>
+        <label class="chk-item"><input id="ec-eswt" type="checkbox" ${c.default_can_eswt!==false?'checked':''}> <span>체외충격파</span></label>
+      </div>
+    </div>
+    <label class="chk-item" style="margin-top:6px"><input id="ec-active" type="checkbox" ${c.active!==false?'checked':''}> <span>활성</span></label>
+    <div class="modal-actions"><button onclick="closeModal()">취소</button>
+      <button class="primary" onclick="saveEmployeeCategory('${c.id||''}')">저장</button></div>`);
+}
+
+async function saveEmployeeCategory(cid){
+  const body = {
+    name: _v('ec-name'),
+    color: _v('ec-color') || '#9CA3AF',
+    active: document.getElementById('ec-active').checked,
+    sort_order: (EMPLOYEE_CATEGORIES.find(c => c.id === cid)||{}).sort_order || 0,
+    default_can_doctor_treatment: false,
+    default_can_manual: document.getElementById('ec-manual').checked,
+    default_can_eswt: document.getElementById('ec-eswt').checked,
+  };
+  if(!body.name){ alert('과 이름을 입력하세요'); return; }
+  const r = await fetch(cid ? `/api/employee-categories/${cid}` : '/api/employee-categories', {
+    method: cid ? 'PUT' : 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if(!r.ok){ alert('저장 실패\n' + await r.text()); return; }
+  closeModal();
+  await loadEmployeesSheet();
+}
+
+async function toggleEmployeeCategory(cid, active){
+  const c = EMPLOYEE_CATEGORIES.find(x => x.id === cid);
+  if(!c) return;
+  const body = Object.assign({}, c, {active});
+  const r = await fetch(`/api/employee-categories/${cid}`, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if(!r.ok){ alert('변경 실패\n' + await r.text()); return; }
+  await loadEmployeesSheet();
+}
+
+async function deleteEmployeeCategory(cid){
+  const c = EMPLOYEE_CATEGORIES.find(x => x.id === cid);
+  if(!c) return;
+  if(!confirm(`과 "${c.name}" 을(를) 삭제하시겠습니까?\n직원/치료항목이 연결되어 있으면 안전하게 비활성화됩니다.`)) return;
+  if(!await ensureAdmin()) return;
+  const r = await adminFetch(`/api/employee-categories/${cid}`, {method:'DELETE'});
+  const data = await r.json().catch(() => ({}));
+  if(!r.ok){ alert('삭제 실패\n' + (data.detail || data.error || r.status)); return; }
+  if(data.deactivated){
+    alert('연결된 직원 또는 치료항목이 있어 과를 비활성화했습니다.');
+  }
+  await loadEmployeesSheet();
+  await loadTreatmentMeta();
+}
+
+// ─────── 재고 관리 (과별 품목 + 동적 관리 열) ───────
+
+let INVENTORY_DATA = null;
+
+function inventoryAuthor(categoryId){
+  return (document.getElementById(`inv-author-${categoryId}`)?.value || '').trim();
+}
+
+function inventoryDateLabel(value){
+  if(!value) return '';
+  try {
+    const d = new Date(value);
+    if(!isNaN(d.getTime())){
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const day = String(d.getDate()).padStart(2,'0');
+      const hh = String(d.getHours()).padStart(2,'0');
+      const mm = String(d.getMinutes()).padStart(2,'0');
+      return `${y}-${m}-${day} ${hh}:${mm}`;
+    }
+  } catch(e) {}
+  return value;
+}
+
+function inventoryInputType(field){
+  if((field.field_type || 'text') === 'number') return 'number';
+  if((field.field_type || 'text') === 'date') return 'date';
+  return 'text';
+}
+
+async function loadInventorySheet(){
+  const box = document.getElementById('inventory-list');
+  if(!box) return;
+  box.innerHTML = '<p class="muted" style="padding:12px">불러오는 중...</p>';
+  try {
+    const r = await fetch('/api/inventory');
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(data.detail || r.statusText);
+    INVENTORY_DATA = data;
+    renderInventorySheet(data);
+  } catch(e){
+    box.innerHTML = '<p class="muted" style="padding:12px;color:#DC2626;">재고 조회 실패: '
+      + escapeHtml(e && e.message ? e.message : e)
+      + '</p>';
+  }
+}
+
+function renderInventorySheet(data){
+  const box = document.getElementById('inventory-list');
+  if(!box) return;
+  const sections = data.categories || [];
+  if(!sections.length){
+    box.innerHTML = '<p class="muted" style="padding:12px">직원 탭에서 과를 먼저 추가하세요.</p>';
+    return;
+  }
+  box.innerHTML = `<div class="inventory-stack">${sections.map(renderInventoryCategory).join('')}</div>`;
+}
+
+function renderInventoryCategory(section){
+  const c = section.category || {};
+  const state = section.state || {};
+  const fields = section.fields || [];
+  const items = section.items || [];
+  const colCount = 3 + fields.length;
+  const fieldHeads = fields.map(field => `
+    <th class="inventory-field-head">
+      <span>${escapeHtml(field.name || '')}</span>
+      <span class="inventory-field-actions">
+        <button class="mini" onclick='editInventoryField("${c.id}", ${JSON.stringify(field).replace(/'/g,"&#39;")})'>수정</button>
+        <button class="mini danger" onclick="deleteInventoryField('${field.id}', '${c.id}')">삭제</button>
+      </span>
+    </th>`).join('');
+  const rows = items.map(item => {
+    const valueCells = fields.map(field => {
+      const v = (item.values || {})[field.id] || '';
+      return `<td>
+        <input class="inventory-cell-input" type="${inventoryInputType(field)}"
+               value="${escapeAttr(v)}"
+               data-item-id="${item.id}"
+               data-field-id="${field.id}"
+               data-category-id="${c.id}"
+               data-saved-value="${escapeAttr(v)}"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+               onblur="saveInventoryValue(this)">
+      </td>`;
+    }).join('');
+    const inactive = item.active === false ? '<span class="badge gray">비활성</span>' : '';
+    return `<tr>
+      <td><b>${escapeHtml(item.name || '')}</b> ${inactive}</td>
+      <td>${escapeHtml(item.unit || '')}</td>
+      ${valueCells}
+      <td class="inventory-row-actions">
+        <button class="mini" onclick='editInventoryItem("${c.id}", ${JSON.stringify(item).replace(/'/g,"&#39;")})'>수정</button>
+        <button class="mini danger" onclick="deleteInventoryItem('${item.id}', '${c.id}')">삭제</button>
+      </td>
+    </tr>`;
+  }).join('');
+  const emptyRow = `<tr><td colspan="${colCount}" class="muted" style="text-align:left;padding:14px">등록된 품목 없음</td></tr>`;
+  return `<div class="inventory-category-card">
+    <div class="inventory-category-head">
+      <div>
+        <h3><span class="color-dot" style="background:${c.color || '#9CA3AF'}"></span> ${escapeHtml(c.name || '')}</h3>
+        <div class="inventory-author-row">
+          <label>마지막 작성자
+            <input id="inv-author-${c.id}" value="${escapeAttr(state.last_author || '')}" placeholder="작성자 이름">
+          </label>
+          <button class="mini" onclick="saveInventoryAuthor('${c.id}')">작성자 저장</button>
+          <span class="muted">${state.last_author ? '최근 기록 ' + escapeHtml(inventoryDateLabel(state.last_written_at)) : '작성자 기록 없음'}</span>
+        </div>
+      </div>
+      <div class="sheet-toolbar">
+        <button class="primary" onclick="editInventoryItem('${c.id}', null)">+ 품목 추가</button>
+        <button class="small" onclick="editInventoryField('${c.id}', null)">+ 관리 열 추가</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="data-table inventory-table">
+        <thead><tr>
+          <th class="inventory-item-col">품목</th>
+          <th class="inventory-unit-col">단위</th>
+          ${fieldHeads}
+          <th class="inventory-actions-col">관리</th>
+        </tr></thead>
+        <tbody>${rows || emptyRow}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function editInventoryItem(categoryId, item){
+  item = item || {name:'', unit:'', active:true, sort_order:0};
+  showModal(`<h3>${item.id?'재고 품목 수정':'재고 품목 추가'}</h3>
+    <label>품목명 * <input id="inv-item-name" value="${escapeAttr(item.name || '')}" autofocus></label>
+    <label>단위 <input id="inv-item-unit" value="${escapeAttr(item.unit || '')}" placeholder="예: 개, 박스, 병"></label>
+    <label class="chk-item" style="margin-top:8px"><input id="inv-item-active" type="checkbox" ${item.active!==false?'checked':''}> <span>활성</span></label>
+    <div class="modal-actions"><button onclick="closeModal()">취소</button>
+      <button class="primary" onclick="saveInventoryItem('${categoryId}', '${item.id || ''}', ${Number(item.sort_order || 0)})">저장</button></div>`);
+}
+
+async function saveInventoryItem(categoryId, itemId, sortOrder){
+  const body = {
+    category_id: categoryId,
+    name: _v('inv-item-name'),
+    unit: _v('inv-item-unit'),
+    active: document.getElementById('inv-item-active').checked,
+    sort_order: sortOrder || 0,
+    author: inventoryAuthor(categoryId),
+  };
+  if(!body.name.trim()){ alert('품목명을 입력하세요.'); return; }
+  const r = await adminFetch(itemId ? `/api/inventory/items/${itemId}` : '/api/inventory/items', {
+    method: itemId ? 'PUT' : 'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if(!r.ok){ alert('저장 실패\n' + await _apiErrorText(r)); return; }
+  closeModal();
+  await loadInventorySheet();
+}
+
+async function deleteInventoryItem(itemId, categoryId){
+  if(!confirm('이 품목을 삭제하시겠습니까? 입력된 셀 값도 함께 삭제됩니다.')) return;
+  const r = await adminFetch(`/api/inventory/items/${itemId}?author=${encodeURIComponent(inventoryAuthor(categoryId))}`, {method:'DELETE'});
+  if(!r.ok){ alert('삭제 실패\n' + await _apiErrorText(r)); return; }
+  await loadInventorySheet();
+}
+
+function editInventoryField(categoryId, field){
+  field = field || {name:'', field_type:'text', active:true, sort_order:0};
+  showModal(`<h3>${field.id?'관리 열 수정':'관리 열 추가'}</h3>
+    <label>열 이름 * <input id="inv-field-name" value="${escapeAttr(field.name || '')}" placeholder="예: 현재수량, 위치, 유통기한" autofocus></label>
+    <label>입력 형태
+      <select id="inv-field-type">
+        <option value="text" ${(field.field_type||'text')==='text'?'selected':''}>문자</option>
+        <option value="number" ${field.field_type==='number'?'selected':''}>숫자</option>
+        <option value="date" ${field.field_type==='date'?'selected':''}>날짜</option>
+      </select>
+    </label>
+    <div class="modal-actions"><button onclick="closeModal()">취소</button>
+      <button class="primary" onclick="saveInventoryField('${categoryId}', '${field.id || ''}', ${Number(field.sort_order || 0)})">저장</button></div>`);
+}
+
+async function saveInventoryField(categoryId, fieldId, sortOrder){
+  const body = {
+    category_id: categoryId,
+    name: _v('inv-field-name'),
+    field_type: _v('inv-field-type') || 'text',
+    active: true,
+    sort_order: sortOrder || 0,
+    author: inventoryAuthor(categoryId),
+  };
+  if(!body.name.trim()){ alert('관리 열 이름을 입력하세요.'); return; }
+  const r = await adminFetch(fieldId ? `/api/inventory/fields/${fieldId}` : '/api/inventory/fields', {
+    method: fieldId ? 'PUT' : 'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if(!r.ok){ alert('저장 실패\n' + await _apiErrorText(r)); return; }
+  closeModal();
+  await loadInventorySheet();
+}
+
+async function deleteInventoryField(fieldId, categoryId){
+  if(!confirm('이 관리 열을 삭제하시겠습니까? 해당 열에 입력된 값도 함께 삭제됩니다.')) return;
+  const r = await adminFetch(`/api/inventory/fields/${fieldId}?author=${encodeURIComponent(inventoryAuthor(categoryId))}`, {method:'DELETE'});
+  if(!r.ok){ alert('삭제 실패\n' + await _apiErrorText(r)); return; }
+  await loadInventorySheet();
+}
+
+async function saveInventoryValue(input){
+  const value = input.value || '';
+  if(input.dataset.savedValue === value) return;
+  input.classList.add('saving');
+  try {
+    const r = await adminFetch('/api/inventory/values', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        item_id: input.dataset.itemId,
+        field_id: input.dataset.fieldId,
+        value,
+        author: inventoryAuthor(input.dataset.categoryId),
+      }),
+    });
+    if(!r.ok){ throw new Error(await _apiErrorText(r)); }
+    input.dataset.savedValue = value;
+  } catch(e){
+    alert('셀 저장 실패: ' + (e && e.message ? e.message : e));
+  } finally {
+    input.classList.remove('saving');
+  }
+}
+
+async function saveInventoryAuthor(categoryId){
+  const r = await adminFetch('/api/inventory/category-state', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      category_id: categoryId,
+      last_author: inventoryAuthor(categoryId),
+    }),
+  });
+  if(!r.ok){ alert('작성자 저장 실패\n' + await _apiErrorText(r)); return; }
+  await loadInventorySheet();
 }
 
 // ===== 색상 선택기 공통 함수 =====
@@ -3916,31 +4631,77 @@ function initColorPicker(currentColor){
 }
 // ===== 색상 선택기 공통 함수 끝 =====
 
+function categoryTreatments(categoryId){
+  return (TX_META.all_treatments || [])
+    .filter(t => t.active !== false && (!categoryId || t.category_id === categoryId))
+    .sort((a,b) => (a.sort_order||0) - (b.sort_order||0) || (a.name||'').localeCompare(b.name||'', 'ko'));
+}
+
+function renderEmployeeTreatmentChecks(categoryId, selectedIds, overrideEnabled){
+  const items = categoryTreatments(categoryId);
+  if(!items.length){
+    return '<div class="muted" style="padding:8px">선택한 과에 활성 치료항목이 없습니다.</div>';
+  }
+  const selected = new Set(selectedIds || []);
+  return items.map(t => {
+    const checked = overrideEnabled ? selected.has(t.id) : true;
+    return `<label class="chk-item emp-treatment-check">
+      <input type="checkbox" class="e-treatment-id" value="${t.id}" ${checked?'checked':''} ${overrideEnabled?'':'disabled'}>
+      <span><b>${t.name}</b> <small class="muted">${t.short||t.code}</small></span>
+    </label>`;
+  }).join('');
+}
+
+function refreshEmployeeTreatmentChecks(){
+  const catId = _v('e-category');
+  const override = document.getElementById('e-treatment-override')?.checked || false;
+  const current = [...document.querySelectorAll('.e-treatment-id:checked')].map(x => x.value);
+  const box = document.getElementById('e-treatment-list');
+  if(box) box.innerHTML = renderEmployeeTreatmentChecks(catId, current, override);
+}
+
 function editEmployee(e){
-  const role = e.role || 'therapist';
-  const isDoctor = role === 'doctor';
-  const roleLabel = isDoctor ? '의사' : '치료사';
-  // 치료사일 때만 치료가능항목 체크박스 표시
-  const capsBlock = isDoctor ? '' : `
-    <div class="caps-section">
-      <div class="caps-section-label">치료가능항목</div>
-      <div class="caps-row">
-        <label class="chk-item"><input id="e-eswt" type="checkbox" ${e.can_eswt!==false?'checked':''}> <span>체외충격파</span></label>
-        <label class="chk-item"><input id="e-manual" type="checkbox" ${e.can_manual!==false?'checked':''}> <span>도수치료</span></label>
-      </div>
-    </div>`;
-  // 치료사일 때만 입사일 입력칸 표시
-  const hireBlock = isDoctor ? '' : `
-    <label>입사일 <input id="e-hire" type="text" data-fmt="birth" maxlength="10" inputmode="numeric" placeholder="20200101 → 2020-01-01" value="${e.hire_date||''}"></label>`;
-  showModal(`<h3>${e.id?`${roleLabel} 수정`:`신규 ${roleLabel}`}</h3>
-    <input type="hidden" id="e-role" value="${role}">
+  e = e || {};
+  const firstCat = (EMPLOYEE_CATEGORIES || []).find(c => c.active !== false) || {};
+  const categoryId = e.category_id || firstCat.id || '';
+  const txOverride = e.treatment_override_enabled === true;
+  showModal(`<h3>${e.id?'직원 수정':'신규 직원'}</h3>
     <label>이름 * <input id="e-name" value="${e.name||''}"></label>
+    <label>과
+      <select id="e-category" onchange="refreshEmployeeTreatmentChecks()">${employeeCategoryOptions(categoryId)}</select>
+    </label>
     <div class="emp-row2">
       <label>생년월일 <input id="e-birth" type="text" data-fmt="birth" maxlength="10" inputmode="numeric" placeholder="19900101 → 1990-01-01" value="${e.birth_date||''}"></label>
       <label>연락처 <input id="e-phone" type="tel" data-fmt="phone" maxlength="13" inputmode="tel" placeholder="01012345678 → 010-1234-5678" value="${e.phone||''}"></label>
     </div>
-    ${hireBlock}
-    ${capsBlock}
+    <label>입사일 <input id="e-hire" type="text" data-fmt="birth" maxlength="10" inputmode="numeric" placeholder="20200101 → 2020-01-01" value="${e.hire_date||''}"></label>
+    <div class="caps-section">
+      <div class="caps-section-label">직원별 권한 override</div>
+        <label>도수치료
+          <select id="e-manual-cap">
+            <option value="" ${boolSelectValue(e.can_manual_override)===''?'selected':''}>과 기본값</option>
+            <option value="true" ${boolSelectValue(e.can_manual_override)==='true'?'selected':''}>가능</option>
+            <option value="false" ${boolSelectValue(e.can_manual_override)==='false'?'selected':''}>불가</option>
+          </select>
+        </label>
+      <label>체외충격파
+        <select id="e-eswt-cap">
+          <option value="" ${boolSelectValue(e.can_eswt_override)===''?'selected':''}>과 기본값</option>
+          <option value="true" ${boolSelectValue(e.can_eswt_override)==='true'?'selected':''}>가능</option>
+          <option value="false" ${boolSelectValue(e.can_eswt_override)==='false'?'selected':''}>불가</option>
+        </select>
+      </label>
+    </div>
+    <div class="caps-section">
+      <div class="caps-section-label">담당 가능 치료항목</div>
+      <label class="chk-item">
+        <input id="e-treatment-override" type="checkbox" ${txOverride?'checked':''} onchange="refreshEmployeeTreatmentChecks()">
+        <span>직원별로 직접 선택</span>
+      </label>
+      <div id="e-treatment-list" class="emp-treatment-list">
+        ${renderEmployeeTreatmentChecks(categoryId, e.treatment_ids || [], txOverride)}
+      </div>
+    </div>
     <label class="chk-item" style="margin-top:6px"><input id="e-active" type="checkbox" ${e.active!==false?'checked':''}> <span>활성</span></label>
     <div class="emp-color-section">
       <div class="emp-color-label">• 색상 선택</div>
@@ -3957,7 +4718,7 @@ function editEmployee(e){
         <span class="color-swatch" title="보라"    style="background:#A855F7" data-color="#A855F7" onclick="selectSwatch(this)"></span>
         <div class="color-detail-container">
           <button class="color-detail-btn" title="세부 색상 선택" onclick="openDetailColor(event)">🎨</button>
-          <input class="color-hidden-input" id="e-color" type="color" value="${e.color||(isDoctor?'#EF4444':'#3B82F6')}" oninput="onDetailColorChange(this.value)">
+          <input class="color-hidden-input" id="e-color" type="color" value="${e.color||firstCat.color||'#3B82F6'}" oninput="onDetailColorChange(this.value)">
         </div>
       </div>
       <div class="color-preview-row">
@@ -3969,23 +4730,26 @@ function editEmployee(e){
       <button class="primary" onclick="saveEmployee('${e.id||''}')">저장</button></div>`);
 
   // 색상 선택기 초기화
-  setTimeout(() => initColorPicker(e.color||(isDoctor?'#EF4444':'#3B82F6')), 50);
+  setTimeout(() => initColorPicker(e.color||firstCat.color||'#3B82F6'), 50);
 }
 
 async function saveEmployee(eid){
-  const role = _v('e-role') || 'therapist';
   const body = {
     name: _v('e-name'),
-    role: role,
+    category_id: _v('e-category') || null,
     birth_date: _v('e-birth') || null,
     phone: _v('e-phone') || null,
-    hire_date: role === 'therapist' ? (document.getElementById('e-hire')?.value || null) : null,
+    hire_date: document.getElementById('e-hire')?.value || null,
     color: _v('e-color'),
     active: document.getElementById('e-active').checked,
-    can_eswt: role === 'therapist' ? document.getElementById('e-eswt').checked : true,
-    can_manual: role === 'therapist' ? document.getElementById('e-manual').checked : true,
+    can_doctor_treatment_override: readBoolSelect('e-doc-cap'),
+    can_manual_override: readBoolSelect('e-manual-cap'),
+    can_eswt_override: readBoolSelect('e-eswt-cap'),
+    treatment_override_enabled: document.getElementById('e-treatment-override')?.checked || false,
+    treatment_ids: [...document.querySelectorAll('.e-treatment-id:checked')].map(x => x.value),
   };
   if(!body.name){ alert('이름을 입력하세요'); return; }
+  if(!body.category_id){ alert('과를 먼저 추가하고 선택하세요'); return; }
   const url = eid ? `/api/employees/${eid}` : '/api/employees';
   const r = await fetch(url, {
     method: eid ? 'PUT' : 'POST',
@@ -4013,742 +4777,329 @@ async function delEmployee(eid){
 // 다른 곳에서 loadTherapistsSheet/editTherapist를 호출할 수 있으니 유지
 async function loadTherapistsSheet(){ return loadEmployeesSheet(); }
 function editTherapist(t){
-  return editEmployee(Object.assign({role:'therapist'}, t));
+  return editEmployee(t || {});
 }
 async function saveTherapist(tid){ return saveEmployee(tid); }
 async function delTherapist(tid){ return delEmployee(tid); }
 
-async function loadSmsTargets(){
-  document.getElementById('sms-results').innerHTML='<p class="muted">불러오는 중...</p>';
-  // 예약을 새로 불러오면 점검 결과/AI 초안 라벨 모두 초기화
-  SMS_VALIDATE_RESULTS = {};
-  const panel = document.getElementById('sms-validate-panel');
-  if(panel){ panel.style.display='none'; panel.innerHTML=''; }
-  try{
-    SMS_TARGETS = await (await fetch('/api/sms/tomorrow-targets')).json();
-    renderBulkTargets();
-  } catch(e){
-    document.getElementById('sms-results').innerHTML='<p class="muted">조회 실패</p>';
+let REVENUE_RECORDS = null;
+let REVENUE_STATS = null;
+let _revenueInitialized = false;
+
+function revenueDateStr(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function revenueDefaultRange(){
+  const now = new Date();
+  return [
+    revenueDateStr(new Date(now.getFullYear(), now.getMonth(), 1)),
+    revenueDateStr(new Date(now.getFullYear(), now.getMonth()+1, 0)),
+  ];
+}
+
+function revenueSetRange(prefix, fromStr, toStr){
+  const fromEl = document.getElementById(prefix + '-from');
+  const toEl = document.getElementById(prefix + '-to');
+  if(fromEl) fromEl.value = fromStr;
+  if(toEl) toEl.value = toStr;
+}
+
+function applyRevenuePreset(target, preset){
+  const now = new Date();
+  now.setHours(0,0,0,0);
+  let start = new Date(now);
+  let end = new Date(now);
+  if(preset === 'week'){
+    start.setDate(end.getDate() - 6);
+  } else if(preset === 'month_now'){
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+    end = new Date(now.getFullYear(), now.getMonth()+1, 0);
+  } else if(preset === 'month_prev'){
+    start = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    end = new Date(now.getFullYear(), now.getMonth(), 0);
+  } else if(preset === '30d'){
+    start.setDate(end.getDate() - 29);
   }
-  // 일괄 안내가 화면에 떠 있을 때만 AI 가용성 갱신
-  refreshAiHealthBadge();
+  const prefix = target === 'record' ? 'rev-record' : 'rev-stat';
+  revenueSetRange(prefix, revenueDateStr(start), revenueDateStr(end));
+  if(target === 'record') loadRevenueRecords();
+  else loadRevenueStats();
 }
-function smsAllCheck(on){document.querySelectorAll('.sms-chk').forEach(c=>c.checked=on);}
-async function smsSend(){
-  const selected=Array.from(document.querySelectorAll('.sms-chk:checked')).map(c=>SMS_TARGETS[parseInt(c.dataset.idx)]);
-  if(!selected.length){alert('대상 선택');return;}
-  // AI 점검에서 blocker 가 있는 항목은 발송 차단
-  const blocked = selected.filter(t => (SMS_VALIDATE_RESULTS[t.appointment_id]?.blockers?.length));
-  if(blocked.length){
-    alert(`발송 차단: blocker(필수 항목 누락/오류)가 있는 ${blocked.length}건이 선택되어 있습니다.\n[발송 전 점검] 결과를 확인하고 빨간 배지가 사라진 뒤 다시 시도해 주세요.`);
-    return;
+
+function initStats(){
+  const [fromStr, toStr] = revenueDefaultRange();
+  if(!_revenueInitialized){
+    revenueSetRange('rev-record', fromStr, toStr);
+    revenueSetRange('rev-stat', fromStr, toStr);
+    _revenueInitialized = true;
   }
-  // warning 만 있으면 한 번 더 확인
-  const warned = selected.filter(t => (SMS_VALIDATE_RESULTS[t.appointment_id]?.warnings?.length));
-  if(warned.length && !confirm(`경고가 있는 ${warned.length}건이 포함되어 있습니다. 그래도 발송할까요?`)) return;
-  if(!confirm(`${selected.length}명에게 발송. 계속?`))return;
-  const r=await fetch('/api/sms/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:selected})});
-  if(!r.ok){alert('발송 실패\n' + await r.text());return;}
-  const d=await r.json();
-  if(d.sent === d.total){
-    alert(`✅ ${d.sent}건 모두 발송 성공`);
-  } else {
-    const failReasons = (d.results || [])
-      .filter(x => x.result !== 'success')
-      .map(x => `- ${x.phone}: ${x.detail || '알 수 없음'}`)
-      .join('\n');
-    alert(`성공 ${d.sent} / 실패 ${d.failed ?? (d.total - d.sent)} / 전체 ${d.total}\n\n${failReasons || ''}`);
-  }
-  loadSmsTargets();
+  loadRevenueRecords();
 }
 
-// ─────── 개별 문자 발송 (7단계) ───────
-
-let SMS_SETTING_CACHE = null;  // { clinic_name, clinic_phone }
-
-async function loadSmsSettingIfNeeded(){
-  if(SMS_SETTING_CACHE) return SMS_SETTING_CACHE;
-  try {
-    SMS_SETTING_CACHE = await (await fetch('/api/sms/setting')).json();
-  } catch(e){ SMS_SETTING_CACHE = {clinic_name:'', clinic_phone:''}; }
-  return SMS_SETTING_CACHE;
+function switchRevenueTab(name, btn){
+  document.querySelectorAll('#admin-stats .revenue-sub-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#admin-stats .revenue-pane').forEach(p => p.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const pane = document.getElementById('revenue-pane-' + name);
+  if(pane) pane.classList.add('active');
+  if(name === 'records') loadRevenueRecords();
+  if(name === 'stats') loadRevenueStats();
 }
 
-// 개별문자 변환예시 — 환자 미선택 시 토큰을 채울 더미 샘플
-function smsPreviewSampleVars(){
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
-  const lastVisit = new Date(); lastVisit.setDate(lastVisit.getDate()-7);
-  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const setting = SMS_SETTING_CACHE || {};
-  return {
-    '{환자명}': '홍길동',
-    '{차트번호}': '00123',
-    '{생년월일}': '1980-01-01',
-    '{연락처}': '010-1234-5678',
-    '{병원명}': setting.clinic_name || '우리병원',
-    '{병원전화}': setting.clinic_phone || '02-000-0000',
-    '{다음예약날짜}': fmt(tomorrow),
-    '{다음예약시간}': '14:00',
-    '{다음예약항목}': '도수치료',
-    '{마지막내원일}': fmt(lastVisit),
-  };
+function populateRevenueCategorySelect(id, categories, selectedId){
+  const sel = document.getElementById(id);
+  if(!sel) return;
+  const prev = selectedId !== undefined ? selectedId : sel.value;
+  const rows = categories || [];
+  sel.innerHTML = '<option value="">전체</option>' + rows
+    .map(c => `<option value="${c.id}">${escapeHtml(c.name || '')}</option>`)
+    .join('');
+  sel.value = rows.some(c => c.id === prev) ? prev : '';
 }
 
-// 개별문자 변환예시 렌더 — textarea 본문에 남아있는 변수만 더미값으로 치환
-function sms1RenderPreview(){
-  const ta = document.getElementById('sms1-body');
-  const box = document.getElementById('sms1-preview');
-  if(!ta || !box) return;
-  const raw = ta.value || '';
-  if(!raw.trim()){
-    box.innerHTML = '<span class="muted">템플릿을 선택하면 미리보기가 표시됩니다</span>';
-    return;
-  }
-  let txt = raw;
-  const sample = smsPreviewSampleVars();
-  for(const [k,v] of Object.entries(sample)){
-    txt = txt.split(k).join(v);
-  }
-  box.textContent = txt;
+function syncRevenueCategorySelects(categories, selectedId){
+  populateRevenueCategorySelect('rev-record-category', categories, selectedId);
+  populateRevenueCategorySelect('rev-stat-category', categories, selectedId);
 }
 
-function sms1Search(){
-  const q = document.getElementById('sms1-search').value.trim().toLowerCase();
-  const box = document.getElementById('sms1-results');
-  if(!q){ box.innerHTML=''; box.style.display='none'; return; }
-  const hits = PATIENTS.filter(p =>
-    (p.name||'').toLowerCase().includes(q) ||
-    (p.chart_no||'').toLowerCase().includes(q) ||
-    (p.phone||'').toLowerCase().includes(q) ||
-    (p.birth_date||'').toLowerCase().includes(q)
-  ).slice(0,10);
-  box.innerHTML = hits.length
-    ? hits.map(p => `<div class="pid-row" onclick='sms1Pick(${JSON.stringify(p.id)})'>
-        <b>${p.chart_no||'-'}</b> / ${p.name}
-        <span class="muted">/ ${p.birth_date||'-'} / ${p.phone||'-'}</span>
-      </div>`).join('')
-    : '<div class="pid-row muted">일치 환자 없음</div>';
-  box.style.display = 'block';
+function revenueMoney(v){
+  const n = Math.round(Number(v || 0));
+  return n.toLocaleString() + '원';
 }
 
-async function sms1Pick(pid){
-  const p = PATIENTS_BY_ID.get(pid);
-  if(!p) return;
-  document.getElementById('sms1-pid').value = pid;
-  document.getElementById('sms1-phone').value = p.phone || '';
-  document.getElementById('sms1-selected').innerHTML =
-    `<b>${p.chart_no||'-'}</b> / ${p.name} <span class="muted">/ ${p.birth_date||'-'}</span>`;
-  document.getElementById('sms1-search').value = '';
-  document.getElementById('sms1-results').style.display = 'none';
-  await sms1FillTemplate();
+function revenueAmountValue(v){
+  const cleaned = String(v || '').replace(/[^\d]/g, '');
+  return Math.max(0, parseInt(cleaned || '0', 10) || 0);
 }
 
-// 관리자 등록 템플릿 + 환자 변수 치환
-async function sms1FillTemplate(){
-  await loadSmsSettingIfNeeded();
-  const tpl = SMS_TEMPLATE || '';
-  const pid = document.getElementById('sms1-pid').value;
-  const p = PATIENTS_BY_ID.get(pid);
-
-  const vars = {
-    '{환자명}': p?.name || '{환자명}',
-    '{차트번호}': p?.chart_no || '{차트번호}',
-    '{생년월일}': p?.birth_date || '{생년월일}',
-    '{연락처}': p?.phone || document.getElementById('sms1-phone').value || '{연락처}',
-    '{병원명}': SMS_SETTING_CACHE.clinic_name || '{병원명}',
-    '{병원전화}': SMS_SETTING_CACHE.clinic_phone || '{병원전화}',
-    '{다음예약날짜}': '{다음예약날짜}',
-    '{다음예약시간}': '{다음예약시간}',
-    '{다음예약항목}': '{다음예약항목}',
-    '{마지막내원일}': '{마지막내원일}',
-  };
-
-  // 환자 선택 시 다음 예약 / 마지막 내원 자동 조회
-  if(p){
-    try {
-      const now = new Date();
-      const ago = new Date(); ago.setFullYear(ago.getFullYear()-2);
-      const fut = new Date(); fut.setFullYear(fut.getFullYear()+1);
-      const toStr = d => d.toISOString().slice(0,19);
-      const all = await (await fetch(`/api/appointments?start=${toStr(ago)}&end=${toStr(fut)}`)).json();
-      // 본인 예약만
-      const mine = all.filter(a => a.extendedProps.patient_id === pid);
-      // 다음 예약 = 미래 reserved 중 가장 가까운 것
-      const future = mine
-        .filter(a => a.extendedProps.status === 'reserved' && new Date(a.start) >= now)
-        .sort((a,b) => new Date(a.start) - new Date(b.start));
-      if(future.length){
-        const fd = new Date(future[0].start);
-        vars['{다음예약날짜}'] = fmtDate24(fd);
-        vars['{다음예약시간}'] = `${String(fd.getHours()).padStart(2,'0')}:${String(fd.getMinutes()).padStart(2,'0')}`;
-        const codes = apptTreatmentCodes(future[0].extendedProps);
-        vars['{다음예약항목}'] = codes.map(c => txName(c)).join(', ') || '-';
-      }
-      // 마지막 내원 = approved 중 가장 최근 과거
-      const past = mine
-        .filter(a => a.extendedProps.status === 'approved' && new Date(a.start) < now)
-        .sort((a,b) => new Date(b.start) - new Date(a.start));
-      if(past.length){
-        vars['{마지막내원일}'] = fmtDate24(new Date(past[0].start));
-      }
-    } catch(e){}
-  }
-
-  let text = tpl;
-  for(const [k,v] of Object.entries(vars)){
-    text = text.split(k).join(v);
-  }
-  document.getElementById('sms1-body').value = text;
-  sms1RenderPreview();
+function revenueAmountDisplay(v){
+  const n = revenueAmountValue(v);
+  return n ? n.toLocaleString() : '';
 }
 
-async function sms1ResetTemplate(){
-  await sms1FillTemplate();
+function revenueQuantity(v){
+  const n = Math.max(0, parseInt(v || '0') || 0);
+  return n.toLocaleString();
 }
 
-async function sms1Send(){
-  const phoneRaw = document.getElementById('sms1-phone').value.trim();
-  // 하이픈/공백 제거하고 숫자만 추출해서 사전 검증
-  const phoneDigits = phoneRaw.replace(/[^0-9]/g, '');
-  const body = document.getElementById('sms1-body').value.trim();
-  const pid = document.getElementById('sms1-pid').value || null;
-  if(!phoneRaw){ alert('연락처를 입력하세요'); return; }
-  if(phoneDigits.length < 9 || phoneDigits.length > 11 || !phoneDigits.startsWith('0')){
-    alert('연락처 형식이 올바르지 않습니다.\n예: 010-1234-5678');
-    return;
-  }
-  if(!body){ alert('메시지 내용을 입력하세요'); return; }
-  if(!confirm(`${phoneRaw} 로 발송하시겠습니까?`)) return;
-  const r = await fetch('/api/sms/send', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ items: [{patient_id: pid, phone: phoneRaw, body}] }),
-  });
-  if(!r.ok){ alert('발송 실패\n' + await r.text()); return; }
-  const d = await r.json();
-  if(d.sent === d.total && d.sent > 0){
-    alert(`✅ ${d.sent}건 발송 성공`);
-    document.getElementById('sms1-body').value = '';
-    sms1RenderPreview();
-  } else {
-    // 실패 사유 추출 — 404/URL 문제면 별도 안내
-    const results = d.results || [];
-    const urlErr = results.find(x => x.kind === 'url_not_found');
-    if(urlErr){
-      alert('⚠️ 문자나라 연동 주소 오류 (HTTP 404)\n\n'
-        + '관리자 → ✉ 문자나라 연동 설정 → API URL 값이 올바른지 확인해주세요.\n'
-        + '업체 고객센터에서 안내받은 정확한 발송 URL 이어야 합니다.\n\n'
-        + '상세: ' + (urlErr.detail||''));
-      return;
-    }
-    // code=9 (계정 인증은 통과했으나 발송 거부) 전용 안내
-    const code9 = results.find(x => /code=9\b/.test(x.detail||''));
-    if(code9){
-      alert('⚠️ 문자나라 발송 거부 (code=9)\n\n'
-        + '계정 인증은 정상입니다. 아래 중 하나를 확인해주세요:\n\n'
-        + '① 발신번호가 문자나라 사이트에 사전등록 되어있는지\n'
-        + '   (문자나라 → 회원정보 → 발신번호 관리에서 등록된 번호만 사용 가능)\n'
-        + '② 잔여 포인트/발송 건수가 남아있는지\n'
-        + '③ 오늘 일일 발송 한도를 초과했는지\n\n'
-        + '상세: ' + (code9.detail||''));
-      return;
-    }
-    const failReasons = results
-      .filter(x => x.result !== 'success')
-      .map(x => {
-        const tag = x.kind ? `[${x.kind}${x.status_code?` · HTTP ${x.status_code}`:''}] ` : '';
-        return `- ${x.phone}: ${tag}${x.detail || '알 수 없음'}`;
-      })
-      .join('\n');
-    alert(`⚠️ 발송 실패\n성공 ${d.sent} / 실패 ${d.failed ?? (d.total - d.sent)} / 전체 ${d.total}\n\n${failReasons}`);
-  }
+function revenueDateLabel(dateStr){
+  const parts = String(dateStr || '').split('-').map(x => parseInt(x, 10));
+  if(parts.length !== 3 || parts.some(Number.isNaN)) return dateStr || '-';
+  const d = new Date(parts[0], parts[1]-1, parts[2]);
+  return `${parts[1]}/${parts[2]} (${['일','월','화','수','목','금','토'][d.getDay()]})`;
 }
 
-// ─────── 단계 F: 문자 템플릿 (예약문자 탭) ───────
-
-let SMS_TEMPLATES = [];
-
-async function loadSmsTabData(){
-  // 템플릿 목록 + 두 드롭다운 채우기 + 관리 카드 렌더
-  try {
-    SMS_TEMPLATES = await (await fetch('/api/sms/templates')).json();
-  } catch(e){ SMS_TEMPLATES = []; }
-
-  // 드롭다운 두 곳 채우기
-  const fillSel = (id, withDefault) => {
-    const sel = document.getElementById(id);
-    if(!sel) return;
-    const cur = sel.value;
-    sel.innerHTML = `<option value="">${withDefault}</option>`
-      + SMS_TEMPLATES.filter(t=>t.active).map(t =>
-          `<option value="${t.id}">${t.name}</option>`
-        ).join('');
-    sel.value = cur;
-  };
-  fillSel('sms1-tpl', '(선택 안 함)');
-  fillSel('bulk-tpl', '(기본 안내 — 자동 생성된 문구)');
-
-  // 관리 카드
-  renderSmsTemplatesList();
-
-  // 개별문자 변환예시 초기 렌더 (현재 textarea 상태 반영)
-  sms1RenderPreview();
+function normalizeRevenueAmount(input){
+  const formatted = revenueAmountDisplay(input.value);
+  if(input.value !== formatted) input.value = formatted;
+  recalcRevenueRecordTotals();
 }
 
-function renderSmsTemplatesList(){
-  const box = document.getElementById('sms-templates-list');
-  if(!SMS_TEMPLATES.length){
-    box.innerHTML = '<p class="muted">등록된 템플릿이 없습니다.</p>'; return;
-  }
-  box.innerHTML = SMS_TEMPLATES.map((t,i) => `
-    <div class="sms-tpl-item">
-      <div class="sms-tpl-item-head">
-        <span class="sms-tpl-num">${i+1}</span>
-        <b>${t.name}</b>
-        ${t.active ? '' : '<span class="badge gray">○ 비활성</span>'}
-        <span style="margin-left:auto; display:flex; gap:6px;">
-          <button class="mini" onclick='editSmsTemplate("${t.id}")'>수정</button>
-          <button class="mini danger" onclick='deleteSmsTemplate("${t.id}")'>삭제</button>
-        </span>
-      </div>
-      <pre class="sms-tpl-body">${(t.body||'').replace(/</g,'&lt;')}</pre>
-    </div>`).join('');
-}
-
-async function addSmsTemplate(){
-  if(!await ensureAdmin()) return;
-  // 1번 템플릿 본문을 기본값으로 미리 보여줌 — 저장 눌러야만 실제 생성
-  const first = SMS_TEMPLATES.find(t => t.active) || SMS_TEMPLATES[0];
-  const defaultBody = first ? (first.body || '') : '';
-  showModal(`<h3>📨 새 템플릿</h3>
-    <label>이름 * <input id="tpl-name" value="새 템플릿"></label>
-    <label>본문
-      <textarea id="tpl-body" rows="8" style="font-family:inherit;">${(defaultBody||'').replace(/</g,'&lt;')}</textarea>
-    </label>
-    <div class="sms-variables">
-      <span class="muted">사용 가능 변수:</span>
-      <code>{환자명}</code> <code>{차트번호}</code> <code>{생년월일}</code> <code>{연락처}</code>
-      <code>{병원명}</code> <code>{병원전화}</code>
-      <code>{다음예약날짜}</code> <code>{다음예약시간}</code> <code>{다음예약항목}</code>
-      <code>{마지막내원일}</code>
-    </div>
-    <label class="chk-label-inline" style="padding-top:10px">
-      <input type="checkbox" id="tpl-active" checked>
-      <span>활성</span>
-    </label>
-    <div class="modal-actions">
-      <button onclick="closeModal()">취소</button>
-      <button class="primary" onclick="createSmsTemplate()">생성</button>
-    </div>
-  `);
-}
-
-async function createSmsTemplate(){
-  if(!await ensureAdmin()) return;
-  const body = {
-    name: document.getElementById('tpl-name').value.trim() || '새 템플릿',
-    body: document.getElementById('tpl-body').value,
-    active: document.getElementById('tpl-active').checked,
-  };
-  const r = await adminFetch('/api/sms/templates', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(body),
-  });
-  if(!r.ok){ alert('생성 실패\n' + await r.text()); return; }
-  closeModal();
-  await loadSmsTabData();
-}
-
-function editSmsTemplate(tid){
-  const t = SMS_TEMPLATES.find(x => x.id === tid);
-  if(!t){ alert('템플릿 없음'); return; }
-  showModal(`<h3>📨 템플릿 수정</h3>
-    <label>이름 * <input id="tpl-name" value="${t.name||''}"></label>
-    <label>본문
-      <textarea id="tpl-body" rows="8" style="font-family:inherit;">${(t.body||'').replace(/</g,'&lt;')}</textarea>
-    </label>
-    <div class="sms-variables">
-      <span class="muted">사용 가능 변수:</span>
-      <code>{환자명}</code> <code>{차트번호}</code> <code>{생년월일}</code> <code>{연락처}</code>
-      <code>{병원명}</code> <code>{병원전화}</code>
-      <code>{다음예약날짜}</code> <code>{다음예약시간}</code> <code>{다음예약항목}</code>
-      <code>{마지막내원일}</code>
-    </div>
-    <label class="chk-label-inline" style="padding-top:10px">
-      <input type="checkbox" id="tpl-active" ${t.active!==false?'checked':''}>
-      <span>활성</span>
-    </label>
-    <div class="modal-actions">
-      <button onclick="closeModal()">취소</button>
-      <button class="primary" onclick="saveSmsTemplate('${tid}')">저장</button>
-    </div>
-  `);
-}
-
-async function saveSmsTemplate(tid){
-  if(!await ensureAdmin()) return;
-  const body = {
-    name: document.getElementById('tpl-name').value.trim() || '템플릿',
-    body: document.getElementById('tpl-body').value,
-    active: document.getElementById('tpl-active').checked,
-  };
-  const r = await adminFetch(`/api/sms/templates/${tid}`, {
-    method:'PUT', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(body),
-  });
-  if(!r.ok){ alert('저장 실패\n' + await r.text()); return; }
-  closeModal();
-  await loadSmsTabData();
-}
-
-async function deleteSmsTemplate(tid){
-  if(!await ensureAdmin()) return;
-  const t = SMS_TEMPLATES.find(x => x.id === tid);
-  if(!confirm(`템플릿 "${t?.name||''}" 을(를) 삭제하시겠습니까?`)) return;
-  const r = await adminFetch(`/api/sms/templates/${tid}`, {method:'DELETE'});
-  if(!r.ok){
-    let msg = '삭제 실패';
-    try { msg = (await r.json()).detail || msg; } catch(e){}
-    alert(msg); return;
-  }
-  await loadSmsTabData();
-}
-
-// 개별 발송 — 템플릿 적용 (변수 치환은 환자 선택 시 자동, 여기선 본문만 교체)
-async function sms1ApplyTemplate(){
-  const tid = document.getElementById('sms1-tpl').value;
-  const t = SMS_TEMPLATES.find(x => x.id === tid);
-  if(!t){
-    // 선택 안 함 → 기본 템플릿(SMS_TEMPLATE) 채우기
-    await sms1FillTemplate();
-    return;
-  }
-  // 선택된 템플릿 본문을 기반으로 변수 치환
-  await sms1FillTemplateWithBody(t.body || '');
-}
-
-// 지정된 템플릿 본문으로 환자 변수 치환하여 본문 영역에 반영
-async function sms1FillTemplateWithBody(tplBody){
-  await loadSmsSettingIfNeeded();
-  const pid = document.getElementById('sms1-pid').value;
-  const p = PATIENTS_BY_ID.get(pid);
-
-  const vars = {
-    '{환자명}': p?.name || '{환자명}',
-    '{차트번호}': p?.chart_no || '{차트번호}',
-    '{생년월일}': p?.birth_date || '{생년월일}',
-    '{연락처}': p?.phone || document.getElementById('sms1-phone').value || '{연락처}',
-    '{병원명}': SMS_SETTING_CACHE.clinic_name || '{병원명}',
-    '{병원전화}': SMS_SETTING_CACHE.clinic_phone || '{병원전화}',
-    '{다음예약날짜}': '{다음예약날짜}',
-    '{다음예약시간}': '{다음예약시간}',
-    '{다음예약항목}': '{다음예약항목}',
-    '{마지막내원일}': '{마지막내원일}',
-  };
-
-  if(p){
-    try {
-      const now = new Date();
-      const ago = new Date(); ago.setFullYear(ago.getFullYear()-2);
-      const fut = new Date(); fut.setFullYear(fut.getFullYear()+1);
-      const toStr = d => d.toISOString().slice(0,19);
-      const all = await (await fetch(`/api/appointments?start=${toStr(ago)}&end=${toStr(fut)}`)).json();
-      const mine = all.filter(a => a.extendedProps.patient_id === pid);
-      const future = mine
-        .filter(a => a.extendedProps.status === 'reserved' && new Date(a.start) >= now)
-        .sort((a,b) => new Date(a.start) - new Date(b.start));
-      if(future.length){
-        const fd = new Date(future[0].start);
-        vars['{다음예약날짜}'] = `${fd.getFullYear()}-${String(fd.getMonth()+1).padStart(2,'0')}-${String(fd.getDate()).padStart(2,'0')}`;
-        vars['{다음예약시간}'] = `${String(fd.getHours()).padStart(2,'0')}:${String(fd.getMinutes()).padStart(2,'0')}`;
-        const codes = apptTreatmentCodes(future[0].extendedProps);
-        vars['{다음예약항목}'] = codes.map(c => txName(c)).join(', ') || '-';
-      }
-      const past = mine
-        .filter(a => a.extendedProps.status === 'approved' && new Date(a.start) < now)
-        .sort((a,b) => new Date(b.start) - new Date(a.start));
-      if(past.length){
-        const pd = new Date(past[0].start);
-        vars['{마지막내원일}'] = `${pd.getFullYear()}-${String(pd.getMonth()+1).padStart(2,'0')}-${String(pd.getDate()).padStart(2,'0')}`;
-      }
-    } catch(e){}
-  }
-
-  let text = tplBody;
-  for(const [k,v] of Object.entries(vars)){
-    text = text.split(k).join(v);
-  }
-  document.getElementById('sms1-body').value = text;
-  sms1RenderPreview();
-}
-
-// 일괄 안내 — 템플릿 적용
-async function bulkApplyTemplate(){
-  const tid = document.getElementById('bulk-tpl').value;
-  if(!SMS_TARGETS || !SMS_TARGETS.length) return;
-  const t = SMS_TEMPLATES.find(x => x.id === tid);
-  if(!t){
-    // 기본 (서버 자동 생성 문구) 다시 로드
-    await loadSmsTargets();
-    return;
-  }
-  // 각 행마다 변수 치환
-  await loadSmsSettingIfNeeded();
-  for(const target of SMS_TARGETS){
-    const p = (target.patient_id ? PATIENTS_BY_ID.get(target.patient_id) : null);
-    const dt = new Date(target.reserved_at);
-    const vars = {
-      '{환자명}': target.name || '{환자명}',
-      '{차트번호}': target.chart_no || '{차트번호}',
-      '{생년월일}': p?.birth_date || '{생년월일}',
-      '{연락처}': target.phone || '{연락처}',
-      '{병원명}': SMS_SETTING_CACHE.clinic_name || '{병원명}',
-      '{병원전화}': SMS_SETTING_CACHE.clinic_phone || '{병원전화}',
-      '{다음예약날짜}': fmtDate24(dt),
-      '{다음예약시간}': `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`,
-      '{다음예약항목}': target.treatment_summary || '-',
-      '{마지막내원일}': '{마지막내원일}',
-    };
-    let txt = t.body;
-    for(const [k,v] of Object.entries(vars)){ txt = txt.split(k).join(v); }
-    target.body = txt;
-    // 일괄 템플릿 적용으로 본문이 바뀌었으므로 AI 초안 라벨은 해제
-    target.ai_drafted = false;
-  }
-  // 표 다시 그리기
-  renderBulkTargets();
-}
-
-// AI 보조: 점검 결과를 행 배지로 변환
-function renderValidateBadges(appointmentId){
-  const r = SMS_VALIDATE_RESULTS[appointmentId];
-  if(!r) return '<span class="badge gray">미점검</span>';
-  if(r.blockers && r.blockers.length){
-    const first = r.blockers[0].message || r.blockers[0].code || '오류';
-    const more = r.blockers.length > 1 ? ` 외 ${r.blockers.length-1}건` : '';
-    return `<span class="badge red" title="${escapeAttr(r.blockers.map(b=>b.message||b.code).join('\n'))}">❌ ${escapeHtml(first)}${more}</span>`;
-  }
-  if(r.warnings && r.warnings.length){
-    const first = r.warnings[0].message || r.warnings[0].code || '경고';
-    const more = r.warnings.length > 1 ? ` 외 ${r.warnings.length-1}건` : '';
-    return `<span class="badge orange" title="${escapeAttr(r.warnings.map(w=>w.message||w.code).join('\n'))}">⚠ ${escapeHtml(first)}${more}</span>`;
-  }
-  return '<span class="badge green">✓ 정상</span>';
-}
-
-// HTML/속성 이스케이프 (textarea 본문/툴팁용)
-function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-function escapeAttr(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-function renderBulkTargets(){
-  if(!SMS_TARGETS || !SMS_TARGETS.length){
-    document.getElementById('sms-results').innerHTML='<p class="muted">내일 예약 환자 없음</p>';
-    document.getElementById('sms-footer').style.display='none';
-    return;
-  }
-  const rows = SMS_TARGETS.map((t,i) => {
-    const dt = new Date(t.reserved_at);
-    const time = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
-    const aiLabel = t.ai_drafted
-      ? '<div style="margin-top:4px; color:#9A3412; font-size:11px">⚠ AI가 만든 초안입니다. 발송 전 반드시 확인하세요.</div>'
-      : '';
-    return `<tr><td><input type="checkbox" class="sms-chk" data-idx="${i}" checked></td>
-      <td>${escapeHtml(t.chart_no)}</td><td><b>${escapeHtml(t.name)}</b></td><td>${escapeHtml(t.phone)}</td><td>${time}</td>
-      <td class="sms-validate-cell">${renderValidateBadges(t.appointment_id)}</td>
-      <td><textarea class="sms-body-edit" data-idx="${i}" rows="3" style="width:100%; min-width:240px; box-sizing:border-box" oninput="smsBodyChange(${i}, this.value)">${escapeHtml(t.body||'')}</textarea>${aiLabel}</td></tr>`;
-  }).join('');
-  document.getElementById('sms-results').innerHTML=`<table class="data-table"><thead><tr>
-    <th><input type="checkbox" checked onchange="smsAllCheck(this.checked)"></th>
-    <th>차트</th><th>이름</th><th>연락처</th><th>예약 일시</th><th>점검</th><th>문자 내용</th>
-  </tr></thead><tbody>${rows}</tbody></table>
-  <p class="muted" style="margin-top:10px">총 ${SMS_TARGETS.length}건 · 체크된 대상만 발송</p>`;
-  document.getElementById('sms-footer').style.display='block';
-}
-
-// AI 보조: textarea 편집 → SMS_TARGETS 동기화 (재렌더링 안 함, 커서 보존)
-function smsBodyChange(idx, value){
-  if(SMS_TARGETS && SMS_TARGETS[idx]){ SMS_TARGETS[idx].body = value; }
-}
-
-// ─────── AI 보조: /api/ai/health/public 가용성 체크 + 버튼 토글 ───────
-//   - /api/ai/health/public 는 인증 불필요 — 일반 직원도 200 받음.
-//     응답 4 필드: enabled, ready, provider, api_key_set.
-//   - admin 화면 전용 디테일(model 명, sdk_installed, knowledge_doc_count)은
-//     /api/ai/health (admin 전용) 으로 별도 호출 (loadAiHealthBox/testAiConnection).
-async function loadAiHealth(force){
-  if(AI_HEALTH && !force) return AI_HEALTH;
-  try{
-    // public endpoint — 인증 불필요. 4 필드만: enabled, ready, provider, api_key_set
-    const r = await fetch('/api/ai/health/public');
-    if(!r.ok){ AI_HEALTH = {enabled:false, api_key_set:false, ready:false, _err:'health 조회 실패'}; return AI_HEALTH; }
-    AI_HEALTH = await r.json();
-  } catch(e){
-    AI_HEALTH = {enabled:false, api_key_set:false, ready:false, _err:String(e)};
-  }
-  return AI_HEALTH;
-}
-
-async function refreshAiHealthBadge(){
-  const badge = document.getElementById('ai-status-badge');
-  const validateBtn = document.getElementById('btn-sms-validate');
-  const draftBtn = document.getElementById('btn-sms-aidraft');
-  if(!badge && !validateBtn && !draftBtn) return;
-  const h = await loadAiHealth(true);
-  // 점검(validate) 은 LLM 미사용이라 항상 활성
-  if(validateBtn) validateBtn.disabled = false;
-  let msg = '', cls = 'muted';
-  if(!h || !h.enabled){
-    msg = 'AI 기능 꺼짐 — 관리자 → AI 설정에서 켜주세요';
-    cls = 'badge gray';
-    if(draftBtn){ draftBtn.disabled = true; draftBtn.title = msg; }
-  } else if(!h.api_key_set){
-    msg = 'AI API Key 미설정 — 관리자 → AI 설정에서 입력해 주세요';
-    cls = 'badge orange';
-    if(draftBtn){ draftBtn.disabled = true; draftBtn.title = msg; }
-  } else if(!h.ready){
-    msg = 'AI 사용 불가 (provider/model 확인 필요)';
-    cls = 'badge orange';
-    if(draftBtn){ draftBtn.disabled = true; draftBtn.title = msg; }
-  } else {
-    msg = `AI 사용 가능 · ${h.provider || ''} ${h.model || ''}`.trim();
-    cls = 'badge green';
-    if(draftBtn){ draftBtn.disabled = false; draftBtn.title = ''; }
-  }
-  if(badge){ badge.className = cls; badge.textContent = msg; }
-}
-
-// ─────── AI 보조: 발송 전 점검 ───────
-async function smsValidateChecked(){
-  const checked = Array.from(document.querySelectorAll('.sms-chk:checked'));
-  if(!checked.length){ alert('점검할 대상을 체크해 주세요.'); return; }
-  const items = checked.map(c => {
-    const t = SMS_TARGETS[parseInt(c.dataset.idx)];
-    return { appointment_id: t.appointment_id, body: t.body || '', phone: t.phone || '', patient_id: t.patient_id || '' };
-  });
-  const panel = document.getElementById('sms-validate-panel');
-  panel.style.display = 'block';
-  panel.innerHTML = '<span class="muted">점검 중...</span>';
-  try{
-    const r = await fetch('/api/ai/sms/validate', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ items }),
+function recalcRevenueRecordTotals(){
+  let grand = 0;
+  document.querySelectorAll('.revenue-record-row').forEach(tr => {
+    let total = 0;
+    tr.querySelectorAll('.revenue-amount-input').forEach(inp => {
+      total += revenueAmountValue(inp.value);
     });
-    if(!r.ok){
-      panel.innerHTML = `<span class="badge red">점검 실패: ${escapeHtml(await r.text())}</span>`;
-      return;
-    }
-    const d = await r.json();
-    let blockerN = 0, warnN = 0, okN = 0;
-    for(const res of (d.results || [])){
-      SMS_VALIDATE_RESULTS[res.appointment_id] = { blockers: res.blockers || [], warnings: res.warnings || [] };
-      if((res.blockers || []).length) blockerN++;
-      else if((res.warnings || []).length) warnN++;
-      else okN++;
-    }
-    const parts = [];
-    if(blockerN) parts.push(`<span class="badge red">❌ blocker ${blockerN}건</span>`);
-    if(warnN)    parts.push(`<span class="badge orange">⚠ warning ${warnN}건</span>`);
-    if(okN)      parts.push(`<span class="badge green">✓ 정상 ${okN}건</span>`);
-    panel.innerHTML = `<b>점검 결과 (총 ${items.length}건)</b> &nbsp; ${parts.join(' ')}` +
-      (blockerN ? '<div class="muted" style="margin-top:4px">❗ blocker 가 있는 항목은 발송 차단됩니다. 표의 빨간 배지를 확인하세요.</div>' : '');
-    renderBulkTargets();
+    grand += total;
+    const cell = tr.querySelector('[data-revenue-row-total]');
+    if(cell) cell.textContent = revenueMoney(total);
+  });
+  const totalEl = document.getElementById('revenue-record-grand-total');
+  if(totalEl) totalEl.textContent = revenueMoney(grand);
+}
+
+async function loadRevenueRecords(){
+  const fromStr = document.getElementById('rev-record-from')?.value || '';
+  const toStr = document.getElementById('rev-record-to')?.value || '';
+  const categoryId = document.getElementById('rev-record-category')?.value || '';
+  if(!fromStr || !toStr) return;
+  if(fromStr > toStr){ alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+  const loading = document.getElementById('revenue-record-loading');
+  const body = document.getElementById('revenue-record-body');
+  try {
+    if(loading) loading.style.display = 'block';
+    const params = new URLSearchParams({date_from: fromStr, date_to: toStr});
+    if(categoryId) params.set('category_id', categoryId);
+    const r = await adminFetch(`/api/revenue/records?${params.toString()}`);
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(data.detail || r.statusText);
+    REVENUE_RECORDS = data;
+    syncRevenueCategorySelects(data.categories || [], data.category_id || '');
+    renderRevenueRecords(data);
   } catch(e){
-    panel.innerHTML = `<span class="badge red">점검 실패: ${escapeHtml(String(e))}</span>`;
-  }
-}
-
-// ─────── AI 보조: 선택 대상 AI 초안 생성 ───────
-async function smsAiDraftChecked(){
-  const h = await loadAiHealth(false);
-  // health 가 admin 전용이라 unauthorized 면 사전 차단 불가 — 서버 503 으로 안내됨
-  if(h && !h.unauthorized){
-    if(!h.enabled){ alert('AI 기능이 꺼져 있습니다. 관리자 → AI 설정에서 켜주세요.'); return; }
-    if(!h.api_key_set){ alert('AI API Key 가 설정되지 않았습니다. 관리자 → AI 설정에서 입력해 주세요.'); return; }
-    if(!h.ready){ alert('AI provider/model 설정을 확인해 주세요.'); return; }
-  }
-
-  const checked = Array.from(document.querySelectorAll('.sms-chk:checked'));
-  if(!checked.length){ alert('초안을 생성할 대상을 체크해 주세요.'); return; }
-  const idxs = checked.map(c => parseInt(c.dataset.idx)).filter(i => SMS_TARGETS[i] && SMS_TARGETS[i].appointment_id);
-  const skipped = checked.length - idxs.length;
-  if(!idxs.length){ alert('appointment_id 가 없는 대상은 AI 초안 생성을 지원하지 않습니다.'); return; }
-  if(!confirm(`${idxs.length}건의 AI 초안을 생성합니다. (LLM 호출이 발생합니다)\n계속하시겠어요?` + (skipped ? `\n(${skipped}건은 appointment_id 부재로 제외)` : ''))) return;
-
-  const draftBtn = document.getElementById('btn-sms-aidraft');
-  if(draftBtn){ draftBtn.disabled = true; draftBtn.textContent = '⏳ 생성 중...'; }
-  let okN = 0, skipN = 0, failN = 0;
-  try{
-    for(const i of idxs){
-      const t = SMS_TARGETS[i];
-      try{
-        const r = await fetch('/api/ai/sms/draft', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ appointment_id: t.appointment_id, tone: 'friendly' }),
-        });
-        if(r.status === 503){
-          alert('AI 사용 불가: ' + (await r.text()));
-          break;
-        }
-        if(!r.ok){
-          failN++;
-          continue;
-        }
-        const d = await r.json();
-        // draft 응답의 warnings (NO_THERAPIST 등) 도 점검 결과에 머지하여 행 배지로 노출
-        if(d.warnings && d.warnings.length){
-          const cur = SMS_VALIDATE_RESULTS[t.appointment_id] || { blockers:[], warnings:[] };
-          for(const w of d.warnings){
-            cur.warnings.push({ code: 'AI_WARN', message: String(w) });
-          }
-          SMS_VALIDATE_RESULTS[t.appointment_id] = cur;
-        }
-        if(d.skipped){
-          // 취소 예약 등 — 초안 생성 안 함, 안내 메시지 warning 으로 표시
-          const cur = SMS_VALIDATE_RESULTS[t.appointment_id] || { blockers:[], warnings:[] };
-          cur.warnings.push({ code: 'AI_SKIP', message: '초안 생성 안 함: ' + (d.skip_reason || d.draft || '') });
-          SMS_VALIDATE_RESULTS[t.appointment_id] = cur;
-          skipN++;
-        } else if(typeof d.draft === 'string' && d.draft.trim()){
-          t.body = d.draft;
-          t.ai_drafted = true;
-          okN++;
-        } else {
-          failN++;
-        }
-      } catch(e){
-        failN++;
-      }
-    }
+    if(body) body.innerHTML = `<p class="muted" style="color:#DC2626;padding:12px;">매출 기록 조회 실패: ${escapeHtml(e && e.message ? e.message : e)}</p>`;
   } finally {
-    if(draftBtn){ draftBtn.disabled = false; draftBtn.textContent = '✨ AI 초안 생성'; }
-    renderBulkTargets();
+    if(loading) loading.style.display = 'none';
   }
-  alert(`AI 초안 생성 완료\n· 성공 ${okN}건\n· skip ${skipN}건 (취소/시간미정 등)\n· 실패 ${failN}건`);
 }
 
-function applyStatsPreset(kind){
-  const [from,to] = _presetRange(kind);
-  document.getElementById('stat-from').value = from;
-  document.getElementById('stat-to').value   = to;
-  loadStats();
+function renderRevenueRecords(data){
+  const body = document.getElementById('revenue-record-body');
+  if(!body) return;
+  const records = data.records || [];
+  const rows = records.map(rec => `
+    <tr class="revenue-record-row" data-date="${escapeAttr(rec.record_date)}">
+      <td class="revenue-date-cell">${escapeHtml(revenueDateLabel(rec.record_date))}</td>
+      <td><input class="revenue-amount-input" data-field="cash_amount" inputmode="numeric" value="${escapeAttr(revenueAmountDisplay(rec.cash_amount))}" oninput="normalizeRevenueAmount(this)"></td>
+      <td><input class="revenue-amount-input" data-field="card_amount" inputmode="numeric" value="${escapeAttr(revenueAmountDisplay(rec.card_amount))}" oninput="normalizeRevenueAmount(this)"></td>
+      <td><input class="revenue-amount-input" data-field="transfer_amount" inputmode="numeric" value="${escapeAttr(revenueAmountDisplay(rec.transfer_amount))}" oninput="normalizeRevenueAmount(this)"></td>
+      <td><input class="revenue-amount-input" data-field="other_amount" inputmode="numeric" value="${escapeAttr(revenueAmountDisplay(rec.other_amount))}" oninput="normalizeRevenueAmount(this)"></td>
+      <td data-revenue-row-total>${revenueMoney(rec.total_amount)}</td>
+      <td><input class="revenue-memo-input" value="${escapeAttr(rec.memo || '')}" placeholder="메모"></td>
+    </tr>`).join('');
+  body.innerHTML = records.length
+    ? `<div style="overflow-x:auto;">
+        <table class="data-table revenue-record-table">
+          <thead><tr><th>날짜</th><th>현금</th><th>카드</th><th>계좌</th><th>기타</th><th>합계</th><th>메모</th></tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr><td colspan="5">기간 합계</td><td id="revenue-record-grand-total">${revenueMoney(0)}</td><td></td></tr></tfoot>
+        </table>
+      </div>`
+    : '<p class="muted" style="padding:12px;">조회 기간이 비어 있습니다.</p>';
+  recalcRevenueRecordTotals();
 }
 
-async function initStats(){
-  const fi = document.getElementById('stat-from');
-  const ti = document.getElementById('stat-to');
-  if(!fi.value || !ti.value){
-    const [from,to] = _presetRange('month_now');
-    fi.value = from; ti.value = to;
+async function saveRevenueRecords(){
+  if(!REVENUE_RECORDS){ await loadRevenueRecords(); if(!REVENUE_RECORDS) return; }
+  const fromStr = document.getElementById('rev-record-from')?.value || '';
+  const toStr = document.getElementById('rev-record-to')?.value || '';
+  const categoryId = document.getElementById('rev-record-category')?.value || '';
+  const entries = [...document.querySelectorAll('.revenue-record-row')].map(tr => {
+    const entry = {record_date: tr.dataset.date, category_id: categoryId, memo: tr.querySelector('.revenue-memo-input')?.value || ''};
+    tr.querySelectorAll('.revenue-amount-input').forEach(inp => {
+      entry[inp.dataset.field] = revenueAmountValue(inp.value);
+    });
+    return entry;
+  });
+  try {
+    const r = await adminFetch('/api/revenue/records/grid', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({date_from: fromStr, date_to: toStr, category_id: categoryId, entries}),
+    });
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok || data.ok === false) throw new Error(data.detail || data.error || r.statusText);
+    REVENUE_RECORDS = data;
+    renderRevenueRecords(data);
+    await loadRevenueStats();
+  } catch(e){
+    alert('매출 기록 저장 실패: ' + (e && e.message ? e.message : e));
   }
-  loadStats();
 }
 
-// 현재 조회된 기간 저장 (레거시)
-let _statsYear = null, _statsMonth = null;
-let _statsFrom = null, _statsTo = null;
+async function loadRevenueStats(){
+  const fromStr = document.getElementById('rev-stat-from')?.value || '';
+  const toStr = document.getElementById('rev-stat-to')?.value || '';
+  const categoryId = document.getElementById('rev-stat-category')?.value || '';
+  if(!fromStr || !toStr) return;
+  if(fromStr > toStr){ alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+  const loading = document.getElementById('revenue-stat-loading');
+  const body = document.getElementById('revenue-stat-body');
+  try {
+    if(loading) loading.style.display = 'block';
+    const params = new URLSearchParams({date_from: fromStr, date_to: toStr});
+    if(categoryId) params.set('category_id', categoryId);
+    const r = await adminFetch(`/api/revenue/stats?${params.toString()}`);
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(data.detail || r.statusText);
+    REVENUE_STATS = data;
+    syncRevenueCategorySelects(data.categories || [], data.category_id || '');
+    renderRevenueStats(data);
+  } catch(e){
+    if(body) body.innerHTML = `<p class="muted" style="color:#DC2626;padding:12px;">매출 통계 조회 실패: ${escapeHtml(e && e.message ? e.message : e)}</p>`;
+  } finally {
+    if(loading) loading.style.display = 'none';
+  }
+}
 
-// ─────── 레거시 호환 (예약/완료 토글·치료항목 필터는 제거됨) ───────
-// 다른 코드에서 참조하던 변수/함수는 no-op 으로 유지 — 분석은 항상 "도수치료 전체"
+function revenueDeltaText(delta){
+  if(!delta || delta.pct === null || delta.pct === undefined) return '직전 기간 없음';
+  const sign = delta.amount > 0 ? '+' : '';
+  return `${sign}${revenueMoney(delta.amount)} (${sign}${delta.pct}%)`;
+}
+
+function revenuePieChart(items, title){
+  const filtered = (items || []).filter(x => Number(x.amount || 0) > 0);
+  const total = filtered.reduce((s,x) => s + Number(x.amount || 0), 0);
+  const colors = ['#2F86CB','#3BA67D','#F59E0B','#7957AC','#9CA3AF'];
+  if(total <= 0){
+    return `<div class="revenue-pie-card"><h3>${escapeHtml(title)}</h3><div class="revenue-empty-pie">데이터 없음</div></div>`;
+  }
+  let acc = 0;
+  const stops = filtered.map((x, idx) => {
+    const start = acc;
+    acc += (Number(x.amount || 0) / total) * 100;
+    return `${colors[idx % colors.length]} ${start.toFixed(2)}% ${acc.toFixed(2)}%`;
+  }).join(', ');
+  const legend = filtered.map((x, idx) => {
+    const pct = Math.round((Number(x.amount || 0) / total) * 100);
+    return `<div class="revenue-legend-row"><span class="revenue-legend-color" style="background:${colors[idx % colors.length]}"></span><span>${escapeHtml(x.label || '-')}</span><b>${revenueMoney(x.amount)} · ${pct}%</b></div>`;
+  }).join('');
+  return `<div class="revenue-pie-card">
+    <h3>${escapeHtml(title)}</h3>
+    <div class="revenue-pie-layout">
+      <div class="revenue-pie" style="background:conic-gradient(${stops});"><span>${revenueMoney(total)}</span></div>
+      <div class="revenue-legend">${legend}</div>
+    </div>
+  </div>`;
+}
+
+function renderRevenueStats(data){
+  const body = document.getElementById('revenue-stat-body');
+  if(!body) return;
+  const cur = data.current || {};
+  const prev = data.previous || {};
+  const settlement = data.settlement || {};
+  const settlementPriceTotal = Math.max(0, Number(settlement.price_total || 0));
+  const settlementQuantityTotal = Math.max(0, Number(settlement.quantity_total || 0));
+  const settlementAveragePrice = settlementQuantityTotal
+    ? Math.round(settlementPriceTotal / settlementQuantityTotal)
+    : 0;
+  const settlementPie = (settlement.by_treatment || []).map(row => ({
+    label: row.treatment_short || row.treatment_name || '-',
+    amount: row.price_total || 0,
+  }));
+  const dailyRows = (cur.daily || []).map(row => `
+    <tr>
+      <td>${escapeHtml(revenueDateLabel(row.date))}</td>
+      <td>${revenueMoney(row.total_amount)}</td>
+      <td>${revenueMoney(row.cash_amount)}</td>
+      <td>${revenueMoney(row.card_amount)}</td>
+      <td>${revenueMoney(row.transfer_amount)}</td>
+      <td>${revenueMoney(row.other_amount)}</td>
+    </tr>`).join('');
+  body.innerHTML = `
+    <div class="stats-summary-grid">
+      <div class="stat-card"><div class="stat-label">매출 합계</div><div class="stat-value">${revenueMoney(cur.revenue_total)}</div></div>
+      <div class="stat-card"><div class="stat-label">직전 동일기간</div><div class="stat-value">${revenueMoney(prev.revenue_total)}</div></div>
+      <div class="stat-card"><div class="stat-label">증감</div><div class="stat-value">${escapeHtml(revenueDeltaText((data.delta || {}).revenue_total))}</div></div>
+      <div class="stat-card"><div class="stat-label">기록일수</div><div class="stat-value">${revenueQuantity(cur.record_count)}</div></div>
+    </div>
+    <div class="revenue-chart-grid">
+      ${revenuePieChart(cur.by_payment || [], '결제수단별 매출')}
+      ${revenuePieChart(settlementPie, '치료항목별 정산')}
+    </div>
+    <div class="settlement-note revenue-settlement-help">
+      <b>정산 참고</b>
+      <span>정산 수가 ${revenueMoney(settlement.price_total)}</span>
+      <span>실매출-정산수가 ${revenueMoney(settlement.revenue_minus_settlement_price)}</span>
+      <span>정산 건수 ${revenueQuantity(settlement.quantity_total)}건</span>
+      <span>건당 평균 수가 ${revenueMoney(settlementAveragePrice)}</span>
+    </div>
+    <div class="stats-section">
+      <h3 class="stats-section-title">일별 매출</h3>
+      ${dailyRows
+        ? `<div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>날짜</th><th>합계</th><th>현금</th><th>카드</th><th>계좌</th><th>기타</th></tr></thead><tbody>${dailyRows}</tbody></table></div>`
+        : '<p class="muted" style="margin:0;">해당 기간 매출 기록이 없습니다.</p>'}
+    </div>`;
+}
+
 let _statsMode = 'reserved';
 let _statsFilterCode = '';
 let _statsTreatmentList = [];
@@ -4831,214 +5182,792 @@ function initAggregate(){
   loadAggregate();
 }
 
-async function loadAggregate(){
-  const fromStr = document.getElementById('agg-from').value;
-  const toStr   = document.getElementById('agg-to').value;
-  if(!fromStr || !toStr){ alert('기간(시작일~종료일)을 선택하세요.'); return; }
-  if(fromStr > toStr){ alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+function populateAggCategorySelect(categories, selectedId){
+  const sel = document.getElementById('agg-category');
+  if(!sel) return;
+  const prev = sel.value;
+  const rows = categories || [];
+  sel.innerHTML = rows.length
+    ? rows.map(c => `<option value="${c.id}">${escapeHtml(c.name||'')}</option>`).join('')
+    : '<option value="">과 없음</option>';
+  sel.value = selectedId || prev || (rows[0] && rows[0].id) || '';
+}
 
-  document.getElementById('agg-loading').style.display='block';
-  document.getElementById('agg-body').innerHTML='';
-
-  const data = await fetch(`/api/stats/daily-by-therapist?date_from=${fromStr}&date_to=${toStr}`).then(r=>r.json());
-  document.getElementById('agg-loading').style.display='none';
-
-  const therapists = data.therapists || [];
-  const manualCodes = data.manual_codes || [];
-  const manualNames = data.manual_names || {};
-  const eswtName = data.eswt_name || '체외충격파';
-  const items = data.items || [];
-
-  if(!therapists.length || !items.length){
-    document.getElementById('agg-body').innerHTML='<p class="muted" style="padding:16px;">해당 기간에 집계 데이터가 없습니다.</p>';
-    return;
-  }
-
-  // 치료사당 컬럼 수: 도수항목들 + 신환 + 체외충격파
-  const colsPerTherapist = manualCodes.length + 2;
-
-  // ── 헤더 행 1: 날짜 | 치료사명(colspan) | ...
-  const th1Therapists = therapists.map(t => {
-    const dotColor = t.color || '#9CA3AF';
-    return `<th colspan="${colsPerTherapist}" style="padding:8px 4px;text-align:center;font-size:13px;font-weight:700;color:#1F2937;background:#F3F4F6;border-left:2px solid #D1D5DB;white-space:nowrap;">
-      <span style="display:inline-block;width:10px;height:10px;background:${dotColor};border-radius:50%;margin-right:5px;vertical-align:middle;"></span>${t.name}
-    </th>`;
-  }).join('');
-
-  const headerRow1 = `<tr style="background:#F3F4F6;">
-    <th rowspan="2" style="padding:8px 12px;text-align:center;font-size:12px;font-weight:700;color:#374151;min-width:48px;vertical-align:middle;background:#F3F4F6;">날짜</th>
-    ${th1Therapists}
-  </tr>`;
-
-  // ── 헤더 행 2: 각 치료사 아래 세부 항목
-  //   컬럼 폭 절약을 위해 치료항목은 "약자" 로 표시 (호버 시 풀네임 표시).
-  //   TX_META.treatment_short 맵이 있으면 그걸 쓰고, 없으면 name, 그것도 없으면 code 로 폴백.
-  const shortMap = (TX_META && TX_META.treatment_short) || {};
-  const eswtCode0 = (TX_META && TX_META.eswt_code) || 'eswt';
-  const _shortFor = (code, fallbackName) =>
-    shortMap[code] || fallbackName || manualNames[code] || code;
-
-  const th2Cols = therapists.map(() => {
-    const manualCols = manualCodes.map(code => {
-      const label = _shortFor(code);
-      const full  = manualNames[code] || code;
-      return `<th title="${full}" style="padding:6px 6px;text-align:center;font-size:11px;font-weight:600;color:#374151;white-space:nowrap;border-left:1px solid #E5E7EB;min-width:42px;">${label}<br><span style="font-weight:400;color:#4B5563;font-size:10px;">완료</span></th>`;
-    }).join('');
-    const eswtLabel = _shortFor(eswtCode0, eswtName);
-    return `${manualCols}
-      <th style="padding:6px 6px;text-align:center;font-size:11px;font-weight:600;color:#059669;white-space:nowrap;border-left:2px solid #D1FAE5;min-width:42px;">🆕신환</th>
-      <th title="${eswtName}" style="padding:6px 6px;text-align:center;font-size:11px;font-weight:600;color:#EA580C;white-space:nowrap;border-left:1px solid #FED7AA;min-width:42px;">${eswtLabel}<br><span style="font-weight:400;font-size:10px;">완료</span></th>`;
-  }).join('');
-
-  const headerRow2 = `<tr style="background:#F9FAFB;">${th2Cols}</tr>`;
-
-  // ── 기간합계 누적용 객체 초기화
-  const totals = {};
-  therapists.forEach(t => {
-    totals[t.id] = { new_patient: 0, eswt: 0 };
-    manualCodes.forEach(c => { totals[t.id][c] = 0; });
-  });
-
-  // ── 본문: 날짜별 행 (기간 내 모든 날짜)
-  const _dow = ['일','월','화','수','목','금','토'];
-  const bodyRows = items.map(row => {
-    const dateStr = row.date; // 'YYYY-MM-DD'
-    const dObj = new Date(dateStr + 'T00:00:00');
-    const monthDay = `${dObj.getMonth()+1}/${dObj.getDate()}`;
-    const wd = _dow[dObj.getDay()];
-    const isSat = wd==='토', isSun = wd==='일';
-    const dateCellStyle = isSat
-      ? 'color:#1D4ED8;font-weight:700;'
-      : isSun ? 'color:#DC2626;font-weight:700;' : '';
-    const tdData = therapists.map(t => {
-      const td_info = (row.therapist_data || {})[t.id] || {};
-      const bd = td_info.manual_breakdown || {};
-      const newV = td_info.new_patient_count || 0;
-      // v1.2.8+ 체외충격파는 '집계' 탭에서 수동 입력만 사용.
-      // eswt_count 는 ManualCount 합계값만 반환됨 (예약 기반 카운트 제거)
-      const eswtV = td_info.eswt_count || 0;
-
-      totals[t.id].new_patient += newV;
-      totals[t.id].eswt += eswtV;
-
-      const manualTds = manualCodes.map(code => {
-        const v = bd[code] || 0;
-        totals[t.id][code] += v;
-        return `<td style="padding:7px 8px;text-align:center;font-size:13px;font-weight:${v>0?'700':'400'};color:${v>0?'#111827':'#D1D5DB'};border-left:1px solid #F3F4F6;">${v>0?v:'-'}</td>`;
-      }).join('');
-
-      // 체외충격파 셀 — 더블클릭으로 직접 입력 (수동 입력 전용 · v1.2.8+)
-      const eswtCell = `<td class="eswt-cell"
-        style="padding:7px 8px;text-align:center;font-size:13px;font-weight:${eswtV>0?'700':'400'};color:${eswtV>0?'#EA580C':'#D1D5DB'};border-left:1px solid #FEF3C7;cursor:pointer;position:relative;"
-        ondblclick="editEswtManual('${dateStr}','${t.id}',${eswtV},'${t.name.replace(/'/g,"\\'")}')"
-        title="더블클릭해서 체외충격파 환자 수 직접 입력">
-        ${eswtV>0?eswtV:'-'}
-      </td>`;
-
-      return `${manualTds}
-        <td style="padding:7px 8px;text-align:center;font-size:13px;font-weight:${newV>0?'700':'400'};color:${newV>0?'#059669':'#D1D5DB'};border-left:2px solid #ECFDF5;">${newV>0?newV:'-'}</td>
-        ${eswtCell}`;
-    }).join('');
-
-    const rowBg = isSun ? 'background:#FEF2F2;' : (isSat ? 'background:#EFF6FF;' : '');
-    return `<tr style="border-top:1px solid #F3F4F6;${rowBg}">
-      <td style="padding:7px 12px;text-align:center;font-size:12px;font-weight:600;color:#374151;white-space:nowrap;${dateCellStyle}">${monthDay} (${wd})</td>
-      ${tdData}
-    </tr>`;
-  }).join('');
-
-  // ── 기간합계 행
-  const totalRowCols = therapists.map(t => {
-    const manualTds = manualCodes.map(code => {
-      const v = totals[t.id][code] || 0;
-      return `<td style="padding:8px;text-align:center;font-size:13px;font-weight:700;color:${v>0?'#1D4ED8':'#9CA3AF'};border-left:1px solid #E5E7EB;background:#EFF6FF;">${v>0?v:'-'}</td>`;
-    }).join('');
-    const newV = totals[t.id].new_patient || 0;
-    const eswtV = totals[t.id].eswt || 0;
-    return `${manualTds}
-      <td style="padding:8px;text-align:center;font-size:13px;font-weight:700;color:${newV>0?'#059669':'#9CA3AF'};border-left:2px solid #D1FAE5;background:#ECFDF5;">${newV>0?newV:'-'}</td>
-      <td style="padding:8px;text-align:center;font-size:13px;font-weight:700;color:${eswtV>0?'#EA580C':'#9CA3AF'};border-left:1px solid #FEF3C7;background:#FFF7ED;">${eswtV>0?eswtV:'-'}</td>`;
-  }).join('');
-
-  const totalRow = `<tr style="border-top:2px solid #D1D5DB;">
-    <td style="padding:8px 12px;text-align:center;font-size:12px;font-weight:700;color:#374151;background:#EFF6FF;white-space:nowrap;">기간합계</td>
-    ${totalRowCols}
-  </tr>`;
-
-  // ── 치료사별 총 인센티브 행 (v1.2.3+) ──
-  // 기간합계 바로 아래에 '인센티브' 행 1줄 추가. 각 치료사 영역은 colspan 으로 묶어 총액 하나만 표시.
-  // 계산: 각 항목 건수(totals) × 단가
-  //   단가 = incentive_amount 가 있으면 그 값 · 없으면 price × incentive_pct / 100
+function _aggUnitInc(code){
   const priceMap = (TX_META && TX_META.treatment_price) || {};
   const pctMap   = (TX_META && TX_META.treatment_incentive_pct) || {};
   const amtMap   = (TX_META && TX_META.treatment_incentive_amount) || {};
-  const eswtCode = (TX_META && TX_META.eswt_code) || 'eswt';
-  const _unitInc = (code) => {
-    const a = amtMap[code]; if (a && a > 0) return a;
-    const p = pctMap[code]; if (p && p > 0) return Math.round((priceMap[code]||0) * p / 100);
-    return 0;
-  };
-
-  const incentiveRowCols = therapists.map(t => {
-    let tot = 0;
-    manualCodes.forEach(code => { tot += (totals[t.id][code] || 0) * _unitInc(code); });
-    tot += (totals[t.id].eswt || 0) * _unitInc(eswtCode);
-    const disp = tot > 0 ? tot.toLocaleString() + '원' : '-';
-    return `<td colspan="${colsPerTherapist}" style="padding:10px;text-align:center;font-size:13px;font-weight:800;color:${tot>0?'#0F766E':'#9CA3AF'};background:#F0FDFA;border-left:2px solid #D1FAE5;font-variant-numeric:tabular-nums;">${disp}</td>`;
-  }).join('');
-
-  const incentiveRow = `<tr style="border-top:2px solid #D1FAE5;">
-    <td style="padding:10px 12px;text-align:center;font-size:12px;font-weight:700;color:#0F766E;background:#F0FDFA;white-space:nowrap;">인센티브</td>
-    ${incentiveRowCols}
-  </tr>`;
-
-  document.getElementById('agg-body').innerHTML = `
-    <div style="overflow-x:auto;margin-top:8px;">
-      <p class="muted" style="font-size:12px;margin-bottom:8px;line-height:1.7;">
-        ※ 완료 처리된 예약 기준 집계 · 인센티브는 <b>관리자 › 치료항목</b> 의 수가·인센티브 설정으로 계산됩니다.<br>
-        ⚡ <b>체외충격파 셀</b> 은 <b>더블클릭</b>해서 환자 수를 직접 입력합니다 (수동 입력 전용). 0 을 입력하면 삭제됩니다.
-      </p>
-      <table style="border-collapse:collapse;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
-        <thead>${headerRow1}${headerRow2}</thead>
-        <tbody>${bodyRows}${totalRow}${incentiveRow}</tbody>
-      </table>
-    </div>`;
+  const a = amtMap[code]; if(a && a > 0) return a;
+  const p = pctMap[code]; if(p && p > 0) return Math.round((priceMap[code]||0) * p / 100);
+  return 0;
 }
 
-// ─────── 체외충격파 수동 카운트 편집 (v1.2.8+ 집계 탭 수동 입력 전용) ───────
-// 셀 더블클릭 → prompt 로 숫자 입력 → 저장 → 집계 새로고침.
-async function editEswtManual(date, therapistId, currentCount, therapistName){
-  const msg =
-    `체외충격파 수동 입력\n\n` +
-    `날짜: ${date}\n치료사: ${therapistName || '미배정'}\n\n` +
-    `당일 환자 수를 입력하세요.\n` +
-    `(0 을 입력하면 해당 항목이 삭제됩니다)`;
-  const raw = prompt(msg, String(currentCount || 0));
-  if (raw === null) return;  // 취소
-  const n = parseInt(raw);
-  if (isNaN(n) || n < 0) { alert('0 이상 정수만 입력해주세요.'); return; }
+function recalcAggregateTotals(){
+  const totals = {};
+  document.querySelectorAll('.agg-count-input').forEach(inp => {
+    if(inp.disabled) return;
+    const emp = inp.dataset.employeeId;
+    const code = inp.dataset.code;
+    const n = Math.max(0, parseInt(inp.value || '0') || 0);
+    totals[emp] = totals[emp] || {};
+    totals[emp][code] = (totals[emp][code] || 0) + n;
+  });
+  document.querySelectorAll('[data-agg-total-employee]').forEach(cell => {
+    const emp = cell.dataset.aggTotalEmployee;
+    const code = cell.dataset.aggTotalCode;
+    const v = (totals[emp] && totals[emp][code]) || 0;
+    cell.textContent = v > 0 ? v : '-';
+  });
+  document.querySelectorAll('[data-agg-incentive-employee]').forEach(cell => {
+    const emp = cell.dataset.aggIncentiveEmployee;
+    const byCode = totals[emp] || {};
+    let total = 0;
+    Object.entries(byCode).forEach(([code, count]) => { total += count * _aggUnitInc(code); });
+    cell.textContent = total > 0 ? total.toLocaleString() + '원' : '-';
+  });
+}
 
+function normalizeAggregateInput(input){
+  if(!input) return;
+  const cleaned = String(input.value || '').replace(/\D/g, '');
+  if(input.value !== cleaned) input.value = cleaned;
+  recalcAggregateTotals();
+}
+
+function handleAggregateInputKeydown(event, input){
+  if(event.key === 'Enter'){
+    event.preventDefault();
+    input.blur();
+  }
+}
+
+async function saveAggregateCell(input){
+  if(!input || input.disabled) return;
+  normalizeAggregateInput(input);
+  const n = Math.max(0, parseInt(input.value || '0') || 0);
+  input.value = n > 0 ? String(n) : '';
+  const saveKey = `${input.dataset.date}|${input.dataset.employeeId}|${input.dataset.code}|${n}`;
+  if(input.dataset.savedKey === saveKey) return;
+  input.dataset.savedKey = saveKey;
+  input.classList.add('saving');
   try {
     const r = await fetch('/api/manual-counts', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        date,
-        therapist_id: (therapistId === '__none__' || !therapistId) ? null : therapistId,
-        treatment_code: (TX_META && TX_META.eswt_code) || 'eswt',
+        date: input.dataset.date,
+        therapist_id: input.dataset.employeeId,
+        treatment_code: input.dataset.code,
         count: n,
-      })
+      }),
     });
-    const d = await r.json();
-    if (!r.ok || !d.ok) {
-      alert('저장 실패: ' + (d.detail || d.error || '알 수 없음'));
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok || !d.ok){
+      input.dataset.savedKey = '';
+      alert('저장 실패: ' + (d.detail || d.error || r.statusText));
       return;
     }
-    // 집계 재로드 (현재 년/월 유지)
-    loadAggregate();
-  } catch(e) {
+    recalcAggregateTotals();
+  } catch(e){
+    input.dataset.savedKey = '';
     alert('저장 요청 실패: ' + e.message);
+  } finally {
+    input.classList.remove('saving');
   }
+}
+
+async function loadAggregate(){
+  const loading = document.getElementById('agg-loading');
+  const bodyEl = document.getElementById('agg-body');
+  try {
+  const fromStr = document.getElementById('agg-from').value;
+  const toStr   = document.getElementById('agg-to').value;
+  if(!fromStr || !toStr){ alert('기간(시작일/종료일)을 선택하세요'); return; }
+  if(fromStr > toStr){ alert('시작일이 종료일보다 클 수 없습니다.'); return; }
+
+  if(loading) loading.style.display='block';
+  if(bodyEl) bodyEl.innerHTML='';
+  await loadTreatmentMeta();
+
+  const categoryId = document.getElementById('agg-category')?.value || '';
+  const params = new URLSearchParams({date_from: fromStr, date_to: toStr});
+  if(categoryId) params.set('category_id', categoryId);
+  const data = await fetch(`/api/stats/direct-aggregate?${params.toString()}`).then(r=>r.json());
+  if(loading) loading.style.display='none';
+
+  const categories = data.categories || [];
+  const selectedCategoryId = data.category_id || categoryId || '';
+  populateAggCategorySelect(categories, selectedCategoryId);
+
+  const employees = data.employees || [];
+  const treatments = data.treatments || [];
+  const items = data.items || [];
+  if(!treatments.length){
+    if(bodyEl) bodyEl.innerHTML='<p class="muted" style="padding:16px;">선택한 과에 활성 치료항목이 없습니다.</p>';
+    return;
+  }
+  if(!employees.length){
+    if(bodyEl) bodyEl.innerHTML='<p class="muted" style="padding:16px;">선택한 과/치료항목에 집계할 직원이 없습니다.</p>';
+    return;
+  }
+
+  const colsPerEmployee = treatments.length;
+  const th1Employees = employees.map(e => `
+    <th colspan="${colsPerEmployee}" class="agg-employee-head">
+      <span class="color-dot" style="background:${e.color||'#9CA3AF'}"></span>${escapeHtml(e.name||'')}
+    </th>`).join('');
+  const th2Treatments = employees.map(() => treatments.map(t => `
+    <th class="agg-treatment-head" title="${escapeAttr(t.name||t.code)}">${escapeHtml(t.short || t.name || t.code)}</th>
+  `).join('')).join('');
+
+  const totals = {};
+  employees.forEach(e => { totals[e.id] = {}; treatments.forEach(t => { totals[e.id][t.code] = 0; }); });
+  const dow = ['일','월','화','수','목','금','토'];
+  const bodyRows = items.map(row => {
+    const dObj = new Date(row.date + 'T00:00:00');
+    const wd = dow[dObj.getDay()];
+    const dateLabel = `${dObj.getMonth()+1}/${dObj.getDate()} (${wd})`;
+    const dateClass = wd === '일' ? 'agg-sun' : (wd === '토' ? 'agg-sat' : '');
+    const cells = employees.map(e => {
+      const counts = ((row.employee_data || {})[e.id] || {}).counts || {};
+      return treatments.map(t => {
+        const enabled = employeeCanSelectedTreatments(e, [t.code]);
+        if(!enabled){
+          return '<td class="agg-disabled-cell">-</td>';
+        }
+        const v = counts[t.code] || 0;
+        totals[e.id][t.code] += v;
+        return `<td class="agg-input-cell">
+          <input class="agg-count-input" type="text" inputmode="numeric" pattern="[0-9]*"
+                 autocomplete="off" enterkeyhint="done"
+                 value="${v > 0 ? v : ''}"
+                 data-date="${row.date}"
+                 data-employee-id="${e.id}"
+                 data-treatment-id="${t.id}"
+                 data-code="${t.code}"
+                 data-saved-key="${row.date}|${e.id}|${t.code}|${v}"
+                 onfocus="this.select()"
+                 oninput="normalizeAggregateInput(this)"
+                 onkeydown="handleAggregateInputKeydown(event, this)"
+                 onblur="saveAggregateCell(this)">
+        </td>`;
+      }).join('');
+    }).join('');
+    return `<tr>
+      <td class="agg-date-cell ${dateClass}">${dateLabel}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  const totalCells = employees.map(e => treatments.map(t => {
+    const v = totals[e.id][t.code] || 0;
+    return `<td class="agg-total-cell" data-agg-total-employee="${e.id}" data-agg-total-code="${t.code}">${v > 0 ? v : '-'}</td>`;
+  }).join('')).join('');
+
+  const incentiveCells = employees.map(e => {
+    let total = 0;
+    treatments.forEach(t => { total += (totals[e.id][t.code] || 0) * _aggUnitInc(t.code); });
+    return `<td colspan="${colsPerEmployee}" class="agg-incentive-cell" data-agg-incentive-employee="${e.id}">
+      ${total > 0 ? total.toLocaleString() + '원' : '-'}
+    </td>`;
+  }).join('');
+
+  if(bodyEl) bodyEl.innerHTML = `
+    <div class="agg-help">
+      선택한 과의 치료항목별 횟수를 직접 입력합니다. 입력이 끝나면 상단의 정산 반영을 눌러 정산 탭에 스냅샷으로 넘깁니다.
+    </div>
+    <div style="overflow-x:auto;margin-top:8px;">
+      <table class="agg-direct-table">
+        <thead>
+          <tr>
+            <th rowspan="2" class="agg-date-head">날짜</th>
+            ${th1Employees}
+          </tr>
+          <tr>${th2Treatments}</tr>
+        </thead>
+        <tbody>
+          ${bodyRows}
+          <tr class="agg-footer-row"><td class="agg-date-cell">기간합계</td>${totalCells}</tr>
+          <tr class="agg-footer-row"><td class="agg-date-cell">인센티브</td>${incentiveCells}</tr>
+        </tbody>
+      </table>
+    </div>`;
+  } catch(e){
+    console.error('[aggregate] load failed', e);
+    if(bodyEl){
+      bodyEl.innerHTML = '<p class="muted" style="padding:16px;color:#DC2626;">집계 렌더링 실패: '
+        + escapeHtml(e && e.message ? e.message : e)
+        + '</p>';
+    }
+  } finally {
+    if(loading) loading.style.display='none';
+  }
+}
+
+async function applyAggregateToSettlement(){
+  const fromStr = document.getElementById('agg-from').value;
+  const toStr = document.getElementById('agg-to').value;
+  const categoryId = document.getElementById('agg-category')?.value || '';
+  if(!fromStr || !toStr){ alert('기간(시작일/종료일)을 선택하세요'); return; }
+  if(fromStr > toStr){ alert('시작일이 종료일보다 클 수 없습니다.'); return; }
+
+  const inputs = [...document.querySelectorAll('#agg-body .agg-count-input')]
+    .filter(inp => inp.dataset.employeeId && inp.dataset.treatmentId && inp.dataset.date);
+  if(!inputs.length){
+    alert('먼저 집계 조회를 해서 반영할 그리드를 불러오세요.');
+    return;
+  }
+  if(!confirm('현재 집계 화면의 수량을 정산에 반영할까요? 기존 같은 날짜/직원/치료항목 정산은 현재 수량으로 갱신됩니다.')){
+    return;
+  }
+
+  const entries = inputs.map(inp => ({
+    performed_on: inp.dataset.date,
+    employee_id: inp.dataset.employeeId,
+    treatment_id: inp.dataset.treatmentId,
+    quantity: Math.max(0, parseInt(inp.value || '0') || 0),
+    memo: '',
+  }));
+
+  try {
+    inputs.forEach(inp => inp.classList.add('saving'));
+    const r = await adminFetch('/api/settlement/records/grid', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        date_from: fromStr,
+        date_to: toStr,
+        category_id: categoryId,
+        entries,
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok || data.ok === false){
+      throw new Error(data.detail || data.error || r.statusText);
+    }
+    const sf = document.getElementById('settle-from');
+    const st = document.getElementById('settle-to');
+    const sc = document.getElementById('settle-category');
+    if(sf) sf.value = fromStr;
+    if(st) st.value = toStr;
+    if(sc && categoryId) sc.value = categoryId;
+    if(document.getElementById('admin-settlement')?.classList.contains('active')){
+      await loadSettlement();
+    }
+    await loadAggregate();
+    const changed = data.changed || {};
+    alert(`정산에 반영했습니다. 저장 ${changed.upserted || 0}건, 삭제 ${changed.deleted || 0}건`);
+  } catch(e){
+    alert('정산 반영 실패: ' + (e && e.message ? e.message : e));
+  } finally {
+    inputs.forEach(inp => inp.classList.remove('saving'));
+  }
+}
+
+let SETTLEMENT_GRID = null;
+
+function applySettlementPreset(kind){
+  const [from,to] = _presetRange(kind);
+  document.getElementById('settle-from').value = from;
+  document.getElementById('settle-to').value = to;
+  loadSettlement();
+}
+
+function initSettlement(){
+  const fi = document.getElementById('settle-from');
+  const ti = document.getElementById('settle-to');
+  if(!fi.value || !ti.value){
+    const [from,to] = _presetRange('month_now');
+    fi.value = from; ti.value = to;
+  }
+  loadSettlement();
+}
+
+function populateSettlementCategorySelect(categories, selectedId){
+  const sel = document.getElementById('settle-category');
+  if(!sel) return;
+  const prev = sel.value;
+  const rows = categories || [];
+  sel.innerHTML = rows.length
+    ? rows.map(c => `<option value="${c.id}">${escapeHtml(c.name||'')}</option>`).join('')
+    : '<option value="">과 없음</option>';
+  sel.value = selectedId || prev || (rows[0] && rows[0].id) || '';
+}
+
+function settlementMoney(v){
+  const n = Math.round(Number(v || 0));
+  return n > 0 ? n.toLocaleString() + '원' : '-';
+}
+
+function settlementMoneyAlways(v){
+  const n = Math.round(Number(v || 0));
+  return n.toLocaleString() + '원';
+}
+
+function settlementQuantity(v){
+  const n = Math.max(0, parseInt(v || '0') || 0);
+  return n.toLocaleString();
+}
+
+function settlementRuleLabel(rec){
+  const rule = rec && rec.incentive_type_snapshot || 'none';
+  const value = rec && rec.incentive_value_snapshot || 0;
+  if(rule === 'fixed') return `고정 ${settlementMoneyAlways(value)}`;
+  if(rule === 'percent') return `${Number(value || 0).toLocaleString()}%`;
+  return '없음';
+}
+
+function settlementRecordTreatmentLabel(rec){
+  return rec && (rec.treatment_short_snapshot || rec.treatment_name_snapshot) || '-';
+}
+
+function settlementRecordPriceTotal(rec, qty){
+  if(rec && rec.price_total !== undefined && rec.price_total !== null){
+    return Math.round(Number(rec.price_total || 0));
+  }
+  return Math.round(Number(rec && rec.price_snapshot || 0) * qty);
+}
+
+function settlementDateLabel(dateStr){
+  if(!dateStr) return '-';
+  const parts = String(dateStr).split('-').map(x => parseInt(x, 10));
+  if(parts.length !== 3 || parts.some(Number.isNaN)) return String(dateStr);
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+  return `${parts[1]}/${parts[2]} (${weekdays[d.getDay()]})`;
+}
+
+function settlementAddTreatmentCount(box, key, label, qty){
+  const txKey = key || label || '-';
+  const item = box[txKey] || {label: label || '-', quantity: 0};
+  item.quantity += qty;
+  box[txKey] = item;
+}
+
+function settlementTreatmentCountBadges(byTreatment){
+  const items = Object.values(byTreatment || {})
+    .filter(x => Number(x.quantity || 0) > 0)
+    .sort((a,b) => String(a.label || '').localeCompare(String(b.label || ''), 'ko'));
+  if(!items.length) return '<span class="muted">-</span>';
+  return `<div class="settlement-treatment-count-list">${
+    items.map(x => `<span class="settlement-treatment-count"><b>${escapeHtml(x.label || '-')}</b> ${settlementQuantity(x.quantity)}개</span>`).join('<span class="settlement-treatment-separator">|</span>')
+  }</div>`;
+}
+
+function buildSettlementReportGroups(records){
+  const employees = {};
+  const dates = {};
+  (records || []).forEach(rec => {
+    const qty = Math.max(0, parseInt(rec.quantity || '0') || 0);
+    if(qty <= 0) return;
+    const priceTotal = settlementRecordPriceTotal(rec, qty);
+    const incentive = Math.round(Number(rec.incentive_amount || 0));
+    const empKey = rec.employee_id || rec.employee_name_snapshot || '-';
+    const txKey = rec.treatment_id || settlementRecordTreatmentLabel(rec);
+    const txLabel = settlementRecordTreatmentLabel(rec);
+    const dateKey = rec.performed_on || '-';
+
+    const emp = employees[empKey] || {
+      employee_id: rec.employee_id || '',
+      employee_name: rec.employee_name_snapshot || '-',
+      category_name: rec.employee_category_name_snapshot || '-',
+      quantity_total: 0,
+      price_total: 0,
+      incentive_total: 0,
+      adjustment_total: 0,
+      payment_total: 0,
+      byTreatment: {},
+    };
+    emp.quantity_total += qty;
+    emp.price_total += priceTotal;
+    emp.incentive_total += incentive;
+    settlementAddTreatmentCount(emp.byTreatment, txKey, txLabel, qty);
+    employees[empKey] = emp;
+
+    const group = dates[dateKey] || {
+      date: dateKey,
+      quantity_total: 0,
+      price_total: 0,
+      incentive_total: 0,
+      byTreatment: {},
+      byEmployee: {},
+    };
+    group.quantity_total += qty;
+    group.price_total += priceTotal;
+    group.incentive_total += incentive;
+    settlementAddTreatmentCount(group.byTreatment, txKey, txLabel, qty);
+
+    const dayEmp = group.byEmployee[empKey] || {
+      employee_name: rec.employee_name_snapshot || '-',
+      category_name: rec.employee_category_name_snapshot || '-',
+      quantity_total: 0,
+      price_total: 0,
+      incentive_total: 0,
+      byTreatment: {},
+    };
+    dayEmp.quantity_total += qty;
+    dayEmp.price_total += priceTotal;
+    dayEmp.incentive_total += incentive;
+    settlementAddTreatmentCount(dayEmp.byTreatment, txKey, txLabel, qty);
+    group.byEmployee[empKey] = dayEmp;
+    dates[dateKey] = group;
+  });
+
+  Object.values(employees).forEach(emp => {
+    emp.payment_total = intOrZero(emp.incentive_total) + intOrZero(emp.adjustment_total);
+  });
+
+  return {
+    employees: Object.values(employees).sort((a,b) => String(a.employee_name || '').localeCompare(String(b.employee_name || ''), 'ko')),
+    dates: Object.values(dates).sort((a,b) => String(a.date || '').localeCompare(String(b.date || ''))),
+  };
+}
+
+function intOrZero(v){
+  return Math.round(Number(v || 0));
+}
+
+function renderSettlementDateGroups(groups){
+  if(!groups || !groups.length){
+    return '<p class="muted" style="margin:0;">집계 탭에서 정산 반영한 내역이 없습니다.</p>';
+  }
+  return `<div class="settlement-date-groups">${groups.map(group => {
+    const employees = Object.values(group.byEmployee || {})
+      .sort((a,b) => String(a.employee_name || '').localeCompare(String(b.employee_name || ''), 'ko'));
+    const employeeRows = employees.map(emp => `
+      <tr>
+        <td>${escapeHtml(emp.employee_name || '-')}</td>
+        <td>${escapeHtml(emp.category_name || '-')}</td>
+        <td>${settlementTreatmentCountBadges(emp.byTreatment)}</td>
+        <td>${settlementMoneyAlways(emp.price_total)}</td>
+        <td>${settlementMoneyAlways(emp.incentive_total)}</td>
+      </tr>`).join('');
+    const dateLabel = settlementDateLabel(group.date);
+    return `<details class="settlement-date-group">
+      <summary class="settlement-date-card" aria-label="${escapeAttr(dateLabel)} 정산 상세 열고 닫기">
+        <span class="settlement-date-main">
+          <span class="settlement-date-title">${escapeHtml(dateLabel)}</span>
+          <span class="settlement-date-sub">직원 ${settlementQuantity(employees.length)}명 · 항목 ${settlementQuantity(Object.keys(group.byTreatment || {}).length)}개</span>
+        </span>
+        <div class="settlement-date-treatment-summary">
+          <span>치료항목별 건수</span>
+          ${settlementTreatmentCountBadges(group.byTreatment)}
+        </div>
+        <span class="settlement-date-metric"><span>총 수가</span><b>${settlementMoneyAlways(group.price_total)}</b></span>
+        <span class="settlement-date-metric settlement-date-incentive"><span>세전 인센티브</span><b>${settlementMoneyAlways(group.incentive_total)}</b></span>
+        <span class="settlement-date-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="settlement-date-body">
+        <div class="settlement-date-treatment-line">${settlementTreatmentCountBadges(group.byTreatment)}</div>
+        <div style="overflow-x:auto;">
+          <table class="settlement-summary-table settlement-report-table settlement-detail-table">
+            <thead><tr><th>직원</th><th>과</th><th>치료항목별 건수</th><th>총 수가</th><th>세전 인센티브</th></tr></thead>
+            <tbody>${employeeRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </details>`;
+  }).join('')}</div>`;
+}
+
+function settlementCellAllowed(employee, treatment){
+  const ids = employee.treatment_ids || [];
+  if(employee.treatment_override_enabled){
+    return ids.includes(treatment.id);
+  }
+  if(ids.length){
+    return ids.includes(treatment.id);
+  }
+  if(employee.category_id){
+    return !treatment.category_id || treatment.category_id === employee.category_id;
+  }
+  return false;
+}
+
+function normalizeSettlementInput(input){
+  if(!input) return;
+  const cleaned = String(input.value || '').replace(/\D/g, '');
+  if(input.value !== cleaned) input.value = cleaned;
+  recalcSettlementTotals();
+}
+
+function handleSettlementInputKeydown(event, input){
+  if(event.key === 'Enter'){
+    event.preventDefault();
+    input.blur();
+  }
+}
+
+function recalcSettlementTotals(){
+  const employeeTotals = {};
+  const treatmentTotals = {};
+  let quantityTotal = 0;
+  let incentiveTotal = 0;
+  document.querySelectorAll('.settle-count-input').forEach(inp => {
+    if(inp.disabled) return;
+    const emp = inp.dataset.employeeId;
+    const tid = inp.dataset.treatmentId;
+    const qty = Math.max(0, parseInt(inp.value || '0') || 0);
+    const unit = Math.max(0, Number(inp.dataset.unitIncentive || 0));
+    const inc = qty * unit;
+    employeeTotals[emp] = employeeTotals[emp] || {quantity:0, incentive:0, byTreatment:{}};
+    treatmentTotals[tid] = treatmentTotals[tid] || {quantity:0, incentive:0};
+    employeeTotals[emp].quantity += qty;
+    employeeTotals[emp].incentive += inc;
+    employeeTotals[emp].byTreatment[tid] = (employeeTotals[emp].byTreatment[tid] || 0) + qty;
+    treatmentTotals[tid].quantity += qty;
+    treatmentTotals[tid].incentive += inc;
+    quantityTotal += qty;
+    incentiveTotal += inc;
+  });
+
+  document.querySelectorAll('[data-settle-total-employee]').forEach(cell => {
+    const emp = cell.dataset.settleTotalEmployee;
+    const tid = cell.dataset.settleTotalTreatment;
+    const v = employeeTotals[emp] && employeeTotals[emp].byTreatment[tid] || 0;
+    cell.textContent = v > 0 ? v : '-';
+  });
+  document.querySelectorAll('[data-settle-incentive-employee]').forEach(cell => {
+    const emp = cell.dataset.settleIncentiveEmployee;
+    const v = employeeTotals[emp] && employeeTotals[emp].incentive || 0;
+    cell.textContent = settlementMoney(v);
+  });
+
+  const qtyEl = document.getElementById('settle-summary-qty');
+  const incEl = document.getElementById('settle-summary-incentive');
+  const empEl = document.getElementById('settle-summary-employees');
+  const txEl = document.getElementById('settle-summary-treatments');
+  if(qtyEl) qtyEl.textContent = quantityTotal.toLocaleString();
+  if(incEl) incEl.textContent = settlementMoney(incentiveTotal);
+  if(empEl) empEl.textContent = Object.values(employeeTotals).filter(x => x.quantity > 0).length.toLocaleString();
+  if(txEl) txEl.textContent = Object.values(treatmentTotals).filter(x => x.quantity > 0).length.toLocaleString();
+
+  const empBox = document.getElementById('settle-employee-summary');
+  if(empBox && SETTLEMENT_GRID){
+    const names = Object.fromEntries((SETTLEMENT_GRID.employees || []).map(e => [e.id, e.name || '']));
+    const rows = Object.entries(employeeTotals)
+      .filter(([,v]) => v.quantity > 0)
+      .sort((a,b) => (names[a[0]] || '').localeCompare(names[b[0]] || ''))
+      .map(([id,v]) => `<tr><td>${escapeHtml(names[id] || '-')}</td><td>${v.quantity.toLocaleString()}</td><td>${settlementMoney(v.incentive)}</td></tr>`)
+      .join('');
+    empBox.innerHTML = rows
+      ? `<table class="settlement-summary-table"><thead><tr><th>직원</th><th>수량</th><th>세전 인센티브</th></tr></thead><tbody>${rows}</tbody></table>`
+      : '<p class="muted" style="margin:0;">저장할 수량이 없습니다.</p>';
+  }
+
+  const txBox = document.getElementById('settle-treatment-summary');
+  if(txBox && SETTLEMENT_GRID){
+    const names = Object.fromEntries((SETTLEMENT_GRID.treatments || []).map(t => [t.id, t.short || t.name || t.code || '']));
+    const rows = Object.entries(treatmentTotals)
+      .filter(([,v]) => v.quantity > 0)
+      .sort((a,b) => (names[a[0]] || '').localeCompare(names[b[0]] || ''))
+      .map(([id,v]) => `<tr><td>${escapeHtml(names[id] || '-')}</td><td>${v.quantity.toLocaleString()}</td><td>${settlementMoney(v.incentive)}</td></tr>`)
+      .join('');
+    txBox.innerHTML = rows
+      ? `<table class="settlement-summary-table"><thead><tr><th>치료항목</th><th>수량</th><th>세전 인센티브</th></tr></thead><tbody>${rows}</tbody></table>`
+      : '<p class="muted" style="margin:0;">저장할 수량이 없습니다.</p>';
+  }
+}
+
+async function loadSettlement(){
+  const loading = document.getElementById('settle-loading');
+  const bodyEl = document.getElementById('settle-body');
+  try {
+    const fromStr = document.getElementById('settle-from').value;
+    const toStr = document.getElementById('settle-to').value;
+    if(!fromStr || !toStr){ alert('기간을 선택하세요.'); return; }
+    if(fromStr > toStr){ alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+    if(loading) loading.style.display = 'block';
+    if(bodyEl) bodyEl.innerHTML = '';
+    const categoryId = document.getElementById('settle-category')?.value || '';
+    const params = new URLSearchParams({date_from: fromStr, date_to: toStr});
+    if(categoryId) params.set('category_id', categoryId);
+    const r = await adminFetch(`/api/settlement/reports/incentives?${params.toString()}`);
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(data.detail || r.statusText);
+    SETTLEMENT_GRID = data;
+    renderSettlement(data);
+  } catch(e){
+    console.error('[settlement] load failed', e);
+    if(bodyEl){
+      bodyEl.innerHTML = '<p class="muted" style="padding:16px;color:#DC2626;">정산 조회 실패: '
+        + escapeHtml(e && e.message ? e.message : e)
+        + '</p>';
+    }
+  } finally {
+    if(loading) loading.style.display = 'none';
+  }
+}
+
+function renderSettlement(data){
+  const bodyEl = document.getElementById('settle-body');
+  if(!bodyEl) return;
+  populateSettlementCategorySelect(data.categories || [], data.category_id || '');
+  const summary = data.summary || {};
+  const records = data.records || [];
+  const grouped = buildSettlementReportGroups(records);
+  const employeeRows = grouped.employees.map(emp => `
+    <tr>
+      <td>${escapeHtml(emp.employee_name || '-')}</td>
+      <td>${escapeHtml(emp.category_name || '-')}</td>
+      <td>${settlementTreatmentCountBadges(emp.byTreatment)}</td>
+      <td>${settlementMoneyAlways(emp.incentive_total)}</td>
+      <td>${settlementMoneyAlways(emp.adjustment_total)}</td>
+      <td>${settlementMoneyAlways(emp.payment_total)}</td>
+    </tr>`).join('');
+  const treatmentRows = (summary.by_treatment || []).map(tx => `
+    <tr>
+      <td>${escapeHtml(tx.treatment_name || tx.treatment_short || '-')}</td>
+      <td>${settlementQuantity(tx.quantity_total)}</td>
+      <td>${settlementMoneyAlways(tx.price_total)}</td>
+      <td>${settlementMoneyAlways(tx.incentive_total)}</td>
+    </tr>`).join('');
+  const detailGroups = renderSettlementDateGroups(grouped.dates);
+
+  bodyEl.innerHTML = `
+    <div class="settlement-note">
+      집계 탭에서 정산 반영한 스냅샷 기준입니다. 이후 치료항목 수가나 인센티브 규칙을 바꿔도 기존 정산 금액은 유지됩니다.
+    </div>
+    <div class="settlement-summary-grid settlement-summary-grid-wide">
+      <div class="stat-card"><div class="stat-label">기간 건수</div><div class="stat-value">${settlementQuantity(summary.quantity_total)}</div></div>
+      <div class="stat-card"><div class="stat-label">직원수</div><div class="stat-value">${settlementQuantity((summary.by_employee || []).length)}</div></div>
+      <div class="stat-card"><div class="stat-label">치료항목</div><div class="stat-value">${settlementQuantity((summary.by_treatment || []).length)}</div></div>
+      <div class="stat-card"><div class="stat-label">총 수가</div><div class="stat-value">${settlementMoneyAlways(summary.price_total)}</div></div>
+      <div class="stat-card"><div class="stat-label">세전 인센티브</div><div class="stat-value">${settlementMoneyAlways(summary.incentive_total)}</div></div>
+    </div>
+    <div id="settlement-revenue-help"></div>
+    <div class="settlement-summary-panels">
+      <div>
+        <h3 class="stats-section-title">직원별 합계</h3>
+        ${employeeRows
+          ? `<div style="overflow-x:auto;"><table class="settlement-summary-table settlement-report-table">
+              <thead><tr><th>직원</th><th>과</th><th>치료항목별 건수</th><th>세전 인센티브</th><th>조정금액</th><th>최종 지급액</th></tr></thead>
+              <tbody>${employeeRows}</tbody>
+            </table></div>`
+          : '<p class="muted" style="margin:0;">정산 반영된 직원별 내역이 없습니다.</p>'}
+      </div>
+      <div>
+        <h3 class="stats-section-title">치료항목별 합계</h3>
+        ${treatmentRows
+          ? `<div style="overflow-x:auto;"><table class="settlement-summary-table settlement-report-table">
+              <thead><tr><th>치료항목</th><th>총 건수</th><th>총 수가</th><th>세전 인센티브</th></tr></thead>
+              <tbody>${treatmentRows}</tbody>
+            </table></div>`
+          : '<p class="muted" style="margin:0;">정산 반영된 치료항목 내역이 없습니다.</p>'}
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <h3 class="stats-section-title">상세 내역</h3>
+      ${detailGroups}
+    </div>`;
+  loadSettlementRevenueHelp();
+}
+
+async function loadSettlementRevenueHelp(){
+  const el = document.getElementById('settlement-revenue-help');
+  if(!el) return;
+  const fromStr = document.getElementById('settle-from')?.value || '';
+  const toStr = document.getElementById('settle-to')?.value || '';
+  if(!fromStr || !toStr) return;
+  const params = new URLSearchParams({date_from: fromStr, date_to: toStr});
+  const categoryId = document.getElementById('settle-category')?.value || '';
+  if(categoryId) params.set('category_id', categoryId);
+  try {
+    const r = await adminFetch(`/api/revenue/stats?${params.toString()}`);
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(data.detail || data.error || r.statusText);
+    const current = data.current || {};
+    const settlement = data.settlement || {};
+    const settlementQuantityTotal = Math.max(0, Number(settlement.quantity_total || 0));
+    const settlementAveragePrice = settlementQuantityTotal
+      ? Math.round(Number(settlement.price_total || 0) / settlementQuantityTotal)
+      : 0;
+    el.innerHTML = `
+      <div class="settlement-note revenue-settlement-help">
+        <b>매출 기준 참고</b>
+        <span>실매출 ${revenueMoney(current.revenue_total)}</span>
+        <span>정산 수가 ${revenueMoney(settlement.price_total)}</span>
+        <span>차이 ${revenueMoney(settlement.revenue_minus_settlement_price)}</span>
+        <span>정산 건수 ${revenueQuantity(settlement.quantity_total)}건</span>
+        <span>건당 평균 수가 ${revenueMoney(settlementAveragePrice)}</span>
+      </div>`;
+  } catch(e){
+    el.innerHTML = '<div class="settlement-note" style="color:#DC2626;">매출 참고 조회 실패: '
+      + escapeHtml(e && e.message ? e.message : e)
+      + '</div>';
+  }
+}
+
+async function saveSettlementGrid(){
+  if(!SETTLEMENT_GRID){ await loadSettlement(); if(!SETTLEMENT_GRID) return; }
+  const inputs = [...document.querySelectorAll('.settle-count-input')];
+  const entries = inputs.map(inp => ({
+    performed_on: inp.dataset.date,
+    employee_id: inp.dataset.employeeId,
+    treatment_id: inp.dataset.treatmentId,
+    quantity: Math.max(0, parseInt(inp.value || '0') || 0),
+    memo: '',
+  }));
+  try {
+    inputs.forEach(inp => inp.classList.add('saving'));
+    const body = {
+      date_from: document.getElementById('settle-from').value,
+      date_to: document.getElementById('settle-to').value,
+      category_id: document.getElementById('settle-category')?.value || '',
+      entries,
+    };
+    const r = await adminFetch('/api/settlement/records/grid', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok || data.ok === false){
+      throw new Error(data.detail || data.error || r.statusText);
+    }
+    SETTLEMENT_GRID = data;
+    renderSettlement(data);
+  } catch(e){
+    alert('정산 저장 실패: ' + (e && e.message ? e.message : e));
+  } finally {
+    inputs.forEach(inp => inp.classList.remove('saving'));
+  }
+}
+
+function _safeDownloadName(value){
+  return String(value || '전체').replace(/[\\/:*?"<>|]+/g, '_').trim() || '전체';
+}
+
+async function downloadSettlementXlsx(){
+  try {
+    const fromStr = document.getElementById('settle-from').value;
+    const toStr = document.getElementById('settle-to').value;
+    if(!fromStr || !toStr){ alert('기간을 선택하세요.'); return; }
+    if(fromStr > toStr){ alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+    const categoryId = document.getElementById('settle-category')?.value || '';
+    const params = new URLSearchParams({date_from: fromStr, date_to: toStr});
+    if(categoryId) params.set('category_id', categoryId);
+    const r = await adminFetch(`/api/settlement/reports/incentives.xlsx?${params.toString()}`);
+    if(!r.ok) throw new Error(await _apiErrorText(r));
+    const blob = await r.blob();
+    const sel = document.getElementById('settle-category');
+    const categoryName = sel && sel.selectedOptions && sel.selectedOptions[0]
+      ? sel.selectedOptions[0].textContent
+      : '전체';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `정산_${fromStr}_${toStr}_${_safeDownloadName(categoryName)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  } catch(e){
+    alert('엑셀 다운로드 실패: ' + (e && e.message ? e.message : e));
+  }
+}
+
+function printSettlement(){
+  window.print();
 }
 
 function makeTherapistChart(items, manualCodes, manualNames){
@@ -5140,7 +6069,7 @@ async function loadStatsCharts(fromStr, toStr){
   const manualCodes  = data.manual_codes || [];   // 활성 도수치료 시간항목 코드들
   const manualNames  = data.manual_names || {};
   const eswtName     = data.eswt_name    || '체외충격파';
-  const eswtCode     = (TX_META && TX_META.eswt_code) || 'eswt';
+  const eswtCode     = (TX_META && TX_META.eswt_code) || '';
   const priceMap     = (TX_META && TX_META.treatment_price) || {};
   const itemNameMap  = (TX_META && TX_META.treatment_names) || {};
 
@@ -5419,87 +6348,6 @@ function toggleDailyStatsTable(){
   if(!wrap) return;
   const isCollapsed = (wrap.style.display === 'none' || !wrap.style.display);
   _setDailyStatsTableCollapsed(!isCollapsed);
-}
-
-// ─────── 관리자 > 문자나라 연동 설정 (카드형) ───────
-
-async function loadSmsSettingForm(){
-  if(!await ensureAdmin()){
-    document.getElementById('sms-setting-form').innerHTML='<p class="muted">인증 필요</p>';
-    return;
-  }
-  const s = await (await fetch('/api/sms/setting')).json();
-  document.getElementById('sms-setting-form').innerHTML = `
-    <div class="settings-card">
-      <div class="settings-card-head">
-        <h3>📱 문자나라 연동 설정</h3>
-        <small class="muted">문자나라(munjanara.co.kr) 계정 정보</small>
-      </div>
-      <div class="sf-row">
-          <label class="sf-label">아이디</label>
-          <input id="ss-id" value="${s.munjanara_id||''}" placeholder="문자나라 로그인 아이디">
-        </div>
-        <div class="sf-row">
-          <label class="sf-label">일반 비밀번호 <small class="muted">(선택 · API 발송에는 사용 안 함)</small></label>
-         <input id="ss-pw" type="password" placeholder="기록 목적 · 비워둬도 됨">
-          ${s.munjanara_pw ? '<small class="muted" style="margin-top:4px;display:block">저장됨 (API 호출에 사용되지 않음)</small>' : '<small class="muted" style="margin-top:4px;display:block">미저장 — 비워둬도 발송 가능</small>'}
-        </div>
-        <div class="sf-row">
-          <label class="sf-label">2차 비밀번호 <small style="color:#D7625C;">(필수 · API 인증)</small></label>
-          <input id="ss-key" type="password" placeholder="문자나라 [웹 연동 2차 비밀번호]">
-          ${s.munjanara_key ? '<small class="muted" style="margin-top:4px;display:block;color:#24885F;">✅ 2차 비밀번호 저장됨 — 발송 가능</small>' : '<small class="muted" style="margin-top:4px;display:block;color:#D7625C;">⚠️ 2차 비밀번호가 있어야 발송 가능합니다</small>'}
-        </div>
-        <div class="sf-row">
-          <label class="sf-label">발신 번호</label>
-          <input id="ss-send" value="${s.sender_phone||''}" placeholder="02-1234-5678">
-        </div>
-        <div class="sf-row">
-          <label class="sf-label">API URL</label>
-          <input id="ss-url" value="${s.api_url||''}" placeholder="https://munjanara.co.kr/send.sys">
-          <small class="muted" style="margin-top:4px;display:block">
-            ✅ 기본값 <code style="font-size:11px;">https://munjanara.co.kr/send.sys</code> 은 문자나라 공용 엔드포인트입니다 (모든 병원 동일).<br>
-            병원별로 다른 건 위의 <b>아이디 / 비밀번호 / 2차 비밀번호 / 발신번호</b> 4가지뿐입니다.
-          </small>
-        </div>
-        <hr class="sf-sep">
-        <div class="sf-row">
-          <label class="sf-label">병원명</label>
-          <input id="ss-name" value="${s.clinic_name||''}" placeholder="서울튼튼정형외과의원">
-        </div>
-        <div class="sf-row">
-          <label class="sf-label">병원 대표번호</label>
-          <input id="ss-clinic" value="${s.clinic_phone||''}" placeholder="02-1234-5678">
-        </div>
-        <div class="sf-actions">
-          <button class="primary" onclick="saveSmsSetting()">💾 저장</button>
-        </div>
-        <p class="muted" style="font-size:12px;margin-top:10px">
-          ※ 2차 비밀번호: 문자나라 로그인 후 [회원정보 → 2차 비밀번호 설정]에서 확인하세요.<br>
-          ※ 발신번호: 문자나라에 사전 등록된 번호를 입력하세요.
-        </p>
-      </div>
-    </div>`;
-}
-
-async function saveSmsSetting(){
-  const body = {
-    clinic_name: _v('ss-name'),
-    munjanara_id: _v('ss-id'),
-    munjanara_pw: _v('ss-pw'),
-    munjanara_key: _v('ss-key'),
-    sender_phone: _v('ss-send'),
-    clinic_phone: _v('ss-clinic'),
-    api_url: _v('ss-url'),
-  };
-  const r = await adminFetch('/api/sms/setting', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(body),
-  });
-  if(!r.ok){ alert('저장 실패\n' + await r.text()); return; }
-  alert('저장되었습니다.');
-  SMS_SETTING_CACHE = null;  // 개별 발송 캐시 무효화
-  loadSmsSettingForm();
 }
 
 // ─────── 관리자 > AI 설정 ───────
@@ -6189,6 +7037,9 @@ function escapeHtml(s){
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }  // { total, new_count, existing_count, error_count, new_patients, file_name }
+function escapeAttr(s){
+  return escapeHtml(s);
+}
 
 function dcReset(){
   _DC_STATE = null;
@@ -6587,7 +7438,6 @@ async function loadSystemForm(){
         </div>
       </div>
 
-      <!-- 문자 템플릿 카드는 예약 문자 탭으로 이동되었습니다 (단계 F #15) -->
 
       <!-- 관리자 비밀번호 -->
       <div class="settings-card">
@@ -6752,6 +7602,7 @@ async function loadTreatmentsCard(){
     document.getElementById('treatments-list').innerHTML = '<p class="muted">인증 필요</p>';
     return;
   }
+  await loadTreatmentMeta();
   const items = await (await fetch('/api/treatments')).json();
 
   if(!items.length){
@@ -6773,21 +7624,20 @@ async function loadTreatmentsCard(){
   };
 
   const rows = items.map((t, idx) => {
-    const roleBadge = t.role === 'doctor'
-      ? '<span class="tx-badge tx-badge-doctor">🩺 의사</span>'
-      : '<span class="tx-badge tx-badge-therapist">💪 치료사</span>';
+    const categoryBadge = `<span class="tx-badge" style="background:${(EMPLOYEE_CATEGORIES.find(c=>c.id===t.category_id)||{}).color||'#E5E7EB'}22;color:#374151;border:1px solid #E5E7EB;">${t.category_name || '-'}</span>`;
     const activeBadge = t.active
       ? '<span class="tx-badge tx-badge-on">활성</span>'
       : '<span class="tx-badge tx-badge-off">비활성</span>';
     const showBadge = t.show_in_patient
       ? '<span class="tx-badge tx-badge-on">표시 ON</span>'
       : '<span class="tx-badge tx-badge-off">표시 OFF</span>';
-    return `<tr>
+    return `<tr data-id="${t.id}">
+      <td class="drag-handle" title="드래그하여 순서 변경">⠿</td>
       <td>${idx+1}</td>
       <td><b>${t.name}</b></td>
       <td><code>${t.short}</code></td>
       <td>${t.default_minutes}분</td>
-      <td>${roleBadge}</td>
+      <td>${categoryBadge}</td>
       <td>+${t.count_increment}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;">${fmtPrice(t.price)}</td>
       <td style="text-align:center;">${fmtIncentive(t)}</td>
@@ -6803,26 +7653,28 @@ async function loadTreatmentsCard(){
   document.getElementById('treatments-list').innerHTML = `
     <table class="data-table">
       <thead><tr>
-        <th>#</th><th>이름</th><th>약자</th><th>기본 시간</th><th>역할</th>
+        <th style="width:32px"></th><th>#</th><th>이름</th><th>약자</th><th>기본 시간</th><th>과</th>
         <th>완료 +N</th><th>수가</th><th>인센티브</th><th>표 표시</th><th>상태</th><th>관리</th>
       </tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody class="tx-sortable-body">${rows}</tbody>
     </table>
     <p class="muted" style="font-size:12px;margin-top:10px">
       • <b>표 표시 ON</b>: 환자 관리 표·편집 모달에서 처방/완료 카운트 입력란 노출<br>
-      • <b>역할</b>: 의사 항목 → 의사(공용) 열, 치료사 항목 → 치료사 열 또는 미배정 공용 열<br>
+      • <b>과</b>: 선택한 과의 직원과 예약/집계 화면에서 연결됩니다<br>
       • <b>체외충격파(eswt)</b>는 별도 공용 열 유지 (코드 변경 불가)<br>
       • <b>수가</b>: 통계 "분석"의 매출 계산에 사용 (예약 건수 × 수가)<br>
       • <b>인센티브</b>: 퍼센티지 또는 고정 금액 중 하나만 설정. 집계 탭 치료사별 인센티브 합계 계산에 사용<br>
       • 약자는 모든 치료항목 사이에 중복될 수 없습니다
     </p>
   `;
+  initTreatmentSortable();
 }
 
 function editTreatmentModal(t){
   const isNew = !t;
+  const firstCat = (EMPLOYEE_CATEGORIES || []).find(c => c.active !== false) || {};
   t = t || {
-    name:'', short:'', default_minutes:30, role:'therapist',
+    code:'', name:'', short:'', category_id:firstCat.id||'', default_minutes:30, role:'therapist',
     count_increment:1, show_in_patient:false, active:true, sort_order:0,
     price:0, incentive_pct:null, incentive_amount:null,
   };
@@ -6836,6 +7688,13 @@ function editTreatmentModal(t){
 
   showModal(`<h3>${isNew?'+ 새 치료항목':'치료항목 수정'}</h3>
     <label>이름 * <input id="t-name" value="${t.name||''}" placeholder="예: 영양제, 주사 등"></label>
+    <label>내부 코드
+      <input id="t-code" value="${t.code||''}" ${isNew?'':'readonly'} placeholder="예: manual90">
+      <small class="muted">${isNew?'비워두면 자동 생성됩니다.':'기존 예약 참조 보호를 위해 수정할 수 없습니다.'}</small>
+    </label>
+    <label>과 *
+      <select id="t-category">${employeeCategoryOptions(t.category_id || firstCat.id || '')}</select>
+    </label>
     <div class="row-3">
       <label>약자 *
         <input id="t-short" value="${t.short||''}" maxlength="10" placeholder="셀에 표시될 약자 (예: 영)">
@@ -6847,13 +7706,6 @@ function editTreatmentModal(t){
         <input id="t-inc" type="number" min="0" max="10" value="${t.count_increment||1}">
         <small class="muted">승인 시 누적량</small>
       </label>
-    </div>
-    <div class="t-role-row">
-      <span class="t-field-label">역할 *</span>
-      <div class="role-radios">
-        <label><input type="radio" name="t-role" value="doctor" ${t.role==='doctor'?'checked':''}> 🩺 의사</label>
-        <label><input type="radio" name="t-role" value="therapist" ${t.role==='therapist'?'checked':''}> 💪 치료사</label>
-      </div>
     </div>
 
     <!-- ── 수가 / 인센티브 ── -->
@@ -6926,10 +7778,13 @@ async function saveTreatment(){
   const id = _v('t-id');
   const name = _v('t-name').trim();
   const short = _v('t-short').trim();
+  const code = _v('t-code').trim();
   if(!name){ alert('이름을 입력하세요'); return; }
   if(!short){ alert('약자를 입력하세요'); return; }
-
-  const role = (document.querySelector('input[name="t-role"]:checked')||{}).value || 'therapist';
+  const categoryId = _v('t-category');
+  if(!categoryId){ alert('과를 선택하세요'); return; }
+  const cat = (EMPLOYEE_CATEGORIES || []).find(c => c.id === categoryId);
+  const role = (cat && cat.default_can_doctor_treatment && cat.default_can_manual === false) ? 'doctor' : 'therapist';
 
   // 인센티브 모드에 따라 pct/amount 중 하나만 전송 (나머지는 null)
   const incMode = (document.querySelector('input[name="t-inc-mode"]:checked')||{}).value || 'none';
@@ -6948,6 +7803,7 @@ async function saveTreatment(){
   const body = {
     name,
     short,
+    category_id: categoryId,
     default_minutes: parseInt(_v('t-min'))||30,
     role,
     count_increment: parseInt(_v('t-inc'))||1,
@@ -6958,6 +7814,7 @@ async function saveTreatment(){
     incentive_pct: incPct,
     incentive_amount: incAmount,
   };
+  if(!id && code) body.code = code;
 
   if(!await ensureAdmin()) return;
   const url = id ? `/api/treatments/${id}` : '/api/treatments';
@@ -6975,6 +7832,31 @@ async function saveTreatment(){
   closeModal();
   await loadTreatmentMeta();   // TX_META 갱신
   loadTreatmentsCard();
+}
+
+function initTreatmentSortable(){
+  const tbody = document.querySelector('.tx-sortable-body');
+  if(!tbody) return;
+  if(tbody._sortable){ tbody._sortable.destroy(); }
+  tbody._sortable = Sortable.create(tbody, {
+    handle: '.drag-handle',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    onEnd: async () => {
+      if(!await ensureAdmin()) return;
+      const rows = [...tbody.querySelectorAll('tr[data-id]')].map((tr, idx) => ({
+        id: tr.dataset.id, sort_order: idx + 1,
+      }));
+      const r = await adminFetch('/api/treatments/reorder', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(rows),
+      });
+      if(!r.ok){ alert('순서 저장 실패\n' + await r.text()); return; }
+      await loadTreatmentMeta();
+      loadTreatmentsCard();
+    },
+  });
 }
 
 async function deleteTreatment(tid){
@@ -7022,6 +7904,7 @@ async function deactivateTreatment(tid){
   if(!await ensureAdmin()) return;
   const body = {
     name: t.name, short: t.short,
+    category_id: t.category_id,
     default_minutes: t.default_minutes, role: t.role,
     count_increment: t.count_increment, show_in_patient: t.show_in_patient,
     active: false, sort_order: t.sort_order,
@@ -7052,8 +7935,6 @@ async function saveManualLimit(){
   MANUAL_SLOT_LIMIT = body.manual_slot_limit;
 }
 
-// (구) 시스템탭 단일 sms_template 저장 함수 — 단계 F #15 에서 SmsTemplate 테이블로 이전됨
-// 이름 충돌 방지를 위해 제거됨. 새 함수는 sms-templates 카드의 saveSmsTemplate(tid) 사용.
 
 async function changePassword(){
   const cur = _v('pw-cur'), nw = _v('pw-new'), nw2 = _v('pw-new2');

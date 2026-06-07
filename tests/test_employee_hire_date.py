@@ -21,14 +21,15 @@ def _payload(initial: dict, **overrides) -> dict:
     """기존 직원 dict 에서 EmployeeIn 페이로드 만들기."""
     p = {
         "name": initial["name"],
-        "role": initial["role"],
+        "category_id": initial["category_id"],
         "color": initial["color"],
         "active": initial["active"],
         "birth_date": initial.get("birth_date"),
         "phone": initial.get("phone"),
         "hire_date": initial.get("hire_date"),
-        "can_eswt": initial["can_eswt"],
-        "can_manual": initial["can_manual"],
+        "can_doctor_treatment_override": initial["can_doctor_treatment_override"],
+        "can_eswt_override": initial["can_eswt_override"],
+        "can_manual_override": initial["can_manual_override"],
     }
     p.update(overrides)
     return p

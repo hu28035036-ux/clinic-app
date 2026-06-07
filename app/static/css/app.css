@@ -245,6 +245,20 @@ main { padding:0; }
   display:flex; flex-direction:column; }
 .modal h3 { margin-top:0; color:var(--gray-900); }
 .modal h4 { margin:14px 0 8px; color:var(--gray-700); font-size:14px; }
+.modal-title-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 14px;
+}
+.modal-title-row h3 {
+  margin:0 !important;
+}
+.modal-title-row .mini {
+  flex:0 0 auto;
+  white-space:nowrap;
+}
 .modal label { display:block; margin:10px 0; font-size:13px; color:var(--gray-700); }
 .modal input:not([type="checkbox"]):not([type="radio"]),
 .modal select,
@@ -329,6 +343,52 @@ button.mini.danger { color:#dc2626; border-color:#fca5a5; }
 /* ── 일일 보드 ── */
 .board-header { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
 .board-date { margin:0 0 0 12px; font-size:18px; color:var(--gray-900); }
+.board-employee-filter { position: relative; display: inline-flex; align-items: center; }
+.board-employee-filter .badge { margin-left: 6px; }
+.board-employee-picker {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  width: 240px;
+  background: #fff;
+  border: 1px solid var(--sky-100);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .16);
+  padding: 10px;
+}
+.board-employee-picker-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 8px;
+  border-bottom: 1px solid var(--sky-100);
+}
+.board-employee-picker-list {
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px 0;
+}
+.board-employee-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.board-employee-option:hover { background: var(--sky-50); }
+.board-employee-option input { margin: 0; }
+.board-employee-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sky-100);
+}
 /* v1.2.11+: max-height 제거 → 부모(#day-board) 공간을 flex 로 채움
    창이 커지면 표도 같이 커지고, 창이 작아지면 내부 스크롤 */
 .board-wrap { overflow:auto; flex: 1; min-height: 0; border:1px solid var(--sky-100);
@@ -934,7 +994,7 @@ input::placeholder, textarea::placeholder {
 .sheet { max-width: 1400px; margin: 0 auto 20px; }
 .tab-pane { max-width: 1500px; margin: 0 auto; }
 /* v1.2.14: 예약 탭은 1500px 제한 해제 — 메인 표가 모니터 끝까지 늘어나도록 */
-#tab-reserve.tab-pane { max-width: none; margin: 0; }
+#tab-reserve.tab-pane { max-width: none; margin: 18px 0 0; }
 
 /* 예약 블록 - 텍스트 잘림 방지 + 가독성 */
 .appt-cell { line-height: 1.25; }
@@ -1514,6 +1574,785 @@ select option:disabled {
   user-select: none;
 }
 .drag-handle:active { cursor: grabbing; }
+
+.tx-check-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.agg-help {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #4B5563;
+  background: #EEF6FC;
+  border: 1px solid #BBD7EE;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.agg-direct-table {
+  border-collapse: collapse;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  overflow: hidden;
+  table-layout: fixed;
+  width: max-content;
+  min-width: max-content;
+}
+
+.agg-direct-table th,
+.agg-direct-table td {
+  border-left: 1px solid #E5E7EB;
+  border-top: 1px solid #F3F4F6;
+  padding: 6px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.agg-date-head,
+.agg-date-cell {
+  min-width: 62px;
+  width: 62px;
+  background: #F3F4F6;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.agg-employee-head {
+  min-width: 44px;
+  background: #F3F4F6;
+  color: #1F2937;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.agg-treatment-head {
+  min-width: 60px;
+  width: 60px;
+  background: #F9FAFB;
+  color: #374151;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.agg-input-cell,
+.agg-total-cell,
+.agg-disabled-cell {
+  width: 60px;
+  min-width: 60px;
+  height: 34px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.agg-count-input {
+  width: 52px;
+  height: 28px;
+  padding: 2px 2px;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #111827;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+  -moz-appearance: textfield;
+  cursor: text;
+}
+
+.agg-count-input::-webkit-outer-spin-button,
+.agg-count-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.agg-count-input:hover,
+.agg-count-input:focus {
+  border-color: #93C5FD;
+  background: #EFF6FF;
+  outline: none;
+}
+
+.agg-count-input.saving {
+  background: #FEF3C7;
+}
+
+.agg-disabled-cell {
+  color: #D1D5DB;
+  background: #FAFAFA;
+  font-size: 13px;
+}
+
+.agg-total-cell {
+  background: #EFF6FF;
+  color: #1D4ED8;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.agg-incentive-cell {
+  background: #F0FDFA;
+  color: #0F766E;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.settlement-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.settlement-summary-grid-wide {
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+}
+
+.settlement-note {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #DBEAFE;
+  background: #EFF6FF;
+  color: #1E40AF;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.revenue-sub-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 14px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.revenue-sub-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  color: #4B5563;
+  padding: 10px 14px;
+  border-radius: 8px 8px 0 0;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.revenue-sub-tab:hover {
+  background: #F8FAFC;
+  color: #111827;
+}
+
+.revenue-sub-tab.active {
+  background: #fff;
+  color: #1D4ED8;
+  border-color: #D7E3F0;
+  box-shadow: 0 -1px 0 #fff inset;
+}
+
+.revenue-pane {
+  display: none;
+}
+
+.revenue-pane.active {
+  display: block;
+}
+
+.revenue-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.revenue-toolbar .toolbar-spacer {
+  flex: 1 1 auto;
+  min-width: 12px;
+}
+
+.revenue-record-table {
+  min-width: 860px;
+}
+
+.revenue-record-table th,
+.revenue-record-table td {
+  vertical-align: middle;
+}
+
+.revenue-record-table tfoot td {
+  background: #F8FAFC;
+  font-weight: 800;
+}
+
+.revenue-date-cell {
+  min-width: 100px;
+  color: #111827;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.revenue-amount-input,
+.revenue-memo-input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #CBD5E1;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.revenue-amount-input {
+  max-width: 130px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.revenue-memo-input {
+  min-width: 180px;
+}
+
+.revenue-amount-input:focus,
+.revenue-memo-input:focus {
+  border-color: #3B82F6;
+  background: #EFF6FF;
+  outline: none;
+}
+
+.revenue-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.revenue-pie-card {
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+}
+
+.revenue-pie-card h3 {
+  margin: 0 0 12px;
+  color: #111827;
+  font-size: 14px;
+}
+
+.revenue-pie-layout {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: center;
+  gap: 16px;
+}
+
+.revenue-pie {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .08);
+}
+
+.revenue-pie::after {
+  content: "";
+  position: absolute;
+  inset: 35px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px #E5E7EB;
+}
+
+.revenue-pie span {
+  position: relative;
+  z-index: 1;
+  max-width: 92px;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.revenue-legend {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.revenue-legend-row {
+  display: grid;
+  grid-template-columns: 12px minmax(64px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: #374151;
+  font-size: 12px;
+}
+
+.revenue-legend-row b {
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.revenue-legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+}
+
+.revenue-empty-pie {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  color: #6B7280;
+  background: #F8FAFC;
+  border: 1px dashed #CBD5E1;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.revenue-settlement-help {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.revenue-settlement-help b {
+  color: #0F172A;
+}
+
+.revenue-settlement-help span {
+  white-space: nowrap;
+}
+
+.settlement-summary-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 14px;
+  margin: 8px 0 12px;
+}
+
+.settlement-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #E5E7EB;
+  font-size: 12px;
+}
+
+.settlement-summary-table th,
+.settlement-summary-table td {
+  border-top: 1px solid #F3F4F6;
+  padding: 6px 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.settlement-summary-table th:first-child,
+.settlement-summary-table td:first-child {
+  text-align: left;
+}
+
+.settlement-report-table {
+  min-width: 100%;
+}
+
+.settlement-report-table th,
+.settlement-report-table td {
+  white-space: nowrap;
+}
+
+.settlement-detail-table th:nth-child(4),
+.settlement-detail-table td:nth-child(4),
+.settlement-detail-table th:last-child,
+.settlement-detail-table td:last-child {
+  white-space: normal;
+  min-width: 140px;
+}
+
+.settlement-treatment-count-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  column-gap: 7px;
+  row-gap: 4px;
+  min-width: 180px;
+}
+
+.settlement-treatment-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #374151;
+  font-size: 12px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.settlement-treatment-count b {
+  color: #0F4C81;
+  font-weight: 800;
+}
+
+.settlement-treatment-separator {
+  color: #CBD5E1;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.settlement-date-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.settlement-date-group {
+  display: block;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.settlement-date-card {
+  display: grid;
+  grid-template-columns: minmax(128px, 1fr) minmax(260px, 1.7fr) minmax(120px, .8fr) minmax(138px, .9fr) 84px;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 12px 14px;
+  border: 1px solid #D7E3F0;
+  border-radius: 8px;
+  cursor: pointer;
+  list-style: none !important;
+  background: #fff;
+  color: #1F2937;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, .06);
+  user-select: none;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.settlement-date-card:hover {
+  border-color: #9BC5E6;
+  background: #F8FBFF;
+  box-shadow: 0 8px 20px rgba(47, 134, 203, .12);
+}
+
+.settlement-date-card:focus-visible {
+  outline: 3px solid rgba(47, 134, 203, .22);
+  outline-offset: 2px;
+}
+
+.settlement-date-card::marker {
+  content: "";
+}
+
+.settlement-date-card::-webkit-details-marker {
+  display: none;
+}
+
+.settlement-date-group[open] .settlement-date-card {
+  border-color: #8BBCE0;
+  background: #F3F9FF;
+  box-shadow: 0 8px 20px rgba(47, 134, 203, .14);
+}
+
+.settlement-date-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settlement-date-title {
+  font-size: 14px;
+  color: #0F172A;
+  white-space: nowrap;
+}
+
+.settlement-date-sub {
+  color: #4B5563;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.settlement-date-treatment-summary {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settlement-date-treatment-summary > span:first-child {
+  color: #6B7280;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settlement-date-treatment-summary .settlement-treatment-count-list {
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.settlement-date-treatment-summary .settlement-treatment-count {
+  font-size: 12px;
+}
+
+.settlement-date-metric {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.settlement-date-metric span {
+  color: #6B7280;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settlement-date-metric b {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.settlement-date-incentive b {
+  color: #0F766E;
+}
+
+.settlement-date-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 74px;
+  height: 34px;
+  border: 1px solid #BBD7EE;
+  border-radius: 8px;
+  background: #EAF3FD;
+  color: #0F4C81;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.settlement-date-toggle::before {
+  content: "펼치기";
+}
+
+.settlement-date-group[open] .settlement-date-toggle {
+  background: #fff;
+}
+
+.settlement-date-group[open] .settlement-date-toggle::before {
+  content: "접기";
+}
+
+.settlement-date-body {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid #D7E3F0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.settlement-date-treatment-line {
+  margin-bottom: 8px;
+}
+
+.settlement-table .agg-treatment-head {
+  min-width: 52px;
+}
+
+@media (max-width: 760px) {
+  .revenue-chart-grid {
+    grid-template-columns: 1fr;
+  }
+  .revenue-pie-layout {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+  .revenue-legend {
+    width: 100%;
+  }
+  .settlement-summary-grid,
+  .settlement-summary-grid-wide,
+  .settlement-summary-panels {
+    grid-template-columns: 1fr;
+  }
+  .settlement-date-card {
+    grid-template-columns: 1fr 1fr;
+    min-height: auto;
+  }
+  .settlement-date-main,
+  .settlement-date-treatment-summary,
+  .settlement-date-toggle {
+    grid-column: 1 / -1;
+  }
+  .settlement-date-metric {
+    text-align: left;
+  }
+  .settlement-date-toggle {
+    width: 100%;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #admin-settlement,
+  #admin-settlement * {
+    visibility: visible;
+  }
+  #admin-settlement {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
+
+.agg-footer-row td {
+  border-top: 2px solid #D1D5DB;
+}
+
+.agg-sat { color: #1D4ED8; }
+.agg-sun { color: #DC2626; }
+
+.inventory-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.inventory-category-card {
+  border: 1px solid #D9E3EF;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.inventory-category-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 6px 0 12px;
+  border-bottom: 1px solid #E5E7EB;
+  margin-bottom: 10px;
+}
+
+.inventory-category-head h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: #0F4C81;
+}
+
+.inventory-author-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #4B5563;
+}
+
+.inventory-author-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.inventory-author-row input {
+  width: 120px;
+  height: 30px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.inventory-table {
+  min-width: 720px;
+  table-layout: fixed;
+}
+
+.inventory-table th,
+.inventory-table td {
+  vertical-align: middle;
+}
+
+.inventory-item-col {
+  width: 180px;
+}
+
+.inventory-unit-col {
+  width: 80px;
+}
+
+.inventory-actions-col {
+  width: 120px;
+}
+
+.inventory-field-head {
+  min-width: 150px;
+}
+
+.inventory-field-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 6px;
+}
+
+.inventory-cell-input {
+  width: 100%;
+  min-width: 120px;
+  height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #D7E3F0;
+  border-radius: 6px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.inventory-cell-input:focus {
+  border-color: #60A5FA;
+  outline: none;
+  background: #EFF6FF;
+}
+
+.inventory-cell-input.saving {
+  background: #FEF3C7;
+}
+
+.inventory-row-actions {
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .inventory-category-head {
+    flex-direction: column;
+  }
+  .inventory-author-row input {
+    width: 100%;
+  }
+}
 
 /* 치료항목 뱃지 (예약 상세 모달) */
 .tx-badges { margin: 6px 0; }
@@ -4502,6 +5341,10 @@ button.mini, .btn.mini {
   background: transparent;
 }
 
+#tab-reserve.tab-pane {
+  margin-top: var(--space-5);
+}
+
 .layout aside.sidebar,
 .sidebar {
   background: transparent;
@@ -4516,7 +5359,7 @@ button.mini, .btn.mini {
 /* 사이드바 안 신규 환자 등록 버튼 — 카드 위에 띄움 */
 .sidebar .btn-create {
   width: 100%;
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-4);
   height: 44px;
   font-size: var(--fs-md);
   font-weight: var(--fw-semibold);

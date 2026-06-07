@@ -94,6 +94,8 @@ def serialize_treatment(t: Any) -> dict:
         "code": t.code,
         "name": t.name,
         "short": t.short,
+        "category_id": getattr(t, "category_id", None),
+        "category_name": getattr(getattr(t, "category", None), "name", None),
         "default_minutes": t.default_minutes,
         "role": t.role,
         "count_increment": t.count_increment,
@@ -122,6 +124,11 @@ def build_treatment_meta(
     treatment_codes_active = [t.code for t in treatments if t.active]
     treatment_names = {t.code: t.name for t in treatments}
     treatment_short = {t.code: t.short for t in treatments}
+    treatment_category = {t.code: getattr(t, "category_id", None) for t in treatments}
+    treatment_category_name = {
+        t.code: getattr(getattr(t, "category", None), "name", None) or ""
+        for t in treatments
+    }
     doctor_treatments = [
         t.code for t in treatments if t.active and _rules.is_doctor_role(t)
     ]
@@ -149,6 +156,8 @@ def build_treatment_meta(
     return {
         "treatment_codes": treatment_codes_active,
         "treatment_names": treatment_names,
+        "treatment_category": treatment_category,
+        "treatment_category_name": treatment_category_name,
         "treatment_short": treatment_short,
         "treatment_minutes": treatment_minutes,
         "treatment_role": treatment_role,
@@ -161,6 +170,7 @@ def build_treatment_meta(
         "treatment_price": treatment_price,
         "treatment_incentive_pct": treatment_incentive_pct,
         "treatment_incentive_amount": treatment_incentive_amount,
+        "employee_categories": [],
         "all_treatments": [serialize_treatment(t) for t in treatments],
     }
 

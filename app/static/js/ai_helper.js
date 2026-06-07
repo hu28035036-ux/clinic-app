@@ -7,7 +7,7 @@
 
 function _aiHelperData() {
   return {
-    open: true,
+    open: false,
     busy: false,
     raw_text: "",
     error: "",

@@ -1,0 +1,57 @@
+[
+  {
+    "code": "injection",
+    "name": "주사",
+    "short": "주",
+    "default_minutes": 10,
+    "role": "doctor",
+    "count_increment": 1,
+    "show_in_patient": true,
+    "active": true,
+    "sort_order": 1
+  },
+  {
+    "code": "cartilage",
+    "name": "연골주사",
+    "short": "연골",
+    "default_minutes": 10,
+    "role": "doctor",
+    "count_increment": 1,
+    "show_in_patient": true,
+    "active": true,
+    "sort_order": 2
+  },
+  {
+    "code": "eswt",
+    "name": "체외충격파",
+    "short": "충",
+    "default_minutes": 10,
+    "role": "therapist",
+    "count_increment": 1,
+    "show_in_patient": true,
+    "active": true,
+    "sort_order": 3
+  },
+  {
+    "code": "manual30",
+    "name": "도수치료30분",
+    "short": "도수6",
+    "default_minutes": 30,
+    "role": "therapist",
+    "count_increment": 1,
+    "show_in_patient": true,
+    "active": true,
+    "sort_order": 4
+  },
+  {
+    "code": "manual60",
+    "name": "도수치료60분",
+    "short": "도수12",
+    "default_minutes": 60,
+    "role": "therapist",
+    "count_increment": 1,
+    "show_in_patient": true,
+    "active": true,
+    "sort_order": 5
+  }
+]

@@ -1,24 +1,54 @@
 """Pydantic 스키마 (단계 A)."""
 from datetime import datetime
 from typing import Optional, List, Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+
+class EmployeeCategoryIn(BaseModel):
+    name: str
+    color: str = "#9CA3AF"
+    active: bool = True
+    sort_order: int = 0
+    default_can_doctor_treatment: bool = False
+    default_can_manual: bool = True
+    default_can_eswt: bool = True
+
+
+class EmployeeCategoryOut(EmployeeCategoryIn):
+    id: str
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EmployeeIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     name: str
-    role: str = "therapist"
+    category_id: Optional[str] = None
     color: str = "#9CA3AF"
     active: bool = True
     birth_date: Optional[str] = None
     phone: Optional[str] = None
     hire_date: Optional[str] = None
-    can_eswt: bool = True
-    can_manual: bool = True
+    can_doctor_treatment_override: Optional[bool] = None
+    can_manual_override: Optional[bool] = None
+    can_eswt_override: Optional[bool] = None
+    # Legacy inputs are accepted and converted to override values by the router.
+    can_doctor_treatment: Optional[bool] = None
+    can_eswt: Optional[bool] = None
+    can_manual: Optional[bool] = None
+    treatment_override_enabled: Optional[bool] = None
+    treatment_ids: Optional[List[str]] = None
 
 
 class EmployeeOut(EmployeeIn):
     id: str
-    class Config: from_attributes = True
+    category_name: Optional[str] = None
+    can_doctor_treatment: bool = False
+    can_eswt: bool = True
+    can_manual: bool = True
+    permission_level: str = "staff"
+    sort_order: int = 0
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EmployeePermissionIn(BaseModel):
@@ -48,8 +78,9 @@ class EmployeeLeaveOut(EmployeeLeaveIn):
 class TreatmentIn(BaseModel):
     name: str
     short: str
+    category_id: Optional[str] = None
     default_minutes: int = 30
-    role: str = "therapist"           # doctor | therapist
+    role: str = "therapist"           # doctor | therapist, legacy compatibility
     count_increment: int = 1
     show_in_patient: bool = False
     active: bool = True
@@ -66,6 +97,8 @@ class TreatmentOut(BaseModel):
     id: str
     code: str
     name: str
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
     short: str
     default_minutes: int
     role: str

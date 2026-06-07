@@ -36,6 +36,65 @@ from app.modules.therapists import rules as _rules
 
 # ─── Employee → 응답 dict (api.py:_serialize_employee 동등) ──────────────────
 
+def employee_can_doctor_treatment(employee: Any) -> bool:
+    override = getattr(employee, "can_doctor_treatment_override", None)
+    if override is not None:
+        return bool(override)
+    category = getattr(employee, "category", None)
+    if category is not None:
+        return bool(getattr(category, "default_can_doctor_treatment", False))
+    return getattr(employee, "role", None) == _rules.ROLE_DOCTOR
+
+
+def employee_can_manual(employee: Any) -> bool:
+    override = getattr(employee, "can_manual_override", None)
+    if override is not None:
+        return bool(override)
+    category = getattr(employee, "category", None)
+    if category is not None:
+        return bool(getattr(category, "default_can_manual", True))
+    return _rules.can_handle_manual(getattr(employee, "can_manual", True))
+
+
+def employee_can_eswt(employee: Any) -> bool:
+    override = getattr(employee, "can_eswt_override", None)
+    if override is not None:
+        return bool(override)
+    category = getattr(employee, "category", None)
+    if category is not None:
+        return bool(getattr(category, "default_can_eswt", True))
+    return _rules.can_handle_eswt(getattr(employee, "can_eswt", True))
+
+
+def employee_treatment_ids(employee: Any) -> list[str]:
+    state = getattr(employee, "_sa_instance_state", None)
+    session = getattr(state, "session", None)
+    if session is None:
+        return []
+    from app.models import models
+
+    if bool(getattr(employee, "treatment_override_enabled", False)):
+        return [
+            row.treatment_id
+            for row in session.query(models.EmployeeTreatment)
+            .filter(models.EmployeeTreatment.employee_id == employee.id)
+            .order_by(models.EmployeeTreatment.treatment_id)
+            .all()
+        ]
+    category_id = getattr(employee, "category_id", None)
+    if not category_id:
+        return []
+    return [
+        row.id
+        for row in session.query(models.Treatment)
+        .filter(
+            models.Treatment.category_id == category_id,
+            models.Treatment.active == True,  # noqa: E712
+        )
+        .order_by(models.Treatment.sort_order, models.Treatment.name)
+        .all()
+    ]
+
 
 def serialize_employee(employee: Any) -> dict[str, Any]:
     """``Employee`` ORM → 10키 응답 dict.
@@ -51,14 +110,27 @@ def serialize_employee(employee: Any) -> dict[str, Any]:
     return {
         "id": employee.id,
         "name": employee.name,
-        "role": employee.role,
+        "category_id": getattr(employee, "category_id", None),
+        "category_name": (
+            getattr(getattr(employee, "category", None), "name", "") or ""
+        ),
         "color": employee.color,
         "active": _rules.is_active_employee(employee.active),
         "birth_date": employee.birth_date,
         "phone": employee.phone,
         "hire_date": employee.hire_date,
-        "can_eswt": _rules.can_handle_eswt(employee.can_eswt),
-        "can_manual": _rules.can_handle_manual(employee.can_manual),
+        "can_doctor_treatment": employee_can_doctor_treatment(employee),
+        "can_manual": employee_can_manual(employee),
+        "can_eswt": employee_can_eswt(employee),
+        "can_doctor_treatment_override": getattr(
+            employee, "can_doctor_treatment_override", None
+        ),
+        "can_manual_override": getattr(employee, "can_manual_override", None),
+        "can_eswt_override": getattr(employee, "can_eswt_override", None),
+        "treatment_override_enabled": bool(
+            getattr(employee, "treatment_override_enabled", False)
+        ),
+        "treatment_ids": employee_treatment_ids(employee),
         "sort_order": employee.sort_order or 0,
         # 20-3-2 (post-19-P / F-11): 권한 등급 — api.py:_serialize_employee 정합
         "permission_level": getattr(employee, "permission_level", None) or "staff",
@@ -162,6 +234,9 @@ def next_sort_order_for_role(*, current_count_for_role: int) -> int:
 __all__ = [
     "serialize_employee",
     "serialize_employees",
+    "employee_can_doctor_treatment",
+    "employee_can_manual",
+    "employee_can_eswt",
     "build_employee_name_map",
     "build_employee_color_map",
     "build_therapist_resource_view",

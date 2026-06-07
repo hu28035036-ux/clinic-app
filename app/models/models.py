@@ -19,11 +19,35 @@ def uid() -> str: return uuid.uuid4().hex
 APPT_STATUSES = ("reserved", "approved", "canceled")
 
 
+class EmployeeCategory(Base):
+    """Department/category used to group employees and define default capabilities."""
+    __tablename__ = "employee_categories"
+    id = Column(String(32), primary_key=True, default=uid)
+    name = Column(String(50), nullable=False, unique=True)
+    color = Column(String(20), nullable=False, default="#9CA3AF")
+    active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    default_can_doctor_treatment = Column(Boolean, default=False)
+    default_can_manual = Column(Boolean, default=True)
+    default_can_eswt = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    employees = relationship("Employee", back_populates="category")
+    treatments = relationship("Treatment", back_populates="category")
+
+
 class Employee(Base):
     """의사 / 치료사 통합 직원."""
     __tablename__ = "employees"
     id = Column(String(32), primary_key=True, default=uid)
     name = Column(String(50), nullable=False)
+    category_id = Column(String(32), ForeignKey("employee_categories.id"), nullable=True, index=True)
+    can_doctor_treatment_override = Column(Boolean, nullable=True)
+    can_manual_override = Column(Boolean, nullable=True)
+    can_eswt_override = Column(Boolean, nullable=True)
+    treatment_override_enabled = Column(Boolean, default=False)
+    # Deprecated compatibility column. New API/UI logic uses category capabilities.
     role = Column(String(20), nullable=False, default="therapist")
     color = Column(String(20), nullable=False, default="#9CA3AF")
     active = Column(Boolean, default=True)
@@ -41,6 +65,9 @@ class Employee(Base):
 
     appointments = relationship("Appointment", back_populates="therapist",
                                 foreign_keys="Appointment.therapist_id")
+    category = relationship("EmployeeCategory", back_populates="employees")
+    treatment_links = relationship("EmployeeTreatment", back_populates="employee",
+                                   cascade="all, delete-orphan")
 
 
 class Resource(Base):
@@ -132,7 +159,8 @@ class Treatment(Base):
 
     code: 불변 식별자 (영문/숫자, 시드는 'injection' 등 하드코딩, 신규는 'tx_xxxx' 자동)
     name/short: 표시용 (변경 가능, short 는 약자 중복 거부)
-    role: doctor | therapist (배타)
+    category_id: 사용자 관리 과. role 은 내부 호환용으로 보존.
+    role: doctor | therapist (배타, deprecated UI field)
     count_increment: 완료 시 누적 +N (모든 항목 1카운트 — docs/specs/03 참조)
     show_in_patient: 환자 관리 표/편집 모달에 노출 여부
     """
@@ -140,6 +168,7 @@ class Treatment(Base):
     id = Column(String(32), primary_key=True, default=uid)
     code = Column(String(40), nullable=False, unique=True, index=True)
     name = Column(String(50), nullable=False)
+    category_id = Column(String(32), ForeignKey("employee_categories.id"), nullable=True, index=True)
     short = Column(String(10), nullable=False)
     default_minutes = Column(Integer, default=30)
     role = Column(String(20), nullable=False, default="therapist")  # doctor | therapist
@@ -157,6 +186,32 @@ class Treatment(Base):
     incentive_amount = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    category = relationship("EmployeeCategory", back_populates="treatments")
+    employee_links = relationship("EmployeeTreatment", back_populates="treatment",
+                                  cascade="all, delete-orphan")
+
+
+class EmployeeTreatment(Base):
+    """직원별 담당 가능 치료항목.
+
+    row 가 없으면 호환을 위해 직원 과의 활성 치료항목 전체를 가능으로 간주한다.
+    저장 UI 에서 체크박스를 조정하면 명시 row 들이 생기고 그 목록만 허용된다.
+    """
+    __tablename__ = "employee_treatments"
+    id = Column(String(32), primary_key=True, default=uid)
+    employee_id = Column(String(32), ForeignKey("employees.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    treatment_id = Column(String(32), ForeignKey("treatments.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    employee = relationship("Employee", back_populates="treatment_links")
+    treatment = relationship("Treatment", back_populates="employee_links")
+
+    __table_args__ = (
+        UniqueConstraint("employee_id", "treatment_id", name="uq_employee_treatment"),
+    )
 
 
 class Patient(Base):
@@ -293,6 +348,56 @@ class SyncOp(Base):
     ts = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class SettlementRecord(Base):
+    """Snapshot row for employee incentive settlement."""
+    __tablename__ = "settlement_records"
+    id = Column(String(32), primary_key=True, default=uid)
+    performed_on = Column(String(10), nullable=False, index=True)
+    employee_id = Column(String(32), nullable=False, index=True)
+    treatment_id = Column(String(32), nullable=False, index=True)
+    treatment_code = Column(String(40), nullable=False, index=True)
+    quantity = Column(Integer, nullable=False, default=1)
+    memo = Column(Text, nullable=False, default="")
+
+    employee_name_snapshot = Column(String(50), nullable=False, default="")
+    employee_category_id_snapshot = Column(String(32), nullable=True)
+    employee_category_name_snapshot = Column(String(50), nullable=False, default="")
+    treatment_name_snapshot = Column(String(50), nullable=False, default="")
+    treatment_short_snapshot = Column(String(10), nullable=False, default="")
+    treatment_code_snapshot = Column(String(40), nullable=False, default="")
+    price_snapshot = Column(Integer, nullable=False, default=0)
+    incentive_type_snapshot = Column(String(10), nullable=False, default="none")
+    incentive_value_snapshot = Column(Float, nullable=False, default=0)
+    incentive_amount = Column(Integer, nullable=False, default=0)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("performed_on", "employee_id", "treatment_id",
+                         name="uq_settlement_cell"),
+    )
+
+
+class RevenueRecord(Base):
+    """Daily revenue record used as the source of truth for revenue statistics."""
+    __tablename__ = "revenue_records"
+    id = Column(String(32), primary_key=True, default=uid)
+    record_date = Column(String(10), nullable=False, index=True)
+    category_id = Column(String(32), nullable=False, default="", index=True)
+    cash_amount = Column(Integer, nullable=False, default=0)
+    card_amount = Column(Integer, nullable=False, default=0)
+    transfer_amount = Column(Integer, nullable=False, default=0)
+    other_amount = Column(Integer, nullable=False, default=0)
+    memo = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("record_date", "category_id", name="uq_revenue_record_date_category"),
+    )
+
+
 class ManualCount(Base):
     """집계 수동 카운트 (v1.2.7+).
     체외충격파 등 당일 내방 환자처럼 예약 등록 없이 바로 진행한 경우,
@@ -310,6 +415,76 @@ class ManualCount(Base):
     __table_args__ = (
         UniqueConstraint("count_date", "therapist_id", "treatment_code",
                          name="uq_manual_count_key"),
+    )
+
+
+class InventoryCategoryState(Base):
+    """Per-department inventory metadata such as the last writer."""
+    __tablename__ = "inventory_category_states"
+    id = Column(String(32), primary_key=True, default=uid)
+    category_id = Column(String(32), ForeignKey("employee_categories.id"),
+                         nullable=False, unique=True, index=True)
+    last_author = Column(String(50), nullable=False, default="")
+    last_written_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    category = relationship("EmployeeCategory")
+
+
+class InventoryItem(Base):
+    """Inventory item grouped by employee category/department."""
+    __tablename__ = "inventory_items"
+    id = Column(String(32), primary_key=True, default=uid)
+    category_id = Column(String(32), ForeignKey("employee_categories.id"),
+                         nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    unit = Column(String(30), nullable=False, default="")
+    active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    category = relationship("EmployeeCategory")
+    values = relationship("InventoryValue", back_populates="item",
+                          cascade="all, delete-orphan")
+
+
+class InventoryField(Base):
+    """Dynamic management column for inventory items in one department."""
+    __tablename__ = "inventory_fields"
+    id = Column(String(32), primary_key=True, default=uid)
+    category_id = Column(String(32), ForeignKey("employee_categories.id"),
+                         nullable=False, index=True)
+    name = Column(String(50), nullable=False)
+    field_type = Column(String(20), nullable=False, default="text")
+    sort_order = Column(Integer, default=0)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    category = relationship("EmployeeCategory")
+    values = relationship("InventoryValue", back_populates="field",
+                          cascade="all, delete-orphan")
+
+
+class InventoryValue(Base):
+    """Cell value for inventory item x dynamic field."""
+    __tablename__ = "inventory_values"
+    id = Column(String(32), primary_key=True, default=uid)
+    item_id = Column(String(32), ForeignKey("inventory_items.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    field_id = Column(String(32), ForeignKey("inventory_fields.id", ondelete="CASCADE"),
+                      nullable=False, index=True)
+    value = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    item = relationship("InventoryItem", back_populates="values")
+    field = relationship("InventoryField", back_populates="values")
+
+    __table_args__ = (
+        UniqueConstraint("item_id", "field_id", name="uq_inventory_value_cell"),
     )
 
 

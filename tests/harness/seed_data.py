@@ -54,12 +54,22 @@ def _seed_treatments(db):
     """manual90 추가 (count_increment=1, role=therapist)."""
     from app.models import models
 
-    if not db.query(models.Treatment).filter(models.Treatment.code == "manual90").first():
+    therapy_category = _ensure_test_therapy_category(db)
+    db.query(models.Treatment).filter(
+        models.Treatment.role == "therapist",
+        models.Treatment.category_id.is_(None),
+    ).update(
+        {"category_id": therapy_category.id},
+        synchronize_session=False,
+    )
+    existing = db.query(models.Treatment).filter(models.Treatment.code == "manual90").first()
+    if not existing:
         max_sort = db.query(models.Treatment).count()
         db.add(models.Treatment(
             code="manual90",
             name="도수치료90분",
             short="도수18",
+            category_id=therapy_category.id if therapy_category else None,
             default_minutes=90,
             role="therapist",
             count_increment=1,
@@ -69,12 +79,16 @@ def _seed_treatments(db):
             price=0,
         ))
         db.flush()
+    elif not existing.category_id and therapy_category:
+        existing.category_id = therapy_category.id
+        db.flush()
 
 
 def _seed_therapists(db) -> dict:
     """3명 치료사 멱등 추가. 반환: {name: id}"""
     from app.models import models
 
+    therapy_category = _ensure_test_therapy_category(db)
     out = {}
     for name in THERAPIST_NAMES:
         existing = db.query(models.Employee).filter(
@@ -90,8 +104,11 @@ def _seed_therapists(db) -> dict:
         e = models.Employee(
             name=name,
             role="therapist",
+            category_id=therapy_category.id if therapy_category else None,
             color="#9CA3AF",
             active=True,
+            can_manual_override=True,
+            can_eswt_override=True,
             can_eswt=True,
             can_manual=True,
             sort_order=max_sort + 1,
@@ -100,6 +117,29 @@ def _seed_therapists(db) -> dict:
         db.flush()
         out[name] = e.id
     return out
+
+
+def _ensure_test_therapy_category(db):
+    """Create a test-only employee category without relying on app defaults."""
+    from app.models import models
+
+    category = db.query(models.EmployeeCategory).filter(
+        models.EmployeeCategory.name == "pytest-therapy-category"
+    ).first()
+    if category:
+        return category
+    category = models.EmployeeCategory(
+        name="pytest-therapy-category",
+        color="#3B82F6",
+        active=True,
+        sort_order=10,
+        default_can_doctor_treatment=False,
+        default_can_manual=True,
+        default_can_eswt=True,
+    )
+    db.add(category)
+    db.flush()
+    return category
 
 
 def _seed_patients(db):

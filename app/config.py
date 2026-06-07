@@ -7,8 +7,8 @@ APP_NAME = "도수치료예약"
 # ─── 앱 버전 (배포 시 업데이트) ───
 # 이 값은 프로그램 폴더에 포함되어 교체됨. %APPDATA%\도수치료예약\ 은 유지.
 # 빌드 규칙: MAJOR.MINOR.PATCH (예: 1.2.3)
-APP_VERSION = "1.3.5"
-APP_BUILD_DATE = "2026-05-05"
+APP_VERSION = "1.3.14"
+APP_BUILD_DATE = "2026-06-08"
 
 def get_appdata_dir() -> Path:
     if sys.platform == "win32":
@@ -60,7 +60,7 @@ def load_config() -> dict:
         cfg["node_id"] = uuid.uuid4().hex[:12]
         cfg["sync_secret"] = secrets.token_urlsafe(32)
         save_config(cfg); return cfg
-    with open(p, "r", encoding="utf-8") as f: cfg = json.load(f)
+    with open(p, "r", encoding="utf-8-sig") as f: cfg = json.load(f)
     for k, v in DEFAULT_CONFIG.items(): cfg.setdefault(k, v)
     # node_id / sync_secret 자동 채움 — 둘 중 하나라도 비어있으면 생성 후 저장.
     dirty = False

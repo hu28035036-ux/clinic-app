@@ -8,9 +8,10 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
-from app.config import load_config
+from app.config import get_config_path, load_config, save_config
 
 
 def _admin_token(client) -> str:
@@ -61,12 +62,36 @@ def test_backup_requires_admin(client):
     )
 
 
-def test_mode_first_call_requires_admin(client):
-    """첫 실행(cfg.mode 가 비어 있을 때) 도 인증 강제."""
-    resp = client.post("/api/mode", json={"mode": "main"})
-    assert resp.status_code == 401, (
-        "POST /api/mode 는 첫 실행이라도 관리자 인증이 필요합니다."
-    )
+def test_mode_first_local_setup_allows_without_admin_and_strips_secrets(client):
+    """첫 실행(cfg.mode 없음) + 로컬 접속은 설치 화면 진행을 위해 허용."""
+    original = dict(load_config())
+    cfg = dict(original)
+    cfg["mode"] = None
+    save_config(cfg)
+    try:
+        resp = client.post("/api/mode", json={"mode": "main"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["mode"] == "main"
+        assert "sync_secret" not in body
+        assert "admin_password_hash" not in body
+    finally:
+        save_config(original)
+
+
+def test_mode_change_after_setup_requires_admin(client):
+    """한 번 모드가 설정된 뒤에는 무인증 main/sub 전환을 막는다."""
+    original = dict(load_config())
+    cfg = dict(original)
+    cfg["mode"] = "main"
+    save_config(cfg)
+    try:
+        resp = client.post("/api/mode", json={"mode": "sub", "main_url": "http://127.0.0.1:8000"})
+        assert resp.status_code == 401, (
+            "POST /api/mode 는 첫 로컬 설치가 끝난 뒤 관리자 인증이 필요합니다."
+        )
+    finally:
+        save_config(original)
 
 
 # ─────────────────────────────────────────────────────────
@@ -169,6 +194,20 @@ def test_load_config_generates_sync_secret_per_node():
     secret = cfg.get("sync_secret") or ""
     # token_urlsafe(32) 는 약 43자 — 단순 빈 문자열/짧은 값이면 안 됨
     assert len(secret) >= 32, f"sync_secret 이 너무 짧음 (len={len(secret)})"
+
+
+def test_load_config_accepts_utf8_bom_config_file():
+    """Windows 도구가 BOM을 붙여 저장한 config.json 도 읽을 수 있어야 한다."""
+    original = dict(load_config())
+    path = get_config_path()
+    try:
+        with open(path, "w", encoding="utf-8-sig") as f:
+            json.dump(original, f, ensure_ascii=False, indent=2)
+        loaded = load_config()
+        assert loaded["node_id"] == original["node_id"]
+        assert loaded.get("sync_secret") == original.get("sync_secret")
+    finally:
+        save_config(original)
 
 
 # ─────────────────────────────────────────────────────────

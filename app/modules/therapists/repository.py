@@ -39,13 +39,17 @@ def list_all_employees(
     ``sort_order, name`` 정렬.
     """
     from app.models import models as _m
+    from app.modules.therapists import service as _service
 
     q = db.query(_m.Employee)
-    if role:
-        q = q.filter(_m.Employee.role == role)
     if active is not None:
         q = q.filter(_m.Employee.active == active)
-    return q.order_by(_m.Employee.sort_order, _m.Employee.name).all()
+    rows = q.order_by(_m.Employee.sort_order, _m.Employee.name).all()
+    if role == "therapist":
+        rows = [e for e in rows if _service.employee_can_manual(e)]
+    elif role == "doctor":
+        rows = [e for e in rows if _service.employee_can_doctor_treatment(e)]
+    return rows
 
 
 def get_employee_by_id(db: Any, employee_id: str) -> Any | None:
@@ -66,12 +70,13 @@ def list_therapists(db: Any, *, active: bool | None = None) -> list[Any]:
     ``Employee.name`` 단일 정렬. ``active`` None → 활성/비활성 모두 포함.
     """
     from app.models import models as _m
-    from app.modules.therapists import rules as _rules
+    from app.modules.therapists import service as _service
 
-    q = db.query(_m.Employee).filter(_m.Employee.role == _rules.ROLE_THERAPIST)
+    q = db.query(_m.Employee)
     if active is not None:
         q = q.filter(_m.Employee.active == active)
-    return q.order_by(_m.Employee.name).all()
+    rows = q.order_by(_m.Employee.name).all()
+    return [e for e in rows if _service.employee_can_manual(e)]
 
 
 def list_doctors(db: Any, *, active: bool | None = None) -> list[Any]:
@@ -84,12 +89,13 @@ def list_doctors(db: Any, *, active: bool | None = None) -> list[Any]:
     의 doctor 필터 분기에서 ``id → name`` 매핑 빌드용.
     """
     from app.models import models as _m
-    from app.modules.therapists import rules as _rules
+    from app.modules.therapists import service as _service
 
-    q = db.query(_m.Employee).filter(_m.Employee.role == _rules.ROLE_DOCTOR)
+    q = db.query(_m.Employee)
     if active is not None:
         q = q.filter(_m.Employee.active == active)
-    return q.order_by(_m.Employee.name).all()
+    rows = q.order_by(_m.Employee.name).all()
+    return [e for e in rows if _service.employee_can_doctor_treatment(e)]
 
 
 def list_therapists_for_manual_scheduler(db: Any) -> list[Any]:
@@ -99,18 +105,17 @@ def list_therapists_for_manual_scheduler(db: Any) -> list[Any]:
     can_manual=True``) 의 query 정합. 도수치료 컬럼 / 캘린더 resource 표시용.
     """
     from app.models import models as _m
-    from app.modules.therapists import rules as _rules
+    from app.modules.therapists import service as _service
 
-    return (
+    rows = (
         db.query(_m.Employee)
         .filter(
-            _m.Employee.role == _rules.ROLE_THERAPIST,
             _m.Employee.active == True,  # noqa: E712 — SQLAlchemy expr
-            _m.Employee.can_manual == True,  # noqa: E712 — SQLAlchemy expr
         )
         .order_by(_m.Employee.sort_order, _m.Employee.name)
         .all()
     )
+    return [e for e in rows if _service.employee_can_manual(e)]
 
 
 def list_active_therapists(db: Any) -> list[Any]:
@@ -120,17 +125,17 @@ def list_active_therapists(db: Any) -> list[Any]:
     True``) 의 query 패턴 정합. ``Employee.name`` 단일 정렬.
     """
     from app.models import models as _m
-    from app.modules.therapists import rules as _rules
+    from app.modules.therapists import service as _service
 
-    return (
+    rows = (
         db.query(_m.Employee)
         .filter(
-            _m.Employee.role == _rules.ROLE_THERAPIST,
             _m.Employee.active == True,  # noqa: E712 — SQLAlchemy expr
         )
         .order_by(_m.Employee.name)
         .all()
     )
+    return [e for e in rows if _service.employee_can_manual(e)]
 
 
 def get_employees_by_ids(db: Any, employee_ids: list[str]) -> list[Any]:
@@ -157,8 +162,14 @@ def count_employees_by_role(db: Any, role: str) -> int:
     ``models.Employee.role == p.role`` count 정합.
     """
     from app.models import models as _m
+    from app.modules.therapists import service as _service
 
-    return db.query(_m.Employee).filter(_m.Employee.role == role).count()
+    rows = db.query(_m.Employee).all()
+    if role == "therapist":
+        return sum(1 for e in rows if _service.employee_can_manual(e))
+    if role == "doctor":
+        return sum(1 for e in rows if _service.employee_can_doctor_treatment(e))
+    return 0
 
 
 __all__ = [

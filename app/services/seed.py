@@ -9,33 +9,49 @@ from datetime import datetime, timedelta
 import json
 from ..models.models import (SystemSetting, SmsSetting, Treatment, SmsTemplate,
                               Employee, Patient, Appointment)
-from ..models.constants import SEED_TREATMENTS
+from ..modules.treatments.defaults import load_default_treatments
 
 
 def seed_defaults(db):
     """앱 시작 시 호출 — 멱등."""
+    _seed_employee_categories(db)
     _seed_treatments(db)
     _seed_system_setting(db)
     _seed_sms_setting(db)
     _seed_sms_template(db)
 # _seed_demo_data(db)  # 배포용: 샘플 환자/직원/예약 자동 생성 차단
 
+# Employee categories are intentionally not seeded. Clinics create their own
+# departments from the employee management screen.
+DEFAULT_EMPLOYEE_CATEGORIES = ()
+
+
+def _seed_employee_categories(db):
+    for item in DEFAULT_EMPLOYEE_CATEGORIES:
+        exists = db.query(EmployeeCategory).filter_by(name=item["name"]).first()
+        if exists:
+            continue
+        db.add(EmployeeCategory(active=True, **item))
+
+
 def _seed_treatments(db):
-    """치료항목 5개 자동 등록 (이미 있으면 건너뜀)."""
-    for idx, (code, name, short, mins, role, count_inc, show) in enumerate(SEED_TREATMENTS):
+    """치료항목 기본 JSON 기준으로 누락 항목만 자동 등록."""
+    for idx, item in enumerate(load_default_treatments()):
+        code = item["code"]
         exists = db.query(Treatment).filter_by(code=code).first()
         if exists:
             continue
         db.add(Treatment(
             code=code,
-            name=name,
-            short=short,
-            default_minutes=mins,
-            role=role,
-            count_increment=count_inc,
-            show_in_patient=show,
-            active=True,
-            sort_order=idx + 1,
+            name=item["name"],
+            short=item["short"],
+            category_id=None,
+            default_minutes=item["default_minutes"],
+            role=item["role"],
+            count_increment=item["count_increment"],
+            show_in_patient=item["show_in_patient"],
+            active=item["active"],
+            sort_order=item.get("sort_order") or (idx + 1),
         ))
 
 

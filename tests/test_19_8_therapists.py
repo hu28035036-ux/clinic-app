@@ -190,7 +190,7 @@ def test_list_all_employees_role_filter(client):
     db = SessionLocal()
     try:
         therapists_only = _repo.list_all_employees(db, role="therapist")
-        assert all(e.role == "therapist" for e in therapists_only)
+        assert all(_service.employee_can_manual(e) for e in therapists_only)
     finally:
         db.close()
 
@@ -202,7 +202,7 @@ def test_list_therapists_returns_only_therapist_role(client):
     db = SessionLocal()
     try:
         rows = _repo.list_therapists(db)
-        assert all(e.role == "therapist" for e in rows)
+        assert all(_service.employee_can_manual(e) for e in rows)
         names = {e.name for e in rows}
         assert "김테스트치료사" in names
     finally:
@@ -219,7 +219,7 @@ def test_list_doctors_returns_only_doctor_role(client):
     db = SessionLocal()
     try:
         rows = _repo.list_doctors(db)
-        assert all(e.role == "doctor" for e in rows)
+        assert all(_service.employee_can_doctor_treatment(e) for e in rows)
     finally:
         db.close()
 
@@ -259,9 +259,8 @@ def test_list_therapists_for_manual_scheduler_filters(client):
     try:
         rows = _repo.list_therapists_for_manual_scheduler(db)
         for e in rows:
-            assert e.role == "therapist"
             assert bool(e.active) is True
-            assert bool(e.can_manual) is True
+            assert _service.employee_can_manual(e) is True
     finally:
         db.close()
 
@@ -274,8 +273,8 @@ def test_list_active_therapists_filters(client):
     try:
         rows = _repo.list_active_therapists(db)
         for e in rows:
-            assert e.role == "therapist"
             assert bool(e.active) is True
+            assert _service.employee_can_manual(e) is True
     finally:
         db.close()
 
@@ -337,11 +336,15 @@ def test_serialize_employee_byte_equivalent_with_api(client):
         service_dict = _service.serialize_employee(e)
 
         assert api_dict == service_dict
-        # 12키 정합 (20-3-2 F-11 permission_level 추가).
+        # role 공개 제거 + 과/권한 계약 정합.
         assert set(service_dict.keys()) == {
-            "id", "name", "role", "color", "active",
+            "id", "name", "category_id", "category_name", "color", "active",
             "birth_date", "phone", "hire_date",
-            "can_eswt", "can_manual", "sort_order",
+            "can_doctor_treatment", "can_eswt", "can_manual",
+            "can_doctor_treatment_override",
+            "can_eswt_override", "can_manual_override",
+            "treatment_override_enabled", "treatment_ids",
+            "sort_order",
             # 20-3-2 (post-19-P / F-11)
             "permission_level",
         }
@@ -375,9 +378,13 @@ def test_get_employees_endpoint_keys_match_serialize_employee(client):
     assert isinstance(items, list)
     assert len(items) >= 1
     expected_keys = {
-        "id", "name", "role", "color", "active",
+        "id", "name", "category_id", "category_name", "color", "active",
         "birth_date", "phone", "hire_date",
-        "can_eswt", "can_manual", "sort_order",
+        "can_doctor_treatment", "can_eswt", "can_manual",
+        "can_doctor_treatment_override",
+        "can_eswt_override", "can_manual_override",
+        "treatment_override_enabled", "treatment_ids",
+        "sort_order",
         # 20-3-2 (post-19-P / F-11)
         "permission_level",
     }
@@ -561,9 +568,9 @@ def test_existing_employee_role_doctor_endpoint_still_works(client):
     assert r.status_code == 200
     items = r.json()
     assert isinstance(items, list)
-    # 시드에는 의사가 없으므로 빈 리스트 또는 doctor role 만.
+    # 시드에는 진료항목 처리 가능 직원이 없으므로 빈 리스트 또는 해당 권한 직원만.
     for item in items:
-        assert item["role"] == "doctor"
+        assert item["can_doctor_treatment"] is True
 
 
 # ──────────────────────── 14. 라우터 함수 시그니처 무수정 ────────────────────
@@ -582,8 +589,9 @@ def test_list_employees_router_signature_unchanged():
     from app.routers.api import list_employees
 
     sig = inspect.signature(list_employees)
-    # role / active / db 3 파라미터.
+    # role legacy filter / category_id / active / db 파라미터.
     assert "role" in sig.parameters
+    assert "category_id" in sig.parameters
     assert "active" in sig.parameters
     assert "db" in sig.parameters
 

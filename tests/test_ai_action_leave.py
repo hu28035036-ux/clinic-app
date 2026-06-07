@@ -389,8 +389,8 @@ def test_T11_inactive(client, extra_seed, monkeypatch):
         _teardown_fake(client)
 
 
-def test_T12_not_therapist(client, extra_seed, monkeypatch):
-    """T12: role=doctor → not_therapist."""
+def test_T12_active_doctor_employee_matches(client, extra_seed, monkeypatch):
+    """T12: active doctor employee is eligible for leave matching."""
     _freeze_time(monkeypatch, 2026, 4, 28)
     fake = FakeProvider(return_text=_llm_response(name=extra_seed["doctor"]))
     _setup_fake(client, fake)
@@ -399,8 +399,9 @@ def test_T12_not_therapist(client, extra_seed, monkeypatch):
             "text": f"{extra_seed['doctor']} 4월30일 종일 휴무",
         })
         body = r.json()
-        assert body["safe_to_execute"] is False
-        assert body["outcome"] == "not_therapist"
+        assert body["safe_to_execute"] is True
+        assert body["outcome"] == "ok"
+        assert body["candidate"]["employee_name"] == extra_seed["doctor"]
     finally:
         _teardown_fake(client)
 

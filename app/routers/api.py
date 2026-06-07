@@ -166,12 +166,126 @@ def _therapist_only_codes_set(db) -> set:
             if t.role == "therapist" and t.code != C.ESWT_CODE}
 
 
-def _serialize_employee(e: models.Employee) -> dict:
+def _manual_category_ids(db) -> set[str]:
     return {
-        "id": e.id, "name": e.name, "role": e.role, "color": e.color,
+        c.id for c in db.query(models.EmployeeCategory).all()
+        if bool(c.default_can_manual)
+    }
+
+
+def _employee_treatment_ids(db: Session, e: models.Employee) -> list[str]:
+    explicit = [
+        row.treatment_id
+        for row in db.query(models.EmployeeTreatment)
+        .filter(models.EmployeeTreatment.employee_id == e.id)
+        .all()
+    ]
+    if getattr(e, "treatment_override_enabled", False):
+        return explicit
+    if not e.category_id:
+        return []
+    return [
+        t.id
+        for t in db.query(models.Treatment)
+        .filter(models.Treatment.category_id == e.category_id,
+                models.Treatment.active == True)  # noqa: E712
+        .order_by(models.Treatment.sort_order, models.Treatment.name)
+        .all()
+    ]
+
+
+def _employee_treatment_codes(db: Session, e: models.Employee) -> set[str]:
+    ids = set(_employee_treatment_ids(db, e))
+    if not ids:
+        return set()
+    return {
+        t.code for t in db.query(models.Treatment)
+        .filter(models.Treatment.id.in_(ids))
+        .all()
+    }
+
+
+def _employee_can_handle_treatment(db: Session, e: models.Employee, code: str) -> bool:
+    if not e or not code:
+        return False
+    codes = _employee_treatment_codes(db, e)
+    if codes:
+        return code in codes
+    return True
+
+
+def _employee_can_doctor_treatment(e: models.Employee) -> bool:
+    override = getattr(e, "can_doctor_treatment_override", None)
+    if override is not None:
+        return bool(override)
+    category = getattr(e, "category", None)
+    if category is not None:
+        return bool(category.default_can_doctor_treatment)
+    return getattr(e, "role", "") == C.ROLE_DOCTOR
+
+
+def _employee_can_manual(e: models.Employee) -> bool:
+    override = getattr(e, "can_manual_override", None)
+    if override is not None:
+        return bool(override)
+    category = getattr(e, "category", None)
+    if category is not None:
+        return bool(category.default_can_manual)
+    return bool(getattr(e, "can_manual", True))
+
+
+def _employee_can_eswt(e: models.Employee) -> bool:
+    override = getattr(e, "can_eswt_override", None)
+    if override is not None:
+        return bool(override)
+    category = getattr(e, "category", None)
+    if category is not None:
+        return bool(category.default_can_eswt)
+    return bool(getattr(e, "can_eswt", True))
+
+
+def _sync_legacy_employee_capability_fields(e: models.Employee):
+    """Keep deprecated role/can_* columns coherent for legacy reads and sync."""
+    e.can_manual = _employee_can_manual(e)
+    e.can_eswt = _employee_can_eswt(e)
+    e.role = (
+        C.ROLE_DOCTOR
+        if _employee_can_doctor_treatment(e) and not _employee_can_manual(e)
+        else C.ROLE_THERAPIST
+    )
+
+
+def _serialize_employee_category(c: models.EmployeeCategory) -> dict:
+    return {
+        "id": c.id,
+        "name": c.name,
+        "color": c.color or "#9CA3AF",
+        "active": bool(c.active),
+        "sort_order": c.sort_order or 0,
+        "default_can_doctor_treatment": bool(c.default_can_doctor_treatment),
+        "default_can_manual": bool(c.default_can_manual),
+        "default_can_eswt": bool(c.default_can_eswt),
+    }
+
+
+def _serialize_employee(e: models.Employee) -> dict:
+    category = getattr(e, "category", None)
+    return {
+        "id": e.id, "name": e.name,
+        "category_id": e.category_id,
+        "category_name": category.name if category else "",
+        "color": e.color,
         "active": bool(e.active), "birth_date": e.birth_date, "phone": e.phone,
         "hire_date": e.hire_date,
-        "can_eswt": bool(e.can_eswt), "can_manual": bool(e.can_manual),
+        "can_doctor_treatment": _employee_can_doctor_treatment(e),
+        "can_manual": _employee_can_manual(e),
+        "can_eswt": _employee_can_eswt(e),
+        "can_doctor_treatment_override": e.can_doctor_treatment_override,
+        "can_manual_override": e.can_manual_override,
+        "can_eswt_override": e.can_eswt_override,
+        "treatment_override_enabled": bool(getattr(e, "treatment_override_enabled", False)),
+        "treatment_ids": _employee_treatment_ids(e._sa_instance_state.session, e)
+        if getattr(e, "_sa_instance_state", None) and e._sa_instance_state.session else [],
         "sort_order": e.sort_order or 0,
         # 20-3-2 (post-19-P / F-11): 권한 등급 — 'staff' / 'admin' / 'super'
         "permission_level": e.permission_level or "staff",
@@ -750,16 +864,25 @@ def update_config(payload: dict, db: Session = Depends(get_db), _: bool = Depend
 
 
 @router.post("/mode")
-def set_mode(p: schemas.ModeSelect, x_admin_token: str = Header(default="")):
+def set_mode(
+    p: schemas.ModeSelect,
+    request: Request,
+    x_admin_token: str = Header(default=""),
+):
     """노드 모드(main/sub) 변경.
 
-    인증 정책: 항상 관리자 인증 필요.
-    이전 코드는 cfg.get("mode") 가 None 일 때(첫 실행) 인증 없이 변경 허용했지만,
-    이는 외부에서 누구나 main↔sub 전환을 트리거할 수 있어 위험.
+    인증 정책:
+    - 첫 실행(cfg.mode 없음) + 로컬 접속은 설치 화면 진행을 위해 허용.
+    - 그 외 모드 변경은 관리자 인증 필요.
     """
-    if not auth.is_valid(x_admin_token):
-        raise HTTPException(401, "모드 변경은 관리자 인증이 필요합니다.")
     cfg = load_config()
+    client_host = request.client.host if request.client else ""
+    is_local_first_setup = (
+        not cfg.get("mode")
+        and client_host in {"127.0.0.1", "::1", "localhost", "testclient"}
+    )
+    if not is_local_first_setup and not auth.is_valid(x_admin_token):
+        raise HTTPException(401, "모드 변경은 관리자 인증이 필요합니다.")
     if p.mode not in ("main", "sub"):
         raise HTTPException(400, "mode must be 'main' or 'sub'")
     cfg["mode"] = p.mode
@@ -767,16 +890,23 @@ def set_mode(p: schemas.ModeSelect, x_admin_token: str = Header(default="")):
         if not p.main_url:
             raise HTTPException(400, "main_url required for sub")
         cfg["main_url"] = p.main_url.rstrip("/")
-    save_config(cfg); return cfg
+    save_config(cfg)
+    out = dict(cfg)
+    out.pop("sync_secret", None)
+    out.pop("admin_password_hash", None)
+    return out
 
 
 # ──────────────── 치료항목 메타 (DB 기반) ────────────────
 
 def _serialize_treatment(t: models.Treatment) -> dict:
+    category = getattr(t, "category", None)
     return {
         "id": t.id,
         "code": t.code,
         "name": t.name,
+        "category_id": getattr(t, "category_id", None),
+        "category_name": category.name if category else "",
         "short": t.short,
         "default_minutes": t.default_minutes,
         "role": t.role,
@@ -827,6 +957,11 @@ def _build_treatment_meta(db) -> dict:
 
     treatment_codes = [t.code for t in treatments if t.active]
     treatment_names = {t.code: t.name for t in treatments}
+    treatment_category = {t.code: t.category_id for t in treatments}
+    treatment_category_name = {
+        t.code: (t.category.name if getattr(t, "category", None) else "")
+        for t in treatments
+    }
     treatment_short = {t.code: t.short for t in treatments}
     doctor_treatments = [t.code for t in treatments if t.active and t.role == "doctor"]
     therapist_treatments = [t.code for t in treatments if t.active and t.role == "therapist"]
@@ -845,6 +980,8 @@ def _build_treatment_meta(db) -> dict:
     return {
         "treatment_codes": treatment_codes,
         "treatment_names": treatment_names,
+        "treatment_category": treatment_category,
+        "treatment_category_name": treatment_category_name,
         "treatment_short": treatment_short,
         "treatment_minutes": treatment_minutes,
         "treatment_role": treatment_role,
@@ -860,7 +997,22 @@ def _build_treatment_meta(db) -> dict:
         "treatment_incentive_amount": treatment_incentive_amount,
         # 모든 치료항목 (활성 + 비활성) — 관리자 화면용
         "all_treatments": [_serialize_treatment(t) for t in treatments],
+        "employee_categories": [
+            _serialize_employee_category(c)
+            for c in db.query(models.EmployeeCategory)
+            .order_by(models.EmployeeCategory.sort_order, models.EmployeeCategory.name)
+            .all()
+        ],
     }
+
+
+def _role_for_treatment_category(category: Optional[models.EmployeeCategory],
+                                 fallback: str = C.ROLE_THERAPIST) -> str:
+    if category and category.default_can_doctor_treatment and not category.default_can_manual:
+        return C.ROLE_DOCTOR
+    if fallback in (C.ROLE_DOCTOR, C.ROLE_THERAPIST):
+        return fallback
+    return C.ROLE_THERAPIST
 
 
 @router.get("/treatment-meta")
@@ -886,6 +1038,15 @@ def _slug_code(name: str) -> str:
     return f"tx_{secrets.token_hex(4)}"
 
 
+def _validate_treatment_code(code: str) -> str:
+    """Internal treatment codes are stable appointment/reference keys."""
+    import re
+    code = (code or "").strip()
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,39}", code):
+        raise HTTPException(400, "치료항목 코드는 영문으로 시작하고 영문/숫자/_ 만 사용할 수 있습니다.")
+    return code
+
+
 @router.post("/treatments")
 def create_treatment(p: schemas.TreatmentIn, db: Session = Depends(get_db),
                      _: bool = Depends(require_admin)):
@@ -894,24 +1055,25 @@ def create_treatment(p: schemas.TreatmentIn, db: Session = Depends(get_db),
     if dup:
         raise HTTPException(400, f"약자 '{p.short}' 가 이미 사용 중입니다 (항목: {dup.name})")
     # 코드 결정
-    code = (p.code or "").strip() or _slug_code(p.name)
+    code = _validate_treatment_code((p.code or "").strip() or _slug_code(p.name))
     code_dup = db.query(models.Treatment).filter(models.Treatment.code == code).first()
     if code_dup:
         # 코드 충돌 시 자동 변경
         import secrets
-        code = f"{code}_{secrets.token_hex(2)}"
+        code = f"{code[:35]}_{secrets.token_hex(2)}"
     # sort_order 자동: 기존 max+1
     max_sort = db.query(models.Treatment).count()
-    if p.role not in ("doctor", "therapist"):
-        raise HTTPException(400, "역할은 doctor 또는 therapist 여야 합니다.")
+    category = _get_employee_category_or_default(db, p.category_id)
+    role = _role_for_treatment_category(category, p.role)
 
     inc_pct, inc_amount = _normalize_incentive(p.incentive_pct, p.incentive_amount)
     t = models.Treatment(
         code=code,
         name=p.name.strip(),
+        category_id=category.id,
         short=p.short.strip(),
         default_minutes=max(5, p.default_minutes),
-        role=p.role,
+        role=role,
         count_increment=max(0, p.count_increment),
         show_in_patient=p.show_in_patient,
         active=p.active,
@@ -940,14 +1102,15 @@ def update_treatment(tid: str, p: schemas.TreatmentIn, db: Session = Depends(get
     ).first()
     if dup:
         raise HTTPException(400, f"약자 '{p.short}' 가 이미 사용 중입니다 (항목: {dup.name})")
-    if p.role not in ("doctor", "therapist"):
-        raise HTTPException(400, "역할은 doctor 또는 therapist 여야 합니다.")
+    category = _get_employee_category_or_default(db, p.category_id or t.category_id)
+    role = _role_for_treatment_category(category, p.role)
 
     inc_pct, inc_amount = _normalize_incentive(p.incentive_pct, p.incentive_amount)
     t.name = p.name.strip()
+    t.category_id = category.id
     t.short = p.short.strip()
     t.default_minutes = max(5, p.default_minutes)
-    t.role = p.role
+    t.role = role
     t.count_increment = max(0, p.count_increment)
     t.show_in_patient = p.show_in_patient
     t.active = p.active
@@ -961,6 +1124,19 @@ def update_treatment(tid: str, p: schemas.TreatmentIn, db: Session = Depends(get
     _log(db, "treatment", t.id, "upsert", t)
     db.commit()
     return _serialize_treatment(t)
+
+
+@router.post("/treatments/reorder")
+async def reorder_treatments(request: Request, db: Session = Depends(get_db),
+                             _: bool = Depends(require_admin)):
+    payload = await request.json()
+    for item in payload:
+        t = db.get(models.Treatment, item["id"])
+        if t:
+            t.sort_order = int(item.get("sort_order") or 0)
+            _log(db, "treatment", t.id, "upsert", t)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/treatments/{tid}/references")
@@ -1004,6 +1180,9 @@ def delete_treatment(tid: str, db: Session = Depends(get_db),
         raise HTTPException(400,
             f"이 치료항목을 사용하는 예약이 {refs_count}건 있어 삭제할 수 없습니다. "
             f"비활성화로 전환하거나, 참조 예약을 정리한 후 다시 시도하세요.")
+    db.query(models.EmployeeTreatment).filter(
+        models.EmployeeTreatment.treatment_id == tid
+    ).delete()
     # PatientTreatmentCount 도 cascade 로 삭제됨
     audit(db, "treatment.delete", tid, t.name)
     _log(db, "treatment", tid, "delete", t)
@@ -1014,15 +1193,192 @@ def delete_treatment(tid: str, db: Session = Depends(get_db),
 
 # ──────────────── 직원 (Employee) ────────────────
 
+def _get_employee_category_or_default(
+    db: Session,
+    category_id: Optional[str],
+) -> models.EmployeeCategory:
+    if not category_id:
+        raise HTTPException(400, "과를 먼저 추가하고 선택해주세요.")
+    if category_id:
+        row = db.get(models.EmployeeCategory, category_id)
+        if not row:
+            raise HTTPException(400, "존재하지 않는 직원 과입니다.")
+        return row
+    raise HTTPException(400, "과를 먼저 추가하고 선택해주세요.")
+
+
+def _apply_employee_payload(e: models.Employee, p: schemas.EmployeeIn, db: Session):
+    fields = getattr(p, "model_fields_set", set())
+    category = _get_employee_category_or_default(db, p.category_id)
+    e.category = category
+    e.category_id = category.id
+    e.name = p.name
+    e.color = p.color
+    e.active = p.active
+    e.birth_date = p.birth_date
+    e.phone = p.phone
+    e.hire_date = p.hire_date
+
+    if "can_doctor_treatment_override" in fields:
+        e.can_doctor_treatment_override = p.can_doctor_treatment_override
+    elif "can_doctor_treatment" in fields and p.can_doctor_treatment is not None:
+        e.can_doctor_treatment_override = p.can_doctor_treatment
+
+    if "can_manual_override" in fields:
+        e.can_manual_override = p.can_manual_override
+    elif "can_manual" in fields and p.can_manual is not None:
+        e.can_manual_override = p.can_manual
+
+    if "can_eswt_override" in fields:
+        e.can_eswt_override = p.can_eswt_override
+    elif "can_eswt" in fields and p.can_eswt is not None:
+        e.can_eswt_override = p.can_eswt
+
+    _sync_legacy_employee_capability_fields(e)
+
+
+def _set_employee_treatments(e: models.Employee, p: schemas.EmployeeIn, db: Session):
+    fields = getattr(p, "model_fields_set", set())
+    if "treatment_ids" not in fields and "treatment_override_enabled" not in fields:
+        return
+
+    explicit_ids = list(dict.fromkeys(p.treatment_ids or []))
+    category_id = e.category_id
+    if explicit_ids:
+        valid = {
+            t.id for t in db.query(models.Treatment)
+            .filter(models.Treatment.id.in_(explicit_ids),
+                    models.Treatment.category_id == category_id)
+            .all()
+        }
+        invalid = [tid for tid in explicit_ids if tid not in valid]
+        if invalid:
+            raise HTTPException(400, "직원 과에 속하지 않은 치료항목은 선택할 수 없습니다.")
+
+    db.query(models.EmployeeTreatment).filter(
+        models.EmployeeTreatment.employee_id == e.id
+    ).delete()
+    e.treatment_override_enabled = (
+        bool(p.treatment_override_enabled)
+        if p.treatment_override_enabled is not None
+        else True
+    )
+    for tid in explicit_ids:
+        db.add(models.EmployeeTreatment(employee_id=e.id, treatment_id=tid))
+
+
+@router.get("/employee-categories")
+def list_employee_categories(active: Optional[bool] = None,
+                             db: Session = Depends(get_db)):
+    q = db.query(models.EmployeeCategory)
+    if active is not None:
+        q = q.filter(models.EmployeeCategory.active == active)
+    rows = q.order_by(models.EmployeeCategory.sort_order,
+                      models.EmployeeCategory.name).all()
+    return [_serialize_employee_category(c) for c in rows]
+
+
+@router.post("/employee-categories")
+def create_employee_category(p: schemas.EmployeeCategoryIn,
+                             db: Session = Depends(get_db)):
+    if not p.name.strip():
+        raise HTTPException(400, "과 이름을 입력하세요.")
+    exists = db.query(models.EmployeeCategory).filter(
+        models.EmployeeCategory.name == p.name.strip()
+    ).first()
+    if exists:
+        raise HTTPException(400, "이미 존재하는 과 이름입니다.")
+    c = models.EmployeeCategory(**p.model_dump())
+    c.name = c.name.strip()
+    if not c.sort_order:
+        c.sort_order = db.query(models.EmployeeCategory).count() + 1
+    db.add(c); db.flush()
+    _log(db, "employee_category", c.id, "upsert", c)
+    audit(db, "employee_category.create", c.id, f"name={c.name}")
+    db.commit(); db.refresh(c)
+    return _serialize_employee_category(c)
+
+
+@router.put("/employee-categories/{cid}")
+def update_employee_category(cid: str, p: schemas.EmployeeCategoryIn,
+                             db: Session = Depends(get_db)):
+    c = db.get(models.EmployeeCategory, cid)
+    if not c:
+        raise HTTPException(404)
+    if not p.name.strip():
+        raise HTTPException(400, "과 이름을 입력하세요.")
+    exists = db.query(models.EmployeeCategory).filter(
+        models.EmployeeCategory.name == p.name.strip(),
+        models.EmployeeCategory.id != cid,
+    ).first()
+    if exists:
+        raise HTTPException(400, "이미 존재하는 과 이름입니다.")
+    for k, v in p.model_dump().items():
+        setattr(c, k, v)
+    c.name = c.name.strip()
+    db.flush()
+    _log(db, "employee_category", c.id, "upsert", c)
+    audit(db, "employee_category.update", c.id, f"name={c.name}")
+    db.commit(); db.refresh(c)
+    return _serialize_employee_category(c)
+
+
+@router.post("/employee-categories/reorder")
+async def reorder_employee_categories(request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+    for item in payload:
+        c = db.get(models.EmployeeCategory, item["id"])
+        if c:
+            c.sort_order = item["sort_order"]
+            _log(db, "employee_category", c.id, "upsert", c)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/employee-categories/{cid}")
+def delete_employee_category(cid: str, db: Session = Depends(get_db),
+                             _: bool = Depends(require_admin)):
+    c = db.get(models.EmployeeCategory, cid)
+    if not c:
+        raise HTTPException(404)
+    employee_refs = db.query(models.Employee).filter(
+        models.Employee.category_id == cid
+    ).count()
+    treatment_refs = db.query(models.Treatment).filter(
+        models.Treatment.category_id == cid
+    ).count()
+    if employee_refs or treatment_refs:
+        c.active = False
+        db.flush()
+        _log(db, "employee_category", c.id, "upsert", c)
+        audit(db, "employee_category.deactivate", c.id,
+              f"name={c.name} employees={employee_refs} treatments={treatment_refs}")
+        db.commit()
+        return {
+            "ok": True, "deleted": False, "deactivated": True,
+            "employee_refs": employee_refs, "treatment_refs": treatment_refs,
+        }
+    _log(db, "employee_category", c.id, "delete", c)
+    audit(db, "employee_category.delete", c.id, f"name={c.name}")
+    db.delete(c)
+    db.commit()
+    return {"ok": True, "deleted": True}
+
+
 @router.get("/employees")
 def list_employees(role: str = "", active: Optional[bool] = None,
+                   category_id: str = "",
                    db: Session = Depends(get_db)):
     q = db.query(models.Employee)
-    if role:
-        q = q.filter(models.Employee.role == role)
     if active is not None:
         q = q.filter(models.Employee.active == active)
+    if category_id:
+        q = q.filter(models.Employee.category_id == category_id)
     rows = q.order_by(models.Employee.sort_order, models.Employee.name).all()
+    if role == C.ROLE_THERAPIST:
+        rows = [e for e in rows if _employee_can_manual(e)]
+    elif role == C.ROLE_DOCTOR:
+        rows = [e for e in rows if _employee_can_doctor_treatment(e)]
     return [_serialize_employee(e) for e in rows]
 
 
@@ -1040,17 +1396,17 @@ async def reorder_employees(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/employees")
 def create_employee(p: schemas.EmployeeIn, db: Session = Depends(get_db)):
-    if p.role not in C.ROLES:
-        raise HTTPException(400, f"role은 {C.ROLES} 중 하나여야 합니다.")
-    # 신규 직원 sort_order = 같은 역할 내 최댓값 + 1
+    e = models.Employee()
+    _apply_employee_payload(e, p, db)
+    # 신규 직원 sort_order = 같은 과 내 최댓값 + 1
     max_order = db.query(models.Employee).filter(
-        models.Employee.role == p.role
+        models.Employee.category_id == e.category_id
     ).count()
-    e = models.Employee(**p.model_dump())
     e.sort_order = max_order + 1
     db.add(e); db.flush()
+    _set_employee_treatments(e, p, db)
     _log(db, "employee", e.id, "upsert", e)
-    audit(db, "employee.create", e.id, f"name={e.name} role={e.role}")
+    audit(db, "employee.create", e.id, f"name={e.name} category={e.category_id}")
     db.commit(); db.refresh(e)
     return _serialize_employee(e)
 
@@ -1060,11 +1416,9 @@ def update_employee(eid: str, p: schemas.EmployeeIn, db: Session = Depends(get_d
     e = db.get(models.Employee, eid)
     if not e:
         raise HTTPException(404)
-    if p.role not in C.ROLES:
-        raise HTTPException(400, f"role은 {C.ROLES} 중 하나여야 합니다.")
-    for k, v in p.model_dump().items():
-        setattr(e, k, v)
+    _apply_employee_payload(e, p, db)
     db.flush()
+    _set_employee_treatments(e, p, db)
     _log(db, "employee", e.id, "upsert", e)
     audit(db, "employee.update", e.id, f"name={e.name}")
     db.commit(); db.refresh(e)
@@ -1078,6 +1432,9 @@ def delete_employee(eid: str, db: Session = Depends(get_db),
     e = db.get(models.Employee, eid)
     if not e:
         raise HTTPException(404)
+    db.query(models.EmployeeTreatment).filter(
+        models.EmployeeTreatment.employee_id == eid
+    ).delete()
     db.delete(e)
     _log(db, "employee", eid, "delete", None)
     audit(db, "employee.delete", eid, f"name={e.name}")
@@ -1218,8 +1575,8 @@ def bulk_set_employee_leaves(payload: dict, db: Session = Depends(get_db)):
 def list_therapists_alias(db: Session = Depends(get_db)):
     """치료사 역할만 반환 (프론트 호환)."""
     rows = (db.query(models.Employee)
-            .filter(models.Employee.role == C.ROLE_THERAPIST)
             .order_by(models.Employee.name).all())
+    rows = [e for e in rows if _employee_can_manual(e)]
     return [_serialize_employee(e) for e in rows]
 
 
@@ -1667,6 +2024,13 @@ def create_appointment(p: schemas.AppointmentIn, db: Session = Depends(get_db)):
     codes = [c for c in (p.treatment_codes or []) if c in valid_codes]
     if not codes:
         raise HTTPException(400, "치료항목(treatment_codes)을 하나 이상 선택하세요.")
+    if p.therapist_id:
+        h = db.get(models.Employee, p.therapist_id)
+        if not h:
+            raise HTTPException(400, "선택한 담당 직원을 찾을 수 없습니다.")
+        for code in codes:
+            if code in therapist_only_codes and not _employee_can_handle_treatment(db, h, code):
+                raise HTTPException(400, f"선택한 직원은 '{code}' 항목 담당이 불가합니다.")
     _check_lunch_block(p.start_at, p.duration_min)
     # 20-3-5 (post-19-P / F-3): 자원 충돌 검사 (capacity=1, 사용자 §7-7 (i))
     if p.resource_id:
@@ -1693,6 +2057,10 @@ def create_appointment(p: schemas.AppointmentIn, db: Session = Depends(get_db)):
     # 초기 assignments — 치료사 항목(체외충격파 제외)은 만들지 않음 (담당은 appointment.therapist_id 로)
     for a in (p.assignments or []):
         if a.treatment_code in codes and a.treatment_code not in therapist_only_codes:
+            if a.handler_id:
+                h = db.get(models.Employee, a.handler_id)
+                if not h or not _employee_can_handle_treatment(db, h, a.treatment_code):
+                    raise HTTPException(400, f"선택한 직원은 '{a.treatment_code}' 항목 담당이 불가합니다.")
             db.add(models.TreatmentAssignment(
                 appointment_id=obj.id,
                 treatment_code=a.treatment_code,
@@ -1754,6 +2122,12 @@ def update_appointment(aid: str, p: schemas.AppointmentUpdate,
             continue
         else:
             setattr(obj, k, v)
+    if obj.therapist_id:
+        h = db.get(models.Employee, obj.therapist_id)
+        current_codes = _parse_codes(obj.treatment_codes)
+        for code in current_codes:
+            if code in therapist_only_codes and h and not _employee_can_handle_treatment(db, h, code):
+                raise HTTPException(400, f"선택한 직원은 '{code}' 항목 담당이 불가합니다.")
     if "start_at" in data or "duration_min" in data:
         obj.end_at = obj.start_at + timedelta(minutes=obj.duration_min)
         _check_lunch_block(obj.start_at, obj.duration_min)
@@ -1778,6 +2152,10 @@ def update_appointment(aid: str, p: schemas.AppointmentUpdate,
             hid = a.get("handler_id") if isinstance(a, dict) else a.handler_id
             if code in therapist_only_codes:
                 continue
+            if hid:
+                h = db.get(models.Employee, hid)
+                if not h or not _employee_can_handle_treatment(db, h, code):
+                    raise HTTPException(400, f"선택한 직원은 '{code}' 항목 담당이 불가합니다.")
             if code in existing:
                 existing[code].handler_id = hid
             else:
@@ -1829,16 +2207,20 @@ def change_assignment(aid: str, p: schemas.AssignmentChange,
     if p.treatment_code not in codes:
         raise HTTPException(400, "이 예약에 해당 치료항목이 없습니다.")
 
-    # 체외충격파 이동 시 대상자가 치료사 + can_eswt=True 여야
+    # 체외충격파 이동 시 대상자가 can_eswt=True 여야
     if p.treatment_code == C.ESWT_CODE and p.handler_id:
         h = db.get(models.Employee, p.handler_id)
-        if not h or h.role != C.ROLE_THERAPIST or not h.can_eswt:
+        if not h or not _employee_can_eswt(h):
             raise HTTPException(400, "선택한 직원은 체외충격파 담당이 불가합니다.")
-    # 의사 항목 배정 시 대상자가 role=doctor 여야
+        if not _employee_can_handle_treatment(db, h, p.treatment_code):
+            raise HTTPException(400, "선택한 직원은 이 치료항목 담당이 불가합니다.")
+    # 의사 항목 배정 시 대상자가 진료항목 처리 가능해야 함
     if p.treatment_code in doctor_codes and p.handler_id:
         h = db.get(models.Employee, p.handler_id)
-        if not h or h.role != C.ROLE_DOCTOR:
-            raise HTTPException(400, "이 항목은 의사 역할만 배정할 수 있습니다.")
+        if not h or not _employee_can_doctor_treatment(h):
+            raise HTTPException(400, "이 항목은 진료항목 처리 가능 직원만 배정할 수 있습니다.")
+        if not _employee_can_handle_treatment(db, h, p.treatment_code):
+            raise HTTPException(400, "선택한 직원은 이 치료항목 담당이 불가합니다.")
 
     existing = next((a for a in obj.assignments
                      if a.treatment_code == p.treatment_code), None)
@@ -3615,7 +3997,8 @@ def stats_by_therapist(year: int, month: int, mode: str = "reserved", treatment_
                         if c == treatment_code:
                             code_counts[tid][c] += 1
     if is_doctor_filter:
-        therapists = {t.id: t.name for t in db.query(models.Employee).filter(models.Employee.role == "doctor").all()}
+        employees = db.query(models.Employee).all()
+        therapists = {t.id: t.name for t in employees if _employee_can_doctor_treatment(t)}
     else:
         therapists = {t.id: t.name for t in db.query(models.Employee).all()}
     therapists["__none__"] = "미배정"
@@ -3792,8 +4175,11 @@ def stats_aggregate(year: int, month: int, db: Session = Depends(get_db)):
         tid = mc.therapist_id or "__none__"
         code_counts[tid][eswt_code] += max(0, int(mc.count or 0))
 
-    therapists = {t.id: t.name for t in db.query(models.Employee).filter(
-        models.Employee.role == "therapist").all()}
+    therapists = {
+        t.id: t.name
+        for t in db.query(models.Employee).all()
+        if _employee_can_manual(t)
+    }
     therapists["__none__"] = "미배정"
 
     # 집계에 등장한 치료사만 결과에 포함
@@ -3873,10 +4259,13 @@ def stats_daily_by_therapist(year: int = None, month: int = None,
     eswt_code = C.ESWT_CODE
 
     # 활성 치료사 목록
-    therapist_list = db.query(models.Employee).filter(
-        models.Employee.role == "therapist",
-        models.Employee.active == True,
-    ).order_by(models.Employee.name).all()
+    therapist_list = (
+        db.query(models.Employee)
+        .filter(models.Employee.active == True)  # noqa: E712
+        .order_by(models.Employee.name)
+        .all()
+    )
+    therapist_list = [t for t in therapist_list if _employee_can_manual(t)]
     therapist_ids = [t.id for t in therapist_list]
     therapist_names = {t.id: t.name for t in therapist_list}
     therapist_colors = {t.id: (t.color or "#9CA3AF") for t in therapist_list}
@@ -4030,6 +4419,160 @@ def upsert_manual_count(payload: dict = Body(...),
           f"date={date} tid={tid} code={tcode} count={count}")
     db.commit()
     return {"ok": True, "count": count}
+
+
+@router.get("/stats/direct-aggregate")
+def stats_direct_aggregate(date_from: str = "", date_to: str = "",
+                           category_id: str = "",
+                           db: Session = Depends(get_db)):
+    """집계 탭 직접 입력용: 과별 치료항목 × 직원 × 날짜 manual_counts."""
+    from collections import defaultdict
+
+    ts, te, range_label = _resolve_stats_range(None, None, date_from, date_to)
+    date_keys = _date_list(ts, te)
+    mc_start_str = ts.strftime("%Y-%m-%d")
+    mc_end_str = te.strftime("%Y-%m-%d")
+
+    categories = (
+        db.query(models.EmployeeCategory)
+        .filter(models.EmployeeCategory.active == True)  # noqa: E712
+        .order_by(models.EmployeeCategory.sort_order, models.EmployeeCategory.name)
+        .all()
+    )
+    if not category_id and categories:
+        treatment_category_ids = {
+            row[0] for row in db.query(models.Treatment.category_id)
+            .filter(models.Treatment.active == True,  # noqa: E712
+                    models.Treatment.category_id.isnot(None))
+            .distinct()
+            .all()
+        }
+        employee_category_ids = {
+            row[0] for row in db.query(models.Employee.category_id)
+            .filter(models.Employee.active == True,  # noqa: E712
+                    models.Employee.category_id.isnot(None))
+            .distinct()
+            .all()
+        }
+
+        def _usable_category(c: models.EmployeeCategory) -> bool:
+            return c.id in treatment_category_ids and c.id in employee_category_ids
+
+        default_category = (
+            next((c for c in categories if c.default_can_manual and _usable_category(c)), None)
+            or next((c for c in categories if _usable_category(c)), None)
+            or next((c for c in categories if c.id in treatment_category_ids), None)
+            or categories[0]
+        )
+        category_id = default_category.id
+    selected_category = (
+        next((c for c in categories if c.id == category_id), None)
+        if category_id else None
+    )
+
+    treatments_q = db.query(models.Treatment).filter(
+        models.Treatment.active == True  # noqa: E712
+    )
+    if category_id:
+        treatments_q = treatments_q.filter(models.Treatment.category_id == category_id)
+    treatments = treatments_q.order_by(models.Treatment.sort_order, models.Treatment.name).all()
+    treatment_ids = {t.id for t in treatments}
+    treatment_codes = [t.code for t in treatments]
+    treatment_code_by_id = {t.id: t.code for t in treatments}
+
+    employees_q = db.query(models.Employee).filter(
+        models.Employee.active == True  # noqa: E712
+    )
+    if category_id:
+        employees_q = employees_q.filter(models.Employee.category_id == category_id)
+    employees = employees_q.order_by(models.Employee.sort_order, models.Employee.name).all()
+    selected_employees = []
+    for e in employees:
+        ids = set(_employee_treatment_ids(db, e))
+        if e.treatment_override_enabled:
+            if treatment_ids and not (ids & treatment_ids):
+                continue
+            if not treatment_ids and not ids:
+                continue
+        if category_id and e.category_id != category_id and not (ids & treatment_ids):
+            # Legacy DB safety: 직원 과 연결이 비어 있어도 기존 권한으로
+            # 선택 과와 맞는 직원을 집계 후보에 포함한다.
+            if e.category_id:
+                continue
+            if selected_category is None:
+                continue
+            legacy_match = (
+                (selected_category.default_can_doctor_treatment and _employee_can_doctor_treatment(e))
+                or (selected_category.default_can_manual and _employee_can_manual(e))
+                or (selected_category.default_can_eswt and _employee_can_eswt(e))
+            )
+            if not legacy_match:
+                continue
+        if treatment_ids and ids and not (ids & treatment_ids):
+            continue
+        selected_employees.append(e)
+    if not treatment_ids:
+        selected_employees = []
+
+    mc_rows = (
+        db.query(models.ManualCount)
+        .filter(models.ManualCount.count_date >= mc_start_str,
+                models.ManualCount.count_date < mc_end_str)
+        .all()
+    )
+    valid_codes = set(treatment_codes)
+    counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    manual_keys = set()
+    for mc in mc_rows:
+        if mc.treatment_code not in valid_codes:
+            continue
+        tid = mc.therapist_id or "__none__"
+        manual_keys.add((mc.count_date, tid, mc.treatment_code))
+        counts[mc.count_date][tid][mc.treatment_code] = max(0, int(mc.count or 0))
+
+    selected_employee_ids = {e.id for e in selected_employees}
+    settlement_rows = (
+        db.query(models.SettlementRecord)
+        .filter(models.SettlementRecord.performed_on >= mc_start_str,
+                models.SettlementRecord.performed_on < mc_end_str)
+        .all()
+    )
+    for rec in settlement_rows:
+        if rec.employee_id not in selected_employee_ids:
+            continue
+        code = (
+            treatment_code_by_id.get(rec.treatment_id)
+            or rec.treatment_code
+            or rec.treatment_code_snapshot
+            or ""
+        )
+        if code not in valid_codes:
+            continue
+        tid = rec.employee_id or "__none__"
+        key = (rec.performed_on, tid, code)
+        if key in manual_keys:
+            continue
+        counts[rec.performed_on][tid][code] = max(0, int(rec.quantity or 0))
+
+    items = []
+    for dk in date_keys:
+        employee_data = {}
+        for e in selected_employees:
+            employee_data[e.id] = {
+                "counts": {code: counts[dk][e.id].get(code, 0) for code in treatment_codes}
+            }
+        items.append({"date": dk, "employee_data": employee_data})
+
+    return {
+        "date_from": ts.strftime("%Y-%m-%d"),
+        "date_to": (te - timedelta(days=1)).strftime("%Y-%m-%d"),
+        "range_label": range_label,
+        "categories": [_serialize_employee_category(c) for c in categories],
+        "category_id": category_id,
+        "treatments": [_serialize_treatment(t) for t in treatments],
+        "employees": [_serialize_employee(e) for e in selected_employees],
+        "items": items,
+    }
 
 
 # ──────────────── 통계/집계 공용 기간 해석기 (v1.2.9+) ────────────────
@@ -4462,12 +5005,11 @@ def export_manual_schedule(date: str, db: Session = Depends(get_db)):
 
     therapists = (
         db.query(models.Employee)
-        .filter(models.Employee.role == "therapist",
-                models.Employee.active == True,
-                models.Employee.can_manual == True)
+        .filter(models.Employee.active == True)  # noqa: E712
         .order_by(models.Employee.sort_order, models.Employee.name)
         .all()
     )
+    therapists = [t for t in therapists if _employee_can_manual(t)]
 
     start_dt = datetime.combine(target, datetime.min.time())
     end_dt = datetime.combine(target, datetime.max.time())
@@ -4771,9 +5313,13 @@ def export_stats_xlsx(date_from: str, date_to: str, db: Session = Depends(get_db
     manual_codes_set = set(manual_codes)
 
     # ─── 활성 치료사
-    therapists = (db.query(models.Employee)
-                  .filter(models.Employee.role == "therapist")
-                  .order_by(models.Employee.sort_order, models.Employee.name).all())
+    therapists = (
+        db.query(models.Employee)
+        .filter(models.Employee.active == True)  # noqa: E712
+        .order_by(models.Employee.sort_order, models.Employee.name)
+        .all()
+    )
+    therapists = [t for t in therapists if _employee_can_manual(t)]
     ther_by_id = {t.id: t for t in therapists}
 
     # ─── 예약 로드 (기간 내 전체)

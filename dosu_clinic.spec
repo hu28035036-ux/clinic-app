@@ -125,6 +125,7 @@ hidden += [
     # COMPAT: 기존 app.routers.api 의 치료항목 / 완료체크 / 통계 흐름 그대로 동작.
     # RISK: 시간 가중치 합산 (count_increment 곱셈) 도입 ⊥ — manual60=1 정책 보존.
     'app.modules.treatments',
+    'app.modules.treatments.defaults',
     'app.modules.treatments.rules',
     'app.modules.treatments.repository',
     'app.modules.treatments.service',
@@ -289,6 +290,7 @@ print(f"[spec] migration auto-register: {len(_migration_modules)} modules - {_mi
 datas = [
     ('app/templates', 'app/templates'),
     ('app/static',    'app/static'),
+    ('app/data',      'app/data'),
     # v1.3: RAG 톤 가이드 + 인덱스. _MEIPASS/knowledge/ 에 그대로 풀림.
     ('knowledge',     'knowledge'),
     # updater.bat: 자동 업데이트 시 본체 종료 후 파일 교체 담당.

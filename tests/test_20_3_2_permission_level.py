@@ -157,8 +157,8 @@ class TestF11PermissionLevelsConstant:
 
 class TestF11BackwardCompat:
     def test_existing_employee_keys_preserved(self):
-        # 11키 (id/name/role/color/active/birth_date/phone/hire_date/can_eswt/can_manual/sort_order)
-        # + permission_level = 12키
+        # Employee.role 물리 컬럼은 보존하지만 공개 직렬화에서는 role 대신
+        # category/effective 권한 필드를 제공한다.
         from app.database import SessionLocal
         from app.routers.api import _serialize_employee
 
@@ -169,12 +169,17 @@ class TestF11BackwardCompat:
             db.flush()
             d = _serialize_employee(emp)
             expected = {
-                "id", "name", "role", "color", "active",
+                "id", "name", "category_id", "category_name", "color", "active",
                 "birth_date", "phone", "hire_date",
-                "can_eswt", "can_manual", "sort_order",
+                "can_doctor_treatment", "can_eswt", "can_manual",
+                "can_doctor_treatment_override",
+                "can_eswt_override", "can_manual_override",
+                "treatment_override_enabled", "treatment_ids",
+                "sort_order",
                 "permission_level",
             }
             assert set(d.keys()) == expected
+            assert "role" not in d
         finally:
             db.rollback()
             db.close()

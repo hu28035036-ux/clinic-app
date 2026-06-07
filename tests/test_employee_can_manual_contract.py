@@ -24,13 +24,13 @@ def test_can_manual_field_present_and_round_trips(client):
 
     payload = {
         "name": initial["name"],
-        "role": initial["role"],
+        "category_id": initial["category_id"],
         "color": initial["color"],
         "active": initial["active"],
         "birth_date": initial.get("birth_date"),
         "phone": initial.get("phone"),
-        "can_eswt": initial["can_eswt"],
-        "can_manual": False,
+        "can_eswt_override": initial["can_eswt_override"],
+        "can_manual_override": False,
     }
     try:
         r = client.put(f"/api/employees/{eid}", json=payload)
@@ -41,7 +41,7 @@ def test_can_manual_field_present_and_round_trips(client):
         assert after_put["can_manual"] is False, "GET 재조회에서 can_manual=False 미반영"
     finally:
         # 다른 테스트(시드 의존 테스트 포함)에 영향 없도록 원복
-        payload["can_manual"] = True
+        payload["can_manual_override"] = initial["can_manual_override"]
         r2 = client.put(f"/api/employees/{eid}", json=payload)
         assert r2.status_code == 200
         assert r2.json()["can_manual"] is True

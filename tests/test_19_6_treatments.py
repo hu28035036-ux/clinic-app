@@ -19,10 +19,12 @@
 from __future__ import annotations
 
 import importlib
+import json
 
 import pytest
 
 from app.modules.treatments import completion_rules as _comp
+from app.modules.treatments import defaults as _defaults
 from app.modules.treatments import repository as _repo
 from app.modules.treatments import rules as _rules
 from app.modules.treatments import service as _service
@@ -184,7 +186,8 @@ def test_serialize_treatment_keys_match_api_py():
     )
     result = _service.serialize_treatment(t)
     expected_keys = {
-        "id", "code", "name", "short", "default_minutes", "role",
+        "id", "code", "name", "short", "category_id", "category_name",
+        "default_minutes", "role",
         "count_increment", "show_in_patient", "active", "sort_order",
         "price", "incentive_pct", "incentive_amount",
     }
@@ -261,11 +264,12 @@ def test_build_treatment_meta_keys():
     result = _service.build_treatment_meta(treatments)
     expected_keys = {
         "treatment_codes", "treatment_names", "treatment_short",
+        "treatment_category", "treatment_category_name",
         "treatment_minutes", "treatment_role", "treatment_show",
         "doctor_treatments", "therapist_treatments", "manual_treatments",
         "count_increment", "eswt_code",
         "treatment_price", "treatment_incentive_pct", "treatment_incentive_amount",
-        "all_treatments",
+        "employee_categories", "all_treatments",
     }
     assert set(result.keys()) == expected_keys
     # 분류 정합.
@@ -531,11 +535,12 @@ def test_treatment_meta_endpoint_still_works(client):
     body = resp.json()
     expected_keys = {
         "treatment_codes", "treatment_names", "treatment_short",
+        "treatment_category", "treatment_category_name",
         "treatment_minutes", "treatment_role", "treatment_show",
         "doctor_treatments", "therapist_treatments", "manual_treatments",
         "count_increment", "eswt_code",
         "treatment_price", "treatment_incentive_pct", "treatment_incentive_amount",
-        "all_treatments",
+        "employee_categories", "all_treatments",
     }
     assert set(body.keys()) == expected_keys
 
@@ -549,6 +554,67 @@ def test_treatments_list_endpoint_still_works(client):
     if rows:
         assert "code" in rows[0]
         assert "count_increment" in rows[0]
+
+
+def test_default_treatments_can_be_loaded_from_editable_json(monkeypatch):
+    """기본 치료항목 시드는 코드 상수가 아니라 JSON 파일에서 로드된다."""
+    from app.config import get_appdata_dir
+
+    path = get_appdata_dir() / "test_default_treatments.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "code": "manual_custom",
+                    "name": "사용자도수",
+                    "short": "사용자",
+                    "default_minutes": 45,
+                    "role": "therapist",
+                    "count_increment": 1,
+                    "show_in_patient": True,
+                    "active": True,
+                    "sort_order": 1,
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(_defaults.DEFAULT_TREATMENTS_ENV, str(path))
+
+    rows = _defaults.load_default_treatments()
+
+    assert rows[0]["code"] == "manual_custom"
+    assert rows[0]["name"] == "사용자도수"
+    assert rows[0]["default_minutes"] == 45
+
+
+def test_treatment_create_rejects_invalid_custom_code(client):
+    """새 치료항목의 내부 코드는 예약 참조 키라 안전한 형식만 허용한다."""
+    login = client.post("/api/admin/login", json={"password": "admin1234"})
+    assert login.status_code == 200
+    token = login.json()["token"]
+
+    resp = client.post(
+        "/api/treatments",
+        json={
+            "code": "한글 코드",
+            "name": "테스트치료",
+            "short": "테코",
+            "default_minutes": 30,
+            "role": "therapist",
+            "count_increment": 1,
+            "show_in_patient": True,
+            "active": True,
+            "sort_order": 0,
+            "price": 0,
+            "incentive_pct": None,
+            "incentive_amount": None,
+        },
+        headers={"X-Admin-Token": token},
+    )
+
+    assert resp.status_code == 400
 
 
 # ──────────────────────── 10. 외부 API 호출 0 검증 ────────────────────────
