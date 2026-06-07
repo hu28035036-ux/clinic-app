@@ -6576,12 +6576,24 @@ async function testAiConnection(){
 // is_frozen 여부 참조해 dev 모드면 disabled 처리. 매번 about 재호출 안 해도 되게.
 let _LAST_ABOUT = null;
 
+function maybeShowUpdateCompletedNotice(a){
+  const info = a && a.update_completed;
+  if(!info || !info.version) return;
+  const key = 'dosu-update-completed-' + info.version;
+  try {
+    if(sessionStorage.getItem(key) === '1') return;
+    sessionStorage.setItem(key, '1');
+  } catch(e) {}
+  alert(info.message || ('업데이트가 완료되었습니다.\n현재 버전은 v' + info.version + '입니다.'));
+}
+
 async function loadAboutBox(){
   const box = document.getElementById('about-box');
   if(!box) return;
   try {
     const a = await (await fetch('/api/about')).json();
     _LAST_ABOUT = a;
+    maybeShowUpdateCompletedNotice(a);
     // is_frozen 누락 시(구 백엔드 호환) 안전하게 true 로 간주 — 빌드본 기준 동작 유지
     const isFrozen = (a.is_frozen !== false);
     const devBanner = isFrozen ? '' : `
@@ -6750,7 +6762,7 @@ async function applyUpdate(){
     alert('개발 모드(dev / uvicorn)에서는 자동 업데이트가 지원되지 않습니다.\n메인서버(빌드된 exe)에서 업데이트 해주세요.');
     return;
   }
-  if(!confirm('업데이트를 지금 설치하시겠습니까?\n\n• 설치 직전 DB 가 자동 백업됩니다.\n• 프로그램이 재시작되며 약 15~20초간 화면이 멈춥니다.')) return;
+  if(!confirm('업데이트를 지금 설치하시겠습니까?\n\n• 설치 직전 DB가 자동 백업됩니다.\n• 진행 중 화면은 업데이트 안내 화면으로 바뀌고, 새 버전이 준비되면 자동 새로고침됩니다.')) return;
   try {
     const res = await adminFetch('/api/about/apply-update', {method:'POST'});
     if(!res.ok){
@@ -6794,7 +6806,7 @@ async function applyUpdate(){
         </p>
         ${backupBox}
         <div style="margin-top:20px;padding:12px;background:#F3F4F6;border-radius:6px;font-size:12px;color:#4B5563;line-height:1.6;">
-          화면이 멈춰 보여도 정상입니다.<br>
+          이 화면은 서버가 다시 뜰 때까지 유지됩니다.<br>
           업데이터 창이 별도로 떠서 자동으로 닫힙니다.
         </div>
 

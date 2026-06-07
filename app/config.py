@@ -7,7 +7,7 @@ APP_NAME = "도수치료예약"
 # ─── 앱 버전 (배포 시 업데이트) ───
 # 이 값은 프로그램 폴더에 포함되어 교체됨. %APPDATA%\도수치료예약\ 은 유지.
 # 빌드 규칙: MAJOR.MINOR.PATCH (예: 1.2.3)
-APP_VERSION = "1.3.15"
+APP_VERSION = "1.3.16"
 APP_BUILD_DATE = "2026-06-08"
 
 def get_appdata_dir() -> Path:

@@ -60,10 +60,10 @@ def test_admin_schemas_admin_login_keys_match_router():
 
 
 def test_admin_schemas_about_keys_match_router():
-    """COMPAT: ``GET /api/about`` 응답 key 8개 정합."""
+    """COMPAT: ``GET /api/about`` 응답 key 9개 정합."""
     assert _admin_schemas.ABOUT_RESPONSE_KEYS == frozenset({
         "app_name", "version", "build_date", "data_dir", "db_path",
-        "backup_dir", "update_manifest_url", "is_frozen",
+        "backup_dir", "update_manifest_url", "is_frozen", "update_completed",
     })
 
 
@@ -211,10 +211,12 @@ def test_admin_service_build_about_response():
         backup_dir="/data/backups",
         update_manifest_url="",
         is_frozen=False,
+        update_completed={"version": "1.2.3"},
     )
     assert set(out.keys()) == _admin_schemas.ABOUT_RESPONSE_KEYS
     assert out["app_name"] == "도수치료예약"
     assert out["update_manifest_url"] == ""
+    assert out["update_completed"] == {"version": "1.2.3"}
 
 
 def test_admin_service_build_system_settings_response():

@@ -390,12 +390,39 @@ def admin_change_password(payload: dict, db: Session = Depends(get_db),
 
 # ──────────────── 앱 정보 / 업데이트 ────────────────
 
+def _consume_update_completion_notice(cfg: dict) -> dict | None:
+    """Return a one-time update-completed notice after the app version changes.
+
+    Empty or missing values are treated as a first install or the first run
+    after this feature was added, so the current version is recorded silently.
+    Once a previous version is present, the first /api/about call on the new
+    version returns the notice and marks it as seen.
+    """
+    last_seen = str(cfg.get("update_last_seen_version") or "").strip()
+    if last_seen == APP_VERSION:
+        return None
+
+    cfg["update_last_seen_version"] = APP_VERSION
+    save_config(cfg)
+
+    if not last_seen:
+        return None
+
+    return {
+        "version": APP_VERSION,
+        "previous_version": last_seen,
+        "build_date": APP_BUILD_DATE,
+        "message": f"업데이트가 완료되었습니다.\n현재 버전은 v{APP_VERSION}입니다.",
+    }
+
+
 @router.get("/about")
 def about():
     """앱 버전 / 데이터 경로 / 업데이트 매니페스트 URL 노출.
     업데이트 확인 UI가 참조하는 기본 정보.
     """
     cfg = load_config()
+    update_completed = _consume_update_completion_notice(cfg)
     return {
         "app_name": "도수치료예약",
         "version": APP_VERSION,
@@ -408,6 +435,7 @@ def about():
         # False 면 자동 업데이트(다운로드/설치) 가 _is_frozen() 가드로 차단됨 →
         # UI 가 사전에 안내 배너 + 버튼 비활성화로 헛클릭을 막음.
         "is_frozen": _is_frozen(),
+        "update_completed": update_completed,
     }
 
 

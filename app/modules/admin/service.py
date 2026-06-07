@@ -147,6 +147,7 @@ def build_about_response(
     backup_dir: str,
     update_manifest_url: str,
     is_frozen: bool,
+    update_completed: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """``GET /api/about`` 응답 dict — byte-equivalent.
 
@@ -162,6 +163,7 @@ def build_about_response(
         "backup_dir": backup_dir,
         "update_manifest_url": update_manifest_url or "",
         "is_frozen": bool(is_frozen),
+        "update_completed": dict(update_completed) if update_completed else None,
     }
 
 

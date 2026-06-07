@@ -55,6 +55,7 @@ ABOUT_RESPONSE_KEYS: frozenset[str] = frozenset({
     "backup_dir",
     "update_manifest_url",
     "is_frozen",
+    "update_completed",
 })
 
 # POST /api/about/check-update — 분기 별 응답 key (configured / 미설정)
