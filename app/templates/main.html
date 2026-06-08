@@ -116,7 +116,7 @@
     <div class="sheet-head"><h2>◎ 환자 관리</h2>
       <div class="sheet-toolbar">
         <select id="pm-type" onchange="pmSearch()">
-          <option value="name">이름</option><option value="chart_no">차트번호</option>
+          <option value="all" selected>전체</option><option value="name">이름</option><option value="chart_no">차트번호</option>
           <option value="phone">연락처</option><option value="birth_date">생년월일</option>
         </select>
         <input id="pm-search" type="text" placeholder="이름 · 차트 · 연락처 · 생년월일 (20명씩 검색 + 더보기)" oninput="pmSearchDebounced()">
@@ -967,7 +967,16 @@ async function _reloadPatientsCache(){
 // 단건 환자 캐시 (검색 결과·예약 embed 에서 받은 환자를 Map 에 upsert)
 function _upsertPatientCache(p){
   if(!p || !p.id) return;
-  PATIENTS_BY_ID.set(p.id, p);
+  const idx = (PATIENTS || []).findIndex(x => x.id === p.id);
+  let merged = p;
+  if(idx >= 0){
+    merged = Object.assign({}, PATIENTS[idx], p);
+    PATIENTS[idx] = merged;
+  } else if(_PATIENTS_LOADED){
+    PATIENTS.push(p);
+  }
+  PATIENTS_BY_ID.set(p.id, merged);
+  _updatePatientCountBadge();
 }
 
 const PM_RECENT_KEY = 'dosu_recent_patient_searches';
@@ -997,6 +1006,38 @@ function _pmLoadRecentPatients(){
       .map(p => Object.assign({}, p, PATIENTS_BY_ID.get(p.id) || {}))
       .slice(0, 10);
   } catch(e){ return []; }
+}
+
+function _pmForgetRecentPatient(pid){
+  if(!pid) return;
+  try {
+    const raw = JSON.parse(localStorage.getItem(PM_RECENT_KEY) || '[]');
+    if(!Array.isArray(raw)) return;
+    localStorage.setItem(PM_RECENT_KEY, JSON.stringify(raw.filter(p => p && p.id !== pid)));
+  } catch(e){}
+}
+
+function _removePatientFromSearchState(state, pid){
+  if(!state || !pid || !Array.isArray(state.hits)) return;
+  const before = state.hits.length;
+  state.hits = state.hits.filter(p => p && p.id !== pid);
+  const removed = before - state.hits.length;
+  if(removed > 0){
+    state.total = Math.max(0, (state.total || 0) - removed);
+    state.offset = Math.min(state.offset || state.hits.length, state.hits.length);
+  }
+}
+
+function _removePatientFromClientState(pid){
+  if(!pid) return;
+  PATIENTS = (PATIENTS || []).filter(p => p && p.id !== pid);
+  PATIENTS_BY_ID.delete(pid);
+  delete LAST_APPTS[pid];
+  delete PM_HISTORY_CACHE[pid];
+  _pmForgetRecentPatient(pid);
+  _removePatientFromSearchState(_pmState, pid);
+  _removePatientFromSearchState(_pqsState, pid);
+  _updatePatientCountBadge();
 }
 
 async function loadTherapistLeaves(date=''){
@@ -3036,7 +3077,7 @@ async function openAppt(aid){
       ${hasManual ? renderManualAssignRow(ep, codes.filter(isManualCode)) : ''}
       ${hasEswt ? renderEswtAssignRow(assignMap[TX_META.eswt_code], codes.filter(isEswtCode)) : ''}
       ${hasDoctor ? renderDoctorAssignRows(codes, assignMap) : ''}
-      <button class="primary" onclick="saveAssignments('${aid}')">💾 담당 배정 저장</button>
+      <div class="section-actions"><button class="primary" onclick="saveAssignments('${aid}')">💾 담당 배정 저장</button></div>
     </div>`;
   } else if(status === 'approved'){
     // 승인된 건은 담당자 이름만 표시
@@ -3132,7 +3173,7 @@ async function openAppt(aid){
     newPatientSection = `<p style="color:#059669;font-weight:600;">■ 신환</p>`;
   }
 
-  showModal(`<h3>예약 상세 ${badge}</h3>
+  showModal(`<div class="appointment-detail-modal"><h3>예약 상세 ${badge}</h3>
     <p><b>${patient?.name||'?'}</b> · 차트 ${patient?.chart_no||'-'} · 담당: ${therapistName}</p>
     <p>${fmtDateTime24(ev.start)} · ${ep.duration_min||30}분</p>
     <p class="tx-badges">${codeBadges}</p>
@@ -3149,7 +3190,7 @@ async function openAppt(aid){
     ${assignSection}
     ${approveSection}
     ${cancelBlock}
-    <div class="modal-actions"><button onclick="closeModal()">닫기</button></div>`);
+    <div class="modal-actions"><button onclick="closeModal()">닫기</button></div></div>`);
 }
 
 // 도수치료 담당 드롭다운
@@ -3465,7 +3506,7 @@ function pqsSearch(){
 
 async function _pqsFetchPage(){
   const st = _pqsState;
-  const url = `/api/patients/search?q=${encodeURIComponent(st.q)}&limit=${PQS_PAGE}&offset=${st.offset}`;
+  const url = `/api/patients/search?q=${encodeURIComponent(st.q)}&limit=${PQS_PAGE}&offset=${st.offset}&_=${Date.now()}`;
   try {
     const r = await fetch(url);
     if(!r.ok) throw new Error(r.statusText);
@@ -3483,6 +3524,18 @@ async function _pqsFetchPage(){
 }
 
 function pqsLoadMore(){ _pqsFetchPage(); }
+
+async function pqsRefreshNow(){
+  const input = document.getElementById('pqs-input');
+  const q = (input && input.value || '').trim();
+  _pqsState = { q, hits: [], total: 0, offset: 0 };
+  if(!q){
+    const box = document.getElementById('pqs-results');
+    if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+    return;
+  }
+  await _pqsFetchPage();
+}
 
 function _renderPqs(){
   const st = _pqsState;
@@ -3616,7 +3669,7 @@ async function saveNewPatientAndReserve(){
   _upsertPatientCache(newP);
   _pmRememberRecentPatient(newP);
   // 환자 캐시 갱신
-  await loadMasters();
+  await _reloadPatientsCache();
   closeModal();
   // 새 예약 모달을 그 환자로 자동 진입
   await restoreCreateReservationAfterPatient(newP);
@@ -3660,11 +3713,11 @@ function pmSearchDebounced(){
   _pmTimer = setTimeout(() => pmSearch(), 180);
 }
 
-async function pmSearch(){
+async function pmSearch(force=false){
   // 검색어·필드 변경 시 state 리셋
   const type = document.getElementById('pm-type').value;
   const q = document.getElementById('pm-search').value.trim();
-  const stale = (_pmState.q !== q) || (_pmState.type !== type);
+  const stale = force || (_pmState.q !== q) || (_pmState.type !== type);
   if(stale){
     _pmState = { q, type, hits: [], total: 0, offset: 0 };
   }
@@ -3687,7 +3740,7 @@ async function pmLoadMore(){ await _pmFetchPage(); }
 
 async function _pmFetchPage(){
   const st = _pmState;
-  const url = `/api/patients/search?q=${encodeURIComponent(st.q)}&field=${encodeURIComponent(st.type)}&limit=${PM_PAGE}&offset=${st.offset}`;
+  const url = `/api/patients/search?q=${encodeURIComponent(st.q)}&field=${encodeURIComponent(st.type)}&limit=${PM_PAGE}&offset=${st.offset}&_=${Date.now()}`;
   try {
     const r = await fetch(url);
     if(!r.ok) throw new Error(r.statusText);
@@ -4038,12 +4091,14 @@ async function savePatient(pid){
     alert(r.status === 409 ? msg : ('저장 실패\n' + msg));
     return;
   }
+  const savedP = await r.json();
+  _upsertPatientCache(savedP);
+  _pmRememberRecentPatient(savedP);
   closeModal();
-  await loadMasters();
   LAST_APPTS = {};
   PM_HISTORY_CACHE = {};
-  _reloadPatientsCache();   // 탭 배지 (환자 수) 갱신
-  pmSearch();
+  await _reloadPatientsCache();
+  await pmSearch(true);
 }
 
 async function delPatient(pid){
@@ -4052,9 +4107,12 @@ async function delPatient(pid){
   const r = await adminFetch(`/api/patients/${pid}`, {method:'DELETE'});
   if(!r.ok){ alert('삭제 실패\n' + await r.text()); return; }
   if(PM_OPEN_PID === pid) PM_OPEN_PID = null;
-  await loadMasters();
-  _reloadPatientsCache();   // 탭 배지 (환자 수) 갱신
-  pmSearch();
+  _removePatientFromClientState(pid);
+  LAST_APPTS = {};
+  PM_HISTORY_CACHE = {};
+  await _reloadPatientsCache();
+  await pmSearch(true);
+  await pqsRefreshNow();
 }
 
 // ─────── 직원 관리 (과별 카드 + 권한 override) ───────

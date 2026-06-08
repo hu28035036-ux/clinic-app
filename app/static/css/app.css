@@ -5515,3 +5515,54 @@ label, .label, .form-label {
   color: var(--text-main);
   font-weight: var(--fw-medium);
 }
+
+/* Board and appointment-detail polish */
+.board-table th.ther-col,
+.board-table th.fixed-col {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.appt-line {
+  justify-content: center;
+  text-align: center;
+}
+
+.appt-line-text {
+  flex: 0 1 auto;
+  text-align: center;
+}
+
+.appt-line-time {
+  text-align: center;
+}
+
+.appointment-detail-modal .section-actions,
+.appointment-detail-modal .compact-edit-actions,
+.appointment-detail-modal .modal-actions,
+.appointment-detail-modal > div[style*="display:flex"] {
+  display: flex !important;
+  justify-content: flex-end !important;
+  align-items: center;
+  gap: 6px !important;
+  flex-wrap: wrap;
+}
+
+.appointment-detail-modal .approval-section > button,
+.appointment-detail-modal > button.danger {
+  display: flex !important;
+  margin-left: auto !important;
+}
+
+.appointment-detail-modal button {
+  height: 28px !important;
+  min-width: 88px !important;
+  padding: 0 10px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
