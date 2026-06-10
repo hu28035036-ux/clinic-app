@@ -31,7 +31,7 @@ if /I "%~1"=="--reseed" (
 REM ──────── 시드 (격리 DB 없을 때만) ────────
 if not exist "tests\temp\dev_clinic.db" (
     echo =====================================
-    echo [1/2] 더미 데이터 시드 (1회)
+    echo [1/2] 더미 데이터 시드 ^(1회^)
     echo =====================================
     venv\Scripts\python.exe scripts\seed_dev_dummy.py
     if errorlevel 1 (
@@ -69,9 +69,9 @@ if not exist "venv\Scripts\python.exe" (
     echo.
     echo venv 를 새로 만들고 의존성을 설치하세요:
     echo.
-    echo   1) python -m venv venv
-    echo   2) venv\Scripts\python.exe -m pip install -r requirements.txt
-    echo   3) venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+    echo   1^) python -m venv venv
+    echo   2^) venv\Scripts\python.exe -m pip install -r requirements.txt
+    echo   3^) venv\Scripts\python.exe -m pip install -r requirements-dev.txt
     echo.
     pause
     exit /b 2

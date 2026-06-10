@@ -11,7 +11,7 @@ v1.2.2 부터:
 import sqlite3
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from .config import get_db_path, get_appdata_dir
@@ -24,9 +24,30 @@ DB_URL = f"sqlite:///{get_db_path()}"
 
 engine = create_engine(
     DB_URL,
-    connect_args={"check_same_thread": False},
+    # timeout: 잠금 대기 (요청 스레드 + sync worker + 백업 타이머 동시 쓰기 대비)
+    connect_args={"check_same_thread": False, "timeout": 15},
     echo=False,
 )
+
+
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragmas(dbapi_conn, _record):
+    """커넥션마다 WAL + busy_timeout 적용.
+
+    - WAL: 읽기/쓰기 동시성 개선 → "database is locked" 가뭄.
+      DB 는 %APPDATA% 로컬 경로라 WAL 사용 가능 (네트워크 드라이브 아님).
+    - busy_timeout: 다른 커넥션이 쓰는 동안 즉시 실패하지 않고 대기.
+    ⚠ 백업/복원은 WAL 정합성 처리 필요 — services/backup.py 의
+      sqlite_safe_copy (backup API) + 복원 시 -wal/-shm 삭제가 담당.
+    """
+    cur = dbapi_conn.cursor()
+    try:
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=5000")
+    finally:
+        cur.close()
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 

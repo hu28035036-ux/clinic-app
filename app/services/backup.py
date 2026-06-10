@@ -7,7 +7,7 @@
 - 수동 "지금 백업" 버튼
 - "최근 백업으로 복원" — 가장 최근 파일을 현재 DB로 덮어쓰기
 """
-import shutil, threading, time
+import shutil, sqlite3, threading, time
 from datetime import datetime
 from pathlib import Path
 
@@ -17,23 +17,74 @@ from ..models.models import SystemSetting
 
 BACKUP_PREFIX = "clinic_"
 BACKUP_SUFFIX = ".db"
+# 안전망 스냅샷 prefix — before_restore_ / before_update_v 공통 구분 기준.
+# (modules/backup/schemas.py 의 SAFETY_BACKUP_* prefix 들과 정합)
+# 일반 자동백업(clinic_<ts>)과 보관 개수 정책을 분리하기 위해 사용.
+SAFETY_BACKUP_PREFIX = "clinic_before_"
 
 _timer_thread = None
 _stop_flag = threading.Event()
 
 
+def sqlite_safe_copy(src: Path, dst: Path) -> None:
+    """라이브 SQLite DB 를 안전하게 복사 — 공식 online-backup API 사용.
+
+    shutil.copy2 는 다른 스레드가 쓰는 도중 복사하면 손상본이 나올 수 있고,
+    WAL 모드에서는 -wal 파일 내용이 누락된다. backup API 는 둘 다 안전.
+    실패 시 예외를 그대로 던짐 (호출자가 처리).
+    """
+    s = sqlite3.connect(str(src))
+    d = sqlite3.connect(str(dst))
+    try:
+        s.backup(d)
+    finally:
+        d.close()
+        s.close()
+
+
+def _remove_wal_sidecars(db_path: Path) -> None:
+    """복원 직전 대상 DB 의 -wal / -shm 잔존 파일 제거.
+
+    구 DB 의 WAL 이 남은 채 새 파일로 교체하면 다음 오픈 때 구 WAL 이
+    새 DB 위에 재생되어 손상됨 — 반드시 함께 지워야 한다.
+    """
+    for suffix in ("-wal", "-shm"):
+        side = Path(str(db_path) + suffix)
+        try:
+            if side.exists():
+                side.unlink()
+        except Exception:
+            pass
+
+
+def _stat_backups(d: Path) -> list[tuple[Path, float, int]]:
+    """백업 폴더의 (파일, mtime, size) 목록. 목록 작성 중 삭제된 파일은 건너뜀."""
+    out = []
+    for f in d.glob(f"{BACKUP_PREFIX}*{BACKUP_SUFFIX}"):
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        out.append((f, st.st_mtime, st.st_size))
+    return out
+
+
 def list_backups() -> list:
-    """백업 파일 목록 (최신순)."""
-    d = get_backup_dir()
-    files = sorted(d.glob(f"{BACKUP_PREFIX}*{BACKUP_SUFFIX}"), reverse=True)
+    """백업 파일 목록 (최신순 — 파일 수정시각 기준).
+
+    ⚠ 파일명 문자열 정렬 금지: 'clinic_before_*' 스냅샷이 'b' > 숫자 정렬 때문에
+    날짜형 백업(clinic_<ts>)보다 항상 "최신"으로 와서 restore_latest 가
+    수개월 전 스냅샷을 최근 백업으로 오인하는 버그가 있었음 → mtime 기준으로 판정.
+    """
+    files = sorted(_stat_backups(get_backup_dir()), key=lambda x: x[1], reverse=True)
     return [
         {
             "name": f.name,
             "path": str(f),
-            "size": f.stat().st_size,
-            "mtime": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+            "size": size,
+            "mtime": datetime.fromtimestamp(mtime).isoformat(),
         }
-        for f in files
+        for f, mtime, size in files
     ]
 
 
@@ -45,10 +96,16 @@ def make_backup() -> dict:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest = get_backup_dir() / f"{BACKUP_PREFIX}{ts}{BACKUP_SUFFIX}"
     try:
-        shutil.copy2(db_path, dest)
+        sqlite_safe_copy(db_path, dest)
         _enforce_keep_limit()
         return {"ok": True, "name": dest.name, "size": dest.stat().st_size}
     except Exception as e:
+        # 실패한 부분 파일 잔존 방지
+        try:
+            if dest.exists():
+                dest.unlink()
+        except Exception:
+            pass
         return {"ok": False, "error": str(e)}
 
 def restore_by_name(filename: str) -> dict:
@@ -68,35 +125,57 @@ def restore_by_name(filename: str) -> dict:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe = get_backup_dir() / f"{BACKUP_PREFIX}before_restore_{ts}{BACKUP_SUFFIX}"
         if db_path.exists():
-            shutil.copy2(db_path, safe)
+            sqlite_safe_copy(db_path, safe)
     except Exception:
         pass
 
-    # 복원
+    # 복원 — 파일 교체 중 다른 스레드가 새 커넥션을 열지 않도록 worker 먼저 정지
+    try:
+        from ..services.sync import stop_sync_worker
+        stop_sync_worker()
+    except Exception:
+        pass
+    stop_auto_backup()
     try:
         from ..database import engine
         engine.dispose()
+        _remove_wal_sidecars(db_path)
         shutil.copy2(target_path, db_path)
         return {"ok": True, "restored_from": target_path.name,
                 "msg": f"{target_path.name} 으로 복원됨. 서버를 재시작하세요."}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-def _enforce_keep_limit():
-    """SystemSetting.auto_backup_keep_count 초과 시 오래된 것 삭제."""
-    try:
+def _enforce_keep_limit(keep: int | None = None):
+    """auto_backup_keep_count 초과 시 오래된 것 삭제 (mtime 기준, 그룹 분리).
+
+    일반 자동백업(clinic_<ts>)과 안전망 스냅샷(clinic_before_*)에 keep 개수를
+    **각각** 적용한다. 이전엔 파일명 정렬 + 단일 그룹이었는데:
+      - 스냅샷이 정렬상 항상 "최신" 쪽이라 영원히 삭제되지 않고 무한 누적
+      - 스냅샷 개수가 keep 을 넘는 순간 일반 자동백업이 생성 직후 즉시 삭제
+        (자동백업 무력화)
+    두 문제가 함께 있었음.
+
+    인자 keep: 테스트 주입용. None 이면 SystemSetting 값 (기본 30).
+    """
+    if keep is None:
         db = SessionLocal()
-        ss = db.query(SystemSetting).first()
-        keep = (ss.auto_backup_keep_count or 30) if ss else 30
-        db.close()
-    except Exception:
-        keep = 30
-    files = sorted(get_backup_dir().glob(f"{BACKUP_PREFIX}*{BACKUP_SUFFIX}"))
-    extra = len(files) - keep
-    if extra > 0:
-        for f in files[:extra]:
-            try: f.unlink()
-            except Exception: pass
+        try:
+            ss = db.query(SystemSetting).first()
+            keep = (ss.auto_backup_keep_count or 30) if ss else 30
+        except Exception:
+            keep = 30
+        finally:
+            db.close()
+    files = sorted(_stat_backups(get_backup_dir()), key=lambda x: x[1])  # 오래된 순
+    regular = [f for f, _, _ in files if not f.name.startswith(SAFETY_BACKUP_PREFIX)]
+    safety = [f for f, _, _ in files if f.name.startswith(SAFETY_BACKUP_PREFIX)]
+    for group in (regular, safety):
+        extra = len(group) - keep
+        if extra > 0:
+            for f in group[:extra]:
+                try: f.unlink()
+                except Exception: pass
 
 
 def restore_latest() -> dict:
@@ -115,15 +194,22 @@ def restore_latest() -> dict:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe = get_backup_dir() / f"{BACKUP_PREFIX}before_restore_{ts}{BACKUP_SUFFIX}"
         if db_path.exists():
-            shutil.copy2(db_path, safe)
+            sqlite_safe_copy(db_path, safe)
     except Exception:
         pass
 
-    # 복원
+    # 복원 — 파일 교체 중 다른 스레드가 새 커넥션을 열지 않도록 worker 먼저 정지
+    try:
+        from ..services.sync import stop_sync_worker
+        stop_sync_worker()
+    except Exception:
+        pass
+    stop_auto_backup()
     try:
         # 엔진 종료 후 파일 교체
         from ..database import engine
         engine.dispose()
+        _remove_wal_sidecars(db_path)
         shutil.copy2(latest, db_path)
         return {"ok": True, "restored_from": latest.name,
                 "msg": f"{latest.name} 으로 복원됨. 서버를 재시작하세요."}

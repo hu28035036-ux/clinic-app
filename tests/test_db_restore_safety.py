@@ -11,10 +11,12 @@ from __future__ import annotations
 import hashlib
 import inspect
 import sqlite3
+import uuid
 from pathlib import Path
 
 from app.config import get_db_path
 from app.routers import api as api_mod
+from app.services.backup import sqlite_safe_copy
 
 
 def _admin_token(client) -> str:
@@ -25,6 +27,22 @@ def _admin_token(client) -> str:
 
 def _hash_db() -> str:
     return hashlib.sha256(Path(get_db_path()).read_bytes()).hexdigest()
+
+
+def _db_snapshot_bytes() -> bytes:
+    """실행 중인 DB 의 WAL-안전 스냅샷 바이트.
+
+    WAL 모드에서는 raw read_bytes() 가 -wal 의 최신 데이터(테이블 포함)를
+    누락하므로, 실제 백업 파일이 만들어지는 방식(SQLite backup API)과
+    동일하게 스냅샷을 떠서 업로드 페이로드를 만든다.
+    """
+    snap = Path(__file__).parent / "temp" / f"restore_snap_{uuid.uuid4().hex[:8]}.db"
+    snap.parent.mkdir(exist_ok=True)
+    try:
+        sqlite_safe_copy(Path(get_db_path()), snap)
+        return snap.read_bytes()
+    finally:
+        snap.unlink(missing_ok=True)
 
 
 # ─────────────────────────────────────────────────────────
@@ -71,7 +89,7 @@ def test_restore_valid_db_upload_succeeds(client):
     self-restore 이므로 데이터는 동일하게 유지됨 — 다른 테스트에 영향 안 미침.
     """
     token = _admin_token(client)
-    current_bytes = Path(get_db_path()).read_bytes()
+    current_bytes = _db_snapshot_bytes()
     # 빈 DB 도 아닌, 시드된 운영 DB 가 들어있어야 의미가 있음
     assert len(current_bytes) > 0
 
@@ -98,7 +116,7 @@ def test_restore_valid_db_upload_succeeds(client):
 def test_restore_works_after_dispose_for_subsequent_requests(client):
     """restore 후 (engine.dispose 거친 뒤) 일반 GET 요청도 정상 — connection lazy-reconnect 검증."""
     token = _admin_token(client)
-    current_bytes = Path(get_db_path()).read_bytes()
+    current_bytes = _db_snapshot_bytes()
     client.post(
         "/api/restore",
         headers={"x-admin-token": token},

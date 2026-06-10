@@ -47,6 +47,6 @@
 #       단일 원천 — 본 audit 모듈은 *재정의 ⊥*. AI 모듈 분리 (post-19-12) 시
 #       별도 처리.
 
-# TODO(후속 검토): ``AuditLog`` retention 정책 (예: 90일 자동 정리) 은 *현재 미구현*
-#                  — 19-12 범위 외. 후속 19-x 에서 검토.
+# NOTE: ``AuditLog`` retention 정책 (5년, ``retention.py``) 은
+#       ``app/services/sync.py:run_daily_maintenance`` 가 일일 주기로 자동 실행.
 """

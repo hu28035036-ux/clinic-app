@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import io
+import json
+import re
 from datetime import date, datetime, timedelta
 from typing import Callable
 
@@ -7,15 +10,58 @@ from sqlalchemy.orm import Session
 
 from app.models import models
 
-from .schemas import RevenueGridIn, RevenueRecordEntry
+from .schemas import DailyReportField, DailyReportIn, RevenueGridIn, RevenueRecordEntry
 
 
-PAYMENT_FIELDS = ("cash_amount", "card_amount", "transfer_amount", "other_amount")
+PAYMENT_FIELDS = (
+    "cash_amount",
+    "card_amount",
+    "transfer_amount",
+    "unpaid_amount",
+    "health_living_fee",
+    "disability_fund",
+    "other_amount",
+)
 PAYMENT_LABELS = {
     "cash_amount": "현금",
     "card_amount": "카드",
     "transfer_amount": "계좌",
+    "unpaid_amount": "미수납",
+    "health_living_fee": "건강생활유지비",
+    "disability_fund": "장애인기금",
     "other_amount": "기타",
+}
+CASH_DENOMINATIONS = (50000, 10000, 5000, 1000, 500, 100, 10)
+
+MEDICAL_SUMMARY_FIELDS = (
+    "total_medical_fee",
+    "nhis_burden_total",
+    "patient_burden_total",
+    "covered_total",
+    "uncovered_total",
+)
+MEDICAL_SUMMARY_LABELS = {
+    "total_medical_fee": "총진료비",
+    "nhis_burden_total": "공단부담총액",
+    "patient_burden_total": "본인부담총액",
+    "covered_total": "급여총액",
+    "uncovered_total": "비급여총액",
+}
+MEDICAL_SUMMARY_HEADER_ALIASES = {
+    "summary_date": ("날짜", "일자", "진료일자", "진료일", "내원일", "수납일"),
+    "total_medical_fee": ("총진료비", "총 진료비", "진료비총액", "진료비 총액"),
+    "nhis_burden_total": ("공단부담총액", "공단 부담 총액", "공단부담금", "공단부담"),
+    "patient_burden_total": ("본인부담총액", "본인 부담 총액", "본인부담금", "본인부담"),
+    "covered_total": ("급여총액", "급여 총액", "급여"),
+    "uncovered_total": ("비급여총액", "비급여 총액", "비급여"),
+}
+
+REPORT_FIELD_TYPES = {"short_text", "long_text", "number", "checkbox"}
+REPORT_FIELD_TYPE_LABELS = {
+    "short_text": "짧은글",
+    "long_text": "긴글",
+    "number": "숫자",
+    "checkbox": "체크",
 }
 
 
@@ -49,8 +95,135 @@ def _amount(value) -> int:
         return 0
 
 
+def _money_amount(value) -> int:
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+
+def _normalize_excel_header(value) -> str:
+    return re.sub(r"[^0-9a-z가-힣]", "", str(value or "").strip().lower())
+
+
+def _medical_header_lookup() -> dict[str, str]:
+    out = {}
+    for field, aliases in MEDICAL_SUMMARY_HEADER_ALIASES.items():
+        for alias in aliases:
+            key = _normalize_excel_header(alias)
+            if key:
+                out[key] = field
+    return out
+
+
+def _medical_header_field(value) -> str | None:
+    norm = _normalize_excel_header(value)
+    if not norm:
+        return None
+    lookup = _medical_header_lookup()
+    if norm in lookup:
+        return lookup[norm]
+    for key, field in sorted(lookup.items(), key=lambda x: len(x[0]), reverse=True):
+        if key and key in norm:
+            return field
+    return None
+
+
+def _parse_excel_date(value) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, (int, float)):
+        number = int(value)
+        text_number = str(number)
+        if len(text_number) == 8:
+            try:
+                return date(int(text_number[:4]), int(text_number[4:6]), int(text_number[6:8])).isoformat()
+            except Exception:
+                pass
+        try:
+            from openpyxl.utils.datetime import from_excel
+
+            parsed = from_excel(value)
+            if isinstance(parsed, datetime):
+                return parsed.date().isoformat()
+            if isinstance(parsed, date):
+                return parsed.isoformat()
+        except Exception:
+            return None
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = re.search(r"(\d{4})\D{0,3}(\d{1,2})\D{0,3}(\d{1,2})", text)
+    if match:
+        try:
+            return date(int(match.group(1)), int(match.group(2)), int(match.group(3))).isoformat()
+        except Exception:
+            return None
+    digits = re.sub(r"\D", "", text)
+    if len(digits) >= 8:
+        try:
+            return date(int(digits[:4]), int(digits[4:6]), int(digits[6:8])).isoformat()
+        except Exception:
+            return None
+    return None
+
+
+def _parse_excel_amount(value) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(round(value))
+    text = str(value or "").strip()
+    if not text:
+        return 0
+    negative = text.startswith("(") and text.endswith(")")
+    cleaned = (
+        text.replace(",", "")
+        .replace("원", "")
+        .replace("₩", "")
+        .replace(" ", "")
+    )
+    match = re.search(r"-?\d+(?:\.\d+)?", cleaned)
+    if not match:
+        return 0
+    amount = int(round(float(match.group(0))))
+    return -abs(amount) if negative else amount
+
+
+def _cash_counts(value) -> dict[str, int]:
+    raw = value or {}
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw or "{}")
+        except Exception:
+            raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        str(denom): _amount(raw.get(str(denom), raw.get(denom, 0)))
+        for denom in CASH_DENOMINATIONS
+    }
+
+
+def _cash_counts_total(counts: dict[str, int]) -> int:
+    return sum(denom * _amount(counts.get(str(denom))) for denom in CASH_DENOMINATIONS)
+
+
+def _payment_applied_amount(field: str, value) -> int:
+    return _money_amount(value)
+
+
 def _total_from_parts(data) -> int:
-    return sum(_amount(getattr(data, f, 0) if not isinstance(data, dict) else data.get(f)) for f in PAYMENT_FIELDS)
+    return sum(
+        _payment_applied_amount(f, getattr(data, f, 0) if not isinstance(data, dict) else data.get(f))
+        for f in PAYMENT_FIELDS
+    )
 
 
 def serialize_category(c: models.EmployeeCategory) -> dict:
@@ -88,13 +261,18 @@ def serialize_record(rec: models.RevenueRecord | None, record_date: str, categor
         "category_id": category_id,
         "category_name": categories.get(category_id, "전체") if category_id else "전체",
         "cash_amount": int(rec.cash_amount or 0) if rec else 0,
+        "cash_counts": _cash_counts(rec.cash_counts_json if rec else None),
         "card_amount": int(rec.card_amount or 0) if rec else 0,
         "transfer_amount": int(rec.transfer_amount or 0) if rec else 0,
+        "unpaid_amount": int(getattr(rec, "unpaid_amount", 0) or 0) if rec else 0,
+        "health_living_fee": int(getattr(rec, "health_living_fee", 0) or 0) if rec else 0,
+        "disability_fund": int(getattr(rec, "disability_fund", 0) or 0) if rec else 0,
         "other_amount": int(rec.other_amount or 0) if rec else 0,
         "memo": (rec.memo or "") if rec else "",
         "created_at": rec.created_at.isoformat() if rec and rec.created_at else None,
         "updated_at": rec.updated_at.isoformat() if rec and rec.updated_at else None,
     }
+    data["unpaid_applied_amount"] = _payment_applied_amount("unpaid_amount", data["unpaid_amount"])
     data["total_amount"] = _total_from_parts(data)
     return data
 
@@ -126,7 +304,9 @@ def list_records(db: Session, date_from: str, date_to: str, category_id: str = "
 
 
 def _entry_has_value(entry: RevenueRecordEntry) -> bool:
-    return _total_from_parts(entry) > 0 or bool((entry.memo or "").strip())
+    if entry.cash_counts is not None and _cash_counts_total(_cash_counts(entry.cash_counts)) > 0:
+        return True
+    return any(_money_amount(getattr(entry, f, 0)) != 0 for f in PAYMENT_FIELDS) or bool((entry.memo or "").strip())
 
 
 def upsert_grid(
@@ -166,10 +346,19 @@ def upsert_grid(
         if not rec:
             rec = models.RevenueRecord(record_date=record_date, category_id=row_category)
             db.add(rec)
-        rec.cash_amount = _amount(entry.cash_amount)
-        rec.card_amount = _amount(entry.card_amount)
-        rec.transfer_amount = _amount(entry.transfer_amount)
-        rec.other_amount = _amount(entry.other_amount)
+        counts = _cash_counts(entry.cash_counts)
+        if entry.cash_counts is not None:
+            rec.cash_amount = _cash_counts_total(counts)
+            rec.cash_counts_json = json.dumps(counts, ensure_ascii=False)
+        else:
+            rec.cash_amount = _money_amount(entry.cash_amount)
+            rec.cash_counts_json = "{}"
+        rec.card_amount = _money_amount(entry.card_amount)
+        rec.transfer_amount = _money_amount(entry.transfer_amount)
+        rec.unpaid_amount = _money_amount(entry.unpaid_amount)
+        rec.health_living_fee = _money_amount(entry.health_living_fee)
+        rec.disability_fund = _money_amount(entry.disability_fund)
+        rec.other_amount = _money_amount(entry.other_amount)
         rec.memo = (entry.memo or "").strip()[:500]
         rec.updated_at = datetime.utcnow()
         db.flush()
@@ -211,13 +400,17 @@ def _revenue_summary(records: list[models.RevenueRecord]) -> dict:
         row = serialize_record(rec, rec.record_date, rec.category_id)
         total += row["total_amount"]
         for key in PAYMENT_FIELDS:
-            by_payment[key]["amount"] += row[key]
+            by_payment[key]["amount"] += _payment_applied_amount(key, row[key])
         daily.append({
             "date": rec.record_date,
             "total_amount": row["total_amount"],
             "cash_amount": row["cash_amount"],
             "card_amount": row["card_amount"],
             "transfer_amount": row["transfer_amount"],
+            "unpaid_amount": row["unpaid_applied_amount"],
+            "unpaid_raw_amount": row["unpaid_amount"],
+            "health_living_fee": row["health_living_fee"],
+            "disability_fund": row["disability_fund"],
             "other_amount": row["other_amount"],
         })
     return {
@@ -226,6 +419,9 @@ def _revenue_summary(records: list[models.RevenueRecord]) -> dict:
         "cash_amount": by_payment["cash_amount"]["amount"],
         "card_amount": by_payment["card_amount"]["amount"],
         "transfer_amount": by_payment["transfer_amount"]["amount"],
+        "unpaid_amount": by_payment["unpaid_amount"]["amount"],
+        "health_living_fee": by_payment["health_living_fee"]["amount"],
+        "disability_fund": by_payment["disability_fund"]["amount"],
         "other_amount": by_payment["other_amount"]["amount"],
         "by_payment": list(by_payment.values()),
         "daily": daily,
@@ -331,3 +527,486 @@ def stats(db: Session, date_from: str, date_to: str, category_id: str = "") -> d
         },
         "settlement": settlement,
     }
+
+
+def _json_list(value: str) -> list:
+    try:
+        data = json.loads(value or "[]")
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _treatment_rows(db: Session) -> list[models.Treatment]:
+    return (
+        db.query(models.Treatment)
+        .order_by(models.Treatment.sort_order, models.Treatment.name)
+        .all()
+    )
+
+
+def _treatment_maps(db: Session) -> tuple[list[models.Treatment], dict[str, models.Treatment], dict[str, models.Treatment]]:
+    rows = _treatment_rows(db)
+    return rows, {t.code: t for t in rows}, {t.id: t for t in rows}
+
+
+def _serialize_report_treatment(t: models.Treatment) -> dict:
+    return {
+        "id": t.id,
+        "code": t.code,
+        "name": t.name,
+        "short": t.short or t.name or t.code,
+        "category_id": t.category_id or "",
+        "category_name": t.category.name if getattr(t, "category", None) else "",
+        "active": bool(t.active),
+        "sort_order": int(t.sort_order or 0),
+    }
+
+
+def _normalize_selected_codes(db: Session, codes: list[str]) -> list[str]:
+    _, by_code, _ = _treatment_maps(db)
+    out = []
+    seen = set()
+    for raw in codes or []:
+        code = str(raw or "").strip()
+        if not code or code in seen:
+            continue
+        if code not in by_code:
+            raise ValueError(f"존재하지 않는 치료항목입니다: {code}")
+        seen.add(code)
+        out.append(code)
+    return out
+
+
+def _number_value(value) -> int | float:
+    if value in (None, ""):
+        return 0
+    try:
+        cleaned = str(value).replace(",", "").strip()
+        n = float(cleaned)
+    except Exception as exc:
+        raise ValueError("숫자 칸은 0 이상의 숫자여야 합니다.") from exc
+    if n < 0:
+        raise ValueError("숫자 칸은 0 이상의 숫자여야 합니다.")
+    return int(n) if n.is_integer() else n
+
+
+def _checkbox_value(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on", "checked"}
+
+
+def _normalize_report_fields(fields: list[DailyReportField]) -> list[dict]:
+    if len(fields or []) > 30:
+        raise ValueError("보고 칸은 최대 30개까지 저장할 수 있습니다.")
+    out = []
+    for idx, field in enumerate(fields or []):
+        label = (field.label or "").strip()
+        if not label:
+            raise ValueError("보고 칸 제목을 입력하세요.")
+        if len(label) > 50:
+            raise ValueError("보고 칸 제목은 최대 50자입니다.")
+        field_type = (field.type or "").strip()
+        if field_type not in REPORT_FIELD_TYPES:
+            raise ValueError(f"지원하지 않는 보고 칸 타입입니다: {field_type}")
+        if field_type == "short_text":
+            value = str(field.value or "").strip()
+            if len(value) > 200:
+                raise ValueError("짧은글 칸은 최대 200자입니다.")
+        elif field_type == "long_text":
+            value = str(field.value or "").strip()
+            if len(value) > 2000:
+                raise ValueError("긴글 칸은 최대 2000자입니다.")
+        elif field_type == "number":
+            value = _number_value(field.value)
+        else:
+            value = _checkbox_value(field.value)
+        field_id = (field.id or "").strip()
+        if not field_id or len(field_id) > 60:
+            field_id = f"field_{models.uid()[:10]}"
+        out.append({
+            "id": field_id,
+            "label": label,
+            "type": field_type,
+            "type_label": REPORT_FIELD_TYPE_LABELS[field_type],
+            "value": value,
+            "sort_order": idx,
+        })
+    return out
+
+
+def _saved_report_fields(report: models.DailyWorkReport | None) -> list[dict]:
+    fields = []
+    for idx, raw in enumerate(_json_list(report.custom_fields_json if report else "")):
+        if not isinstance(raw, dict):
+            continue
+        field_type = raw.get("type")
+        if field_type not in REPORT_FIELD_TYPES:
+            field_type = "long_text"
+        fields.append({
+            "id": str(raw.get("id") or f"field_{idx}"),
+            "label": str(raw.get("label") or ""),
+            "type": field_type,
+            "type_label": REPORT_FIELD_TYPE_LABELS[field_type],
+            "value": raw.get("value"),
+            "sort_order": int(raw.get("sort_order") or idx),
+        })
+    return sorted(fields, key=lambda x: x["sort_order"])
+
+
+def _daily_revenue_record(db: Session, report_date: str) -> dict:
+    rec = (
+        db.query(models.RevenueRecord)
+        .filter(
+            models.RevenueRecord.record_date == report_date,
+            models.RevenueRecord.category_id == "",
+        )
+        .first()
+    )
+    data = serialize_record(rec, report_date, "")
+    data["exists"] = bool(rec)
+    return data
+
+
+def serialize_medical_summary(rec: models.DailyMedicalSummary | None, report_date: str) -> dict:
+    data = {
+        "id": rec.id if rec else "",
+        "report_date": report_date,
+        "summary_date": rec.summary_date if rec else report_date,
+        "total_medical_fee": int(rec.total_medical_fee or 0) if rec else 0,
+        "nhis_burden_total": int(rec.nhis_burden_total or 0) if rec else 0,
+        "patient_burden_total": int(rec.patient_burden_total or 0) if rec else 0,
+        "covered_total": int(rec.covered_total or 0) if rec else 0,
+        "uncovered_total": int(rec.uncovered_total or 0) if rec else 0,
+        "source_filename": rec.source_filename if rec else "",
+        "created_at": rec.created_at.isoformat() if rec and rec.created_at else None,
+        "updated_at": rec.updated_at.isoformat() if rec and rec.updated_at else None,
+        "exists": bool(rec),
+    }
+    data["lines"] = [
+        {"key": field, "label": MEDICAL_SUMMARY_LABELS[field], "amount": data[field], "source": "기간별 데이터"}
+        for field in MEDICAL_SUMMARY_FIELDS
+    ]
+    return data
+
+
+def _daily_medical_summary(db: Session, report_date: str) -> dict:
+    rec = (
+        db.query(models.DailyMedicalSummary)
+        .filter(models.DailyMedicalSummary.summary_date == report_date)
+        .first()
+    )
+    return serialize_medical_summary(rec, report_date)
+
+
+def _detect_medical_summary_header(rows: list[tuple]) -> tuple[int, dict[str, int]]:
+    required = ("summary_date", *MEDICAL_SUMMARY_FIELDS)
+    for row_idx, row in enumerate(rows[:30]):
+        mapping: dict[str, int] = {}
+        for col_idx, value in enumerate(row):
+            field = _medical_header_field(value)
+            if field and field not in mapping:
+                mapping[field] = col_idx
+        if all(field in mapping for field in required):
+            return row_idx, mapping
+    labels = ["날짜", *[MEDICAL_SUMMARY_LABELS[field] for field in MEDICAL_SUMMARY_FIELDS]]
+    raise ValueError("엑셀 헤더에 " + ", ".join(labels) + " 항목이 필요합니다.")
+
+
+def _cell(row: tuple, idx: int):
+    return row[idx] if idx < len(row) else None
+
+
+def import_medical_summaries_from_excel(
+    db: Session,
+    file_bytes: bytes,
+    filename: str = "",
+    *,
+    log_callback: Callable | None = None,
+    audit_callback: Callable | None = None,
+) -> dict:
+    if not file_bytes:
+        raise ValueError("엑셀 파일이 비어 있습니다.")
+    try:
+        import openpyxl
+    except Exception as exc:
+        raise ValueError("엑셀 파싱 라이브러리(openpyxl)를 불러올 수 없습니다.") from exc
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    except Exception as exc:
+        raise ValueError(f"엑셀 파일을 열 수 없습니다: {exc}") from exc
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise ValueError("엑셀 파일에 데이터가 없습니다.")
+    header_idx, mapping = _detect_medical_summary_header(rows)
+
+    grouped: dict[str, dict[str, int]] = {}
+    skipped = 0
+    source_filename = (filename or "").strip()[:255]
+    for row in rows[header_idx + 1:]:
+        if not any(str(value or "").strip() for value in row):
+            continue
+        raw_day = _cell(row, mapping["summary_date"])
+        day = _parse_excel_date(raw_day)
+        if not day:
+            total_label = _normalize_excel_header(raw_day)
+            # Exported period reports often end with a summary row without a date.
+            if not str(raw_day or "").strip() or total_label in {"합계", "총계", "소계", "total", "sum"}:
+                continue
+            skipped += 1
+            continue
+        item = grouped.setdefault(day, {field: 0 for field in MEDICAL_SUMMARY_FIELDS})
+        for field in MEDICAL_SUMMARY_FIELDS:
+            item[field] += _parse_excel_amount(_cell(row, mapping[field]))
+
+    if not grouped:
+        raise ValueError("가져올 날짜별 데이터가 없습니다.")
+
+    now = datetime.utcnow()
+    changed = {"upserted": 0}
+    for day, amounts in sorted(grouped.items()):
+        rec = (
+            db.query(models.DailyMedicalSummary)
+            .filter(models.DailyMedicalSummary.summary_date == day)
+            .first()
+        )
+        if not rec:
+            rec = models.DailyMedicalSummary(summary_date=day)
+            db.add(rec)
+        for field, amount in amounts.items():
+            setattr(rec, field, int(amount or 0))
+        rec.source_filename = source_filename
+        rec.updated_at = now
+        db.flush()
+        if log_callback:
+            log_callback(db, "daily_medical_summary", rec.id, "upsert", rec)
+        changed["upserted"] += 1
+
+    dates = sorted(grouped.keys())
+    if audit_callback:
+        audit_callback(
+            db,
+            "revenue.daily_medical_summary.import",
+            "",
+            f"{source_filename or 'uploaded'} {dates[0]}~{dates[-1]} rows={len(grouped)} skipped={skipped}",
+        )
+    return {
+        "changed": changed,
+        "imported": len(grouped),
+        "skipped": skipped,
+        "date_from": dates[0],
+        "date_to": dates[-1],
+        "fields": [
+            {"key": field, "label": MEDICAL_SUMMARY_LABELS[field]}
+            for field in MEDICAL_SUMMARY_FIELDS
+        ],
+    }
+
+
+def _settlement_item_base(
+    treatment: models.Treatment | None,
+    code: str,
+    rec: models.SettlementRecord | None = None,
+) -> dict:
+    name = treatment.name if treatment else (rec.treatment_name_snapshot if rec else code)
+    short = treatment.short if treatment else (rec.treatment_short_snapshot if rec else name)
+    category_id = treatment.category_id if treatment else (rec.employee_category_id_snapshot if rec else "")
+    category_name = (
+        treatment.category.name if treatment and getattr(treatment, "category", None)
+        else (rec.employee_category_name_snapshot if rec else "")
+    )
+    return {
+        "code": code,
+        "treatment_id": treatment.id if treatment else (rec.treatment_id if rec else ""),
+        "treatment_name": name or code,
+        "treatment_short": short or name or code,
+        "category_id": category_id or "",
+        "category_name": category_name or "",
+        "quantity_total": 0,
+        "price_total": 0,
+        "incentive_total": 0,
+        "net_total": 0,
+        "record_count": 0,
+    }
+
+
+def _daily_settlement_by_code(db: Session, report_date: str) -> dict[str, dict]:
+    _, by_code, by_id = _treatment_maps(db)
+    rows = (
+        db.query(models.SettlementRecord)
+        .filter(models.SettlementRecord.performed_on == report_date)
+        .all()
+    )
+    by_code_data: dict[str, dict] = {}
+    for rec in rows:
+        treatment = by_id.get(rec.treatment_id) if rec.treatment_id else None
+        code = (treatment.code if treatment else "") or rec.treatment_code_snapshot or ""
+        if not code:
+            continue
+        treatment = treatment or by_code.get(code)
+        row = by_code_data.setdefault(code, _settlement_item_base(treatment, code, rec))
+        qty = _amount(rec.quantity)
+        price_total = _amount(rec.price_snapshot) * qty
+        incentive_total = _amount(rec.incentive_amount)
+        row["quantity_total"] += qty
+        row["price_total"] += price_total
+        row["incentive_total"] += incentive_total
+        row["net_total"] += price_total - incentive_total
+        row["record_count"] += 1
+    return by_code_data
+
+
+def _auto_summary(db: Session, report_date: str, selected_codes: list[str]) -> dict:
+    _, by_code, _ = _treatment_maps(db)
+    settlement = _daily_settlement_by_code(db, report_date)
+    items = []
+    for code in selected_codes:
+        if code in settlement:
+            row = dict(settlement[code])
+        else:
+            row = _settlement_item_base(by_code.get(code), code)
+        items.append(row)
+    totals = {
+        "quantity_total": sum(int(x.get("quantity_total") or 0) for x in items),
+        "price_total": sum(int(x.get("price_total") or 0) for x in items),
+        "incentive_total": sum(int(x.get("incentive_total") or 0) for x in items),
+        "net_total": sum(int(x.get("net_total") or 0) for x in items),
+        "record_count": sum(int(x.get("record_count") or 0) for x in items),
+    }
+    return {"items": items, "totals": totals}
+
+
+def _daily_journal_summary(revenue_record: dict, settlement_items: list[dict], medical_summary: dict) -> dict:
+    revenue_lines = [
+        {"key": "total_amount", "label": "총 매출", "amount": _money_amount(revenue_record.get("total_amount")), "source": "매출 기록"},
+        {"key": "cash_amount", "label": "현금 수납액", "amount": _money_amount(revenue_record.get("cash_amount")), "source": "매출 기록"},
+        {"key": "card_amount", "label": "카드 총액", "amount": _money_amount(revenue_record.get("card_amount")), "source": "매출 기록"},
+        {"key": "transfer_amount", "label": "계좌이체", "amount": _money_amount(revenue_record.get("transfer_amount")), "source": "매출 기록"},
+        {"key": "unpaid_amount", "label": "미수납", "amount": _money_amount(revenue_record.get("unpaid_applied_amount")), "source": "매출 기록"},
+        {"key": "health_living_fee", "label": "건강생활유지비", "amount": _money_amount(revenue_record.get("health_living_fee")), "source": "매출 기록"},
+        {"key": "disability_fund", "label": "장애인기금", "amount": _money_amount(revenue_record.get("disability_fund")), "source": "매출 기록"},
+        {"key": "other_amount", "label": "기타", "amount": _money_amount(revenue_record.get("other_amount")), "source": "매출 기록"},
+    ]
+    treatment_lines = sorted(
+        [
+            {
+                "code": str(row.get("code") or ""),
+                "label": str(row.get("treatment_short") or row.get("treatment_name") or row.get("code") or ""),
+                "quantity_total": _amount(row.get("quantity_total")),
+                "price_total": _amount(row.get("price_total")),
+                "incentive_total": _amount(row.get("incentive_total")),
+                "net_total": _amount(row.get("net_total")),
+                "source": "정산",
+            }
+            for row in settlement_items
+        ],
+        key=lambda row: (-row["price_total"], row["label"]),
+    )
+    totals = {
+        "quantity_total": sum(row["quantity_total"] for row in treatment_lines),
+        "price_total": sum(row["price_total"] for row in treatment_lines),
+        "incentive_total": sum(row["incentive_total"] for row in treatment_lines),
+        "net_total": sum(row["net_total"] for row in treatment_lines),
+    }
+    return {
+        "revenue_lines": revenue_lines,
+        "medical_lines": medical_summary.get("lines", []) if medical_summary.get("exists") else [],
+        "treatment_lines": treatment_lines,
+        "totals": totals,
+    }
+
+
+def _default_selected_codes(db: Session, report_date: str) -> list[str]:
+    settlement = _daily_settlement_by_code(db, report_date)
+    rows, by_code, _ = _treatment_maps(db)
+    sort_index = {t.code: idx for idx, t in enumerate(rows)}
+    return sorted(
+        [
+            code for code, row in settlement.items()
+            if int(row.get("quantity_total") or 0) > 0 and code in by_code
+        ],
+        key=lambda code: sort_index.get(code, 9999),
+    )
+
+
+def get_daily_report(db: Session, report_date: str) -> dict:
+    day = _parse_date(report_date).isoformat()
+    report = (
+        db.query(models.DailyWorkReport)
+        .filter(models.DailyWorkReport.report_date == day)
+        .first()
+    )
+    rows, by_code, _ = _treatment_maps(db)
+    if report:
+        selected = []
+        seen = set()
+        for raw in _json_list(report.selected_treatment_codes_json):
+            code = str(raw or "").strip()
+            if code and code in by_code and code not in seen:
+                selected.append(code)
+                seen.add(code)
+    else:
+        selected = _default_selected_codes(db, day)
+    settlement_by_code = _daily_settlement_by_code(db, day)
+    revenue_record = _daily_revenue_record(db, day)
+    medical_summary = _daily_medical_summary(db, day)
+    settlement_items = list(settlement_by_code.values())
+    return {
+        "report_date": day,
+        "exists": bool(report),
+        "selected_treatment_codes": selected,
+        "custom_fields": _saved_report_fields(report),
+        "revenue_record": revenue_record,
+        "medical_summary": medical_summary,
+        "treatments": [_serialize_report_treatment(t) for t in rows],
+        "settlement_codes": list(settlement_by_code.keys()),
+        "settlement_items": settlement_items,
+        "auto": _auto_summary(db, day, selected),
+        "journal": _daily_journal_summary(revenue_record, settlement_items, medical_summary),
+        "updated_at": report.updated_at.isoformat() if report and report.updated_at else None,
+    }
+
+
+def save_daily_report(
+    db: Session,
+    payload: DailyReportIn,
+    *,
+    log_callback: Callable | None = None,
+    audit_callback: Callable | None = None,
+) -> dict:
+    day = _parse_date(payload.report_date).isoformat()
+    selected = _normalize_selected_codes(db, payload.selected_treatment_codes)
+    fields = _normalize_report_fields(payload.custom_fields)
+    report = (
+        db.query(models.DailyWorkReport)
+        .filter(models.DailyWorkReport.report_date == day)
+        .first()
+    )
+    changed = {"upserted": 0, "deleted": 0}
+    if not selected and not fields:
+        if report:
+            report_id = report.id
+            db.delete(report)
+            db.flush()
+            if log_callback:
+                log_callback(db, "daily_work_report", report_id, "delete", None)
+            changed["deleted"] = 1
+        if audit_callback:
+            audit_callback(db, "revenue.daily_report.delete", "", day)
+        return changed
+
+    if not report:
+        report = models.DailyWorkReport(report_date=day)
+        db.add(report)
+    report.selected_treatment_codes_json = json.dumps(selected, ensure_ascii=False)
+    report.custom_fields_json = json.dumps(fields, ensure_ascii=False)
+    report.updated_at = datetime.utcnow()
+    db.flush()
+    if log_callback:
+        log_callback(db, "daily_work_report", report.id, "upsert", report)
+    if audit_callback:
+        audit_callback(db, "revenue.daily_report.save", report.id, day)
+    changed["upserted"] = 1
+    return changed

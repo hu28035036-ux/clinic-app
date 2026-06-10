@@ -66,6 +66,14 @@
    • Attach binaries: 도수치료예약_v1.2.4.zip 드래그앤드롭
    • "Publish release" 클릭
 
+ ⚠⚠ 중요: ZIP 파일을 clinic-updates 리포에 직접 커밋하지 말 것 ⚠⚠
+   • git 은 히스토리를 영구 보존하므로 릴리스마다 ~26MB 씩 리포가
+     비대해지고 (파일을 나중에 지워도 안 줄어듦), GitHub Pages 1GB
+     한도에 도달하면 배포가 막힘. (2026-06 기준 이미 .git 150MB)
+   • ZIP 은 반드시 위 2-4 처럼 GitHub Release 자산(Attach binaries)으로만
+     업로드하고, 리포에는 manifest.json / README / 릴리스노트만 커밋.
+   • scripts/publish_release.ps1 스크립트를 쓰면 이 규칙이 자동으로 지켜짐.
+
  2-5. manifest.json 업데이트 (리포 루트에 커밋)
    • manifest.json 파일 내용 예시:
      {
@@ -78,6 +86,9 @@
 
    • 이 파일을 리포의 main 브랜치 루트에 커밋 & 푸시.
    • 1~2분 뒤 GitHub Pages 가 반영.
+   • download_url 은 GitHub Release 자산 주소
+     (https://github.com/<계정>/clinic-updates/releases/download/v<버전>/<zip>)
+     를 사용 — github.io (Pages) 주소의 ZIP 은 리포 커밋이 필요하므로 금지.
 
  2-6. 각 병원 PC 에 안내 (또는 그냥 두면 알아서 확인)
    • 병원 측에서 관리자 → ≡ 시스템 → "업데이트 확인" 클릭
@@ -124,6 +135,11 @@
 
   • 개발 모드(python run.py)에서는 "지금 설치" 가 거부됩니다.
     빌드된 exe 에서만 동작합니다. 안전장치.
+
+  • (v1.3.23+) 다중 PC 동기화의 변경 기록은 180일만 보관됩니다.
+    180일 넘게 꺼져 있던 서브 PC 나 새로 추가하는 PC 는 동기화로
+    따라잡을 수 없으므로, 메인 PC 의 프로그램을 종료한 뒤
+    %APPDATA%\도수치료예약\clinic.db 를 복사해 부트스트랩하세요.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

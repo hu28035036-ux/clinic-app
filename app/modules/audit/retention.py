@@ -4,8 +4,8 @@
 # 19-12 audit 모듈 (service.py / schemas.py — PII 무저장 / 500자 cap) 보존.
 # 본 retention 은 schema 변경 ⊥ — 정책 / 헬퍼만 신설.
 
-# SAFETY: 본 헬퍼는 명시적 호출만 — 자동 트리거 ⊥ (admin endpoint / cron /
-# 백업 시점 별도 결정). 운영 DB 안전 — 호출 전 백업 권장.
+# NOTE: 자동 트리거 — ``app/services/sync.py:run_daily_maintenance`` 가 일일
+# 주기로 호출 (sync worker 루프, SyncOp prune 와 동일 주기). 명시적 단독 호출도 가능.
 """
 from __future__ import annotations
 

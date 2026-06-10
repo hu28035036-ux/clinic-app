@@ -1730,6 +1730,7 @@ select option:disabled {
 
 .revenue-sub-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 10px 0 14px;
   border-bottom: 1px solid #E5E7EB;
@@ -1780,12 +1781,99 @@ select option:disabled {
 }
 
 .revenue-record-table {
-  min-width: 860px;
+  min-width: 1240px;
 }
 
 .revenue-record-table th,
 .revenue-record-table td {
   vertical-align: middle;
+}
+
+.revenue-sign-header {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 78px;
+}
+
+.revenue-sign-control {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 24px);
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid #CBD5E1;
+  border-radius: 5px;
+  background: #F8FAFC;
+}
+
+.revenue-sign-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 24px;
+  min-width: 0 !important;
+  max-width: 24px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0 !important;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.revenue-sign-check {
+  display: none;
+  color: #BBF7D0;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.revenue-sign-btn.active {
+  background: #1D4ED8;
+  color: #fff;
+  box-shadow: 0 0 0 1px #1E40AF inset;
+}
+
+.revenue-sign-btn.active .revenue-sign-check {
+  display: inline;
+}
+
+.daily-cash-ledger-wrap {
+  max-width: 560px;
+  overflow-x: auto;
+}
+
+.daily-cash-ledger-table {
+  min-width: 420px;
+}
+
+.daily-cash-ledger-table th,
+.daily-cash-ledger-table td {
+  vertical-align: middle;
+}
+
+.daily-cash-ledger-table th:nth-child(2),
+.daily-cash-ledger-table td:nth-child(2),
+.daily-cash-ledger-table th:nth-child(3),
+.daily-cash-ledger-table td:nth-child(3) {
+  text-align: right;
+}
+
+.daily-cash-count-input {
+  width: 112px;
+  text-align: right;
+}
+
+.daily-cash-ledger-table tfoot td {
+  font-weight: 800;
 }
 
 .revenue-record-table tfoot td {
@@ -2259,10 +2347,68 @@ select option:disabled {
   margin-bottom: 10px;
 }
 
+.inventory-category-card.collapsed .inventory-category-head {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 6px;
+}
+
+.inventory-category-card.collapsed .inventory-author-row {
+  display: none;
+}
+
+.inventory-category-body {
+  display: block;
+}
+
+.inventory-category-card.collapsed .inventory-category-body {
+  display: none;
+}
+
+.inventory-category-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.inventory-collapse-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #D7E3F0;
+  border-radius: 6px;
+  background: #F8FAFC;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.inventory-collapse-btn:hover {
+  background: #EFF6FF;
+  border-color: #BFDBFE;
+}
+
 .inventory-category-head h3 {
   margin: 0 0 8px;
   font-size: 18px;
   color: #0F4C81;
+}
+
+.inventory-category-title h3 {
+  margin: 0;
+}
+
+.inventory-category-actions {
+  align-items: center;
+}
+
+.inventory-action-btn {
+  width: 104px;
+  min-width: 104px;
+  height: 36px;
+  justify-content: center;
 }
 
 .inventory-author-row {
@@ -5565,4 +5711,357 @@ label, .label, .form-label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Daily work report inside revenue tab */
+.daily-report-revenue-section {
+  margin-top: 12px;
+}
+
+.daily-report-treatment-section {
+  margin-top: 12px;
+}
+
+.daily-report-revenue-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--gray-500);
+  font-size: 12px;
+}
+
+.daily-report-revenue-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--gray-50);
+}
+
+.daily-report-revenue-grid {
+  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+}
+
+.daily-report-revenue-memo,
+.daily-report-revenue-empty {
+  margin-top: 10px;
+}
+
+.daily-report-revenue-memo {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--gray-50);
+  color: var(--gray-700);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.daily-report-revenue-memo b {
+  flex: 0 0 auto;
+  color: var(--text-title);
+}
+
+.daily-report-revenue-memo span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.daily-report-treatment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.daily-report-treatment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.daily-report-treatment-chip:hover {
+  background: var(--sky-50);
+  border-color: var(--sky-200);
+}
+
+.daily-report-treatment-chip.active {
+  background: var(--sky-500);
+  border-color: var(--sky-500);
+  color: #fff;
+}
+
+.daily-report-treatment-chip small {
+  color: var(--gray-500);
+  font-size: 11px;
+}
+
+.daily-report-treatment-chip.active small {
+  color: rgba(255,255,255,.85);
+}
+
+.daily-report-summary-grid {
+  margin-top: 12px;
+}
+
+.daily-report-journal-section {
+  margin-top: 12px;
+}
+
+.daily-report-journal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.daily-report-journal-grid h4 {
+  margin: 0 0 8px;
+  color: var(--text-title);
+  font-size: 13px;
+}
+
+.daily-report-journal-table {
+  min-width: 420px;
+}
+
+.daily-report-journal-table th,
+.daily-report-journal-table td {
+  text-align: right;
+}
+
+.daily-report-journal-table th:first-child,
+.daily-report-journal-table td:first-child,
+.daily-report-journal-table th:last-child,
+.daily-report-journal-table td:last-child {
+  text-align: left;
+}
+
+.daily-report-journal-total {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.daily-report-journal-total span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--gray-50);
+  color: var(--gray-700);
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .daily-report-journal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.daily-report-auto-table th,
+.daily-report-auto-table td {
+  text-align: right;
+}
+
+.daily-report-auto-table th:first-child,
+.daily-report-auto-table td:first-child {
+  text-align: left;
+}
+
+.daily-report-section-head,
+.daily-report-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.daily-report-field {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.daily-report-field-label {
+  flex: 1 1 auto;
+  min-width: 160px;
+  font-weight: 600;
+}
+
+.daily-report-field-type {
+  flex: 0 0 auto;
+  min-width: 56px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--sky-50);
+  color: var(--sky-700);
+  font-size: 12px;
+  text-align: center;
+}
+
+.daily-report-field-value {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.daily-report-field textarea.daily-report-field-value {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.daily-report-check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+/* User fix 2026-06-09: selected date must be distinct from today's marker. */
+#month-cal .fc-daygrid-day.mini-selected-day .fc-daygrid-day-frame {
+  background: #EFF6FF;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+#month-cal .fc-daygrid-day.mini-selected-day .fc-daygrid-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff !important;
+  font-weight: 700;
+}
+
+/* User fix 2026-06-09: do not hide the reservation table in narrower desktop windows. */
+@media (max-width: 1024px) {
+  #tab-reserve .layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    scroll-snap-type: none !important;
+  }
+
+  #tab-reserve .sidebar,
+  #tab-reserve .main-cal {
+    flex: none !important;
+    order: initial !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    scroll-snap-align: none !important;
+  }
+
+  #tab-reserve .main-cal #day-board {
+    overflow: visible !important;
+  }
+
+  #tab-reserve .board-wrap {
+    overflow: auto !important;
+    min-height: 360px;
+    scrollbar-width: auto !important;
+  }
+
+  #tab-reserve .board-wrap::-webkit-scrollbar {
+    display: block !important;
+  }
+}
+
+.revenue-cash-cell {
+  min-width: 220px;
+  vertical-align: top;
+}
+
+.cash-ledger {
+  margin-top: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: #F8FAFC;
+  text-align: left;
+}
+
+.cash-ledger summary {
+  cursor: pointer;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.cash-ledger-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.cash-ledger-item {
+  display: grid;
+  grid-template-columns: 76px 58px minmax(78px, 1fr);
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.cash-ledger-item input {
+  width: 100%;
+  height: 26px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  text-align: right;
+}
+
+.cash-ledger-item b,
+.cash-ledger-total b,
+.daily-report-cash-ledger strong {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.cash-ledger-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+  background: #fff;
+}
+
+.daily-report-cash-ledger {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #F8FAFC;
+  font-size: 13px;
+}
+
+.daily-report-cash-ledger > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
 }

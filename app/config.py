@@ -7,8 +7,8 @@ APP_NAME = "도수치료예약"
 # ─── 앱 버전 (배포 시 업데이트) ───
 # 이 값은 프로그램 폴더에 포함되어 교체됨. %APPDATA%\도수치료예약\ 은 유지.
 # 빌드 규칙: MAJOR.MINOR.PATCH (예: 1.2.3)
-APP_VERSION = "1.3.17"
-APP_BUILD_DATE = "2026-06-08"
+APP_VERSION = "1.3.23"
+APP_BUILD_DATE = "2026-06-11"
 
 def get_appdata_dir() -> Path:
     if sys.platform == "win32":
@@ -34,6 +34,10 @@ def get_backup_dir() -> Path:
 DEFAULT_CONFIG = {
     "mode": None, "node_id": None, "main_url": None, "peers": [],
     "sync_interval_sec": 15,
+    # SyncOp(변경 기록) 보존 일수 — 지나면 자동 삭제 (무한 누적 방지).
+    # ⚠ 이 기간보다 오래 꺼져 있던 sub 노드는 op 재생으로 따라잡을 수 없음
+    #   → 신규/장기 오프라인 노드는 메인 PC 의 clinic.db 파일 복사로 부트스트랩.
+    "sync_op_retention_days": 180,
     "slot_minutes": 30, "open_time": "08:30", "close_time": "18:30",
     "lunch_enabled": False, "lunch_start": "12:30", "lunch_end": "13:30",
     "host": "0.0.0.0", "port": 8000,
@@ -60,7 +64,22 @@ def load_config() -> dict:
         cfg["node_id"] = uuid.uuid4().hex[:12]
         cfg["sync_secret"] = secrets.token_urlsafe(32)
         save_config(cfg); return cfg
-    with open(p, "r", encoding="utf-8-sig") as f: cfg = json.load(f)
+    try:
+        with open(p, "r", encoding="utf-8-sig") as f: cfg = json.load(f)
+        if not isinstance(cfg, dict):
+            raise ValueError("config.json 최상위가 객체가 아님")
+    except Exception:
+        # 손상된 config — 앱 시작 불가보다 기본값 재생성이 낫다.
+        # 원본은 .broken_<ts> 로 보존해 수동 복구(비번 해시 등) 여지를 남김.
+        try:
+            import time as _time
+            p.rename(p.with_name(f"config.json.broken_{int(_time.time())}"))
+        except Exception:
+            pass
+        cfg = dict(DEFAULT_CONFIG)
+        cfg["node_id"] = uuid.uuid4().hex[:12]
+        cfg["sync_secret"] = secrets.token_urlsafe(32)
+        save_config(cfg); return cfg
     for k, v in DEFAULT_CONFIG.items(): cfg.setdefault(k, v)
     # node_id / sync_secret 자동 채움 — 둘 중 하나라도 비어있으면 생성 후 저장.
     dirty = False
@@ -73,8 +92,15 @@ def load_config() -> dict:
     return cfg
 
 def save_config(cfg: dict) -> None:
-    with open(get_config_path(), "w", encoding="utf-8") as f:
+    # 원자적 저장: 임시 파일에 전부 쓴 뒤 os.replace 로 교체.
+    # 직접 쓰다 정전되면 config.json 이 깨져 앱이 시작 불가가 됨 (비번 해시·node_id 소실).
+    p = get_config_path()
+    tmp = p.with_name(p.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, p)
 
 def resource_path(relative: str) -> Path:
     if hasattr(sys, "_MEIPASS"): return Path(sys._MEIPASS) / relative

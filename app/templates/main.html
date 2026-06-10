@@ -83,7 +83,7 @@
     <div class="lg-item"><span class="dot" style="background:#3B82F6"></span>의사(공용)</div>
     <div class="lg-item"><span class="dot" style="background:#F97316"></span>체외충격파(공용)</div>
     <div class="lg-item"><span class="dot" style="background:#8B5CF6"></span>치료사 미배정</div>
-    <div class="lg-item"><span class="dot" style="background:#10B981"></span>✓ 수납승인</div>
+    <div class="lg-item"><span class="dot" style="background:#10B981"></span>✓ 치료완료</div>
     <div class="lg-item"><span class="dot" style="background:#9CA3AF"></span>× 취소</div>
   </div>
 </aside>
@@ -252,7 +252,9 @@
       </div>
       <div class="revenue-sub-tabs">
         <button class="revenue-sub-tab active" onclick="switchRevenueTab('records', this)">매출 기록</button>
+        <button class="revenue-sub-tab" onclick="switchRevenueTab('cash-ledger', this)">일일 현금기입장</button>
         <button class="revenue-sub-tab" onclick="switchRevenueTab('stats', this)">매출 통계</button>
+        <button class="revenue-sub-tab" onclick="switchRevenueTab('daily-report', this)">일일 업무 보고</button>
       </div>
 
       <div id="revenue-pane-records" class="revenue-pane active">
@@ -260,7 +262,6 @@
           <input id="rev-record-from" type="date" style="width:150px">
           <span>~</span>
           <input id="rev-record-to" type="date" style="width:150px">
-          <select id="rev-record-category" style="width:150px"></select>
           <button class="primary" onclick="loadRevenueRecords()">조회</button>
           <button class="small" onclick="saveRevenueRecords()">저장</button>
           <span class="toolbar-spacer"></span>
@@ -272,6 +273,19 @@
         <div class="settlement-note">매일 실제 매출을 입력합니다. 이 기록이 매출 통계의 기준이 됩니다.</div>
         <div id="revenue-record-loading" style="display:none; padding:14px; color:#4B5563;">불러오는 중...</div>
         <div id="revenue-record-body"></div>
+      </div>
+
+      <div id="revenue-pane-cash-ledger" class="revenue-pane">
+        <div class="stats-filter-bar revenue-toolbar">
+          <input id="daily-cash-ledger-date" type="date" style="width:150px">
+          <button class="primary" onclick="loadDailyCashLedger()">조회</button>
+          <button class="small" onclick="saveDailyCashLedger()">저장</button>
+          <span class="toolbar-spacer"></span>
+          <button class="small" onclick="applyDailyCashLedgerPreset('today')">오늘</button>
+        </div>
+        <div class="settlement-note">단위별 수량을 입력하면 현금 총합이 자동 계산되어 같은 날짜의 매출 현금 금액으로 저장됩니다.</div>
+        <div id="daily-cash-ledger-loading" style="display:none; padding:14px; color:#4B5563;">불러오는 중...</div>
+        <div id="daily-cash-ledger-body"></div>
       </div>
 
       <div id="revenue-pane-stats" class="revenue-pane">
@@ -290,6 +304,22 @@
         </div>
         <div id="revenue-stat-loading" style="display:none; padding:14px; color:#4B5563;">불러오는 중...</div>
         <div id="revenue-stat-body"></div>
+      </div>
+
+      <div id="revenue-pane-daily-report" class="revenue-pane">
+        <div class="stats-filter-bar revenue-toolbar">
+          <input id="daily-report-date" type="date" style="width:150px">
+          <button class="primary" onclick="loadDailyReport()">조회</button>
+          <button class="small" onclick="saveDailyReport()">저장</button>
+          <input id="daily-medical-summary-file" type="file" accept=".xlsx,.xlsm" style="display:none" onchange="importDailyMedicalSummaryExcel(this)">
+          <button class="small" onclick="triggerDailyMedicalSummaryUpload()">기간별 데이터 업로드</button>
+          <span class="toolbar-spacer"></span>
+          <button class="small" onclick="applyDailyReportPreset('today')">오늘</button>
+          <button class="small" onclick="addDailyReportField()">칸 추가</button>
+        </div>
+        <div class="settlement-note">선택한 치료항목의 정산 기준 수량/수가/인센티브를 자동으로 보여주고, 아래 보고 칸은 직접 추가해 저장합니다.</div>
+        <div id="daily-report-loading" style="display:none; padding:14px; color:#4B5563;">불러오는 중...</div>
+        <div id="daily-report-body"></div>
       </div>
     </div>
   </div>
@@ -972,7 +1002,7 @@ function _upsertPatientCache(p){
   if(idx >= 0){
     merged = Object.assign({}, PATIENTS[idx], p);
     PATIENTS[idx] = merged;
-  } else if(_PATIENTS_LOADED){
+  } else {
     PATIENTS.push(p);
   }
   PATIENTS_BY_ID.set(p.id, merged);
@@ -1430,6 +1460,7 @@ function paintMiniCalendarCells(){
       frame.appendChild(wrap);
     }
   });
+  syncMiniCalendarSelection();
 }
 
 // HEX 색상에 알파값 적용해서 rgba 문자열 반환 (#RRGGBB 또는 #RGB 모두 지원)
@@ -1447,6 +1478,22 @@ function hexWithAlpha(hex, alpha){
 async function reloadMiniCalendar(baseDate = null){
   await loadMiniCalendarData(baseDate);
   paintMiniCalendarCells();
+}
+
+function dateKey(value){
+  if(typeof value === 'string') return value.slice(0, 10);
+  const d = value ? new Date(value) : new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+function syncMiniCalendarSelection(date = window._currentDate){
+  const root = document.getElementById('month-cal');
+  if(!root) return;
+  const key = dateKey(date || new Date());
+  root.querySelectorAll('.fc-daygrid-day').forEach(dayEl => {
+    dayEl.classList.toggle('mini-selected-day', dayEl.getAttribute('data-date') === key);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1473,9 +1520,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     },
     dayCellDidMount: () => {
       paintMiniCalendarCells();
+      syncMiniCalendarSelection();
     },
     dateClick: (info) => {
       window._currentDate = new Date(info.dateStr);
+      syncMiniCalendarSelection(window._currentDate);
       renderDayBoard();
     },
   });
@@ -1485,6 +1534,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await reloadMiniCalendar(new Date());
 
   window._currentDate = new Date();
+  syncMiniCalendarSelection(window._currentDate);
   await renderDayBoard();
   await loadTodayList();
 
@@ -1568,6 +1618,17 @@ async function renderDayBoard(){
   const mo = String(date.getMonth()+1).padStart(2,'0');
   const dd = String(date.getDate()).padStart(2,'0');
   const dateStr = `${y}-${mo}-${dd}`;
+  if(window._miniCal){
+    const calDate = window._miniCal.getDate();
+    if(calDate.getFullYear() !== y || calDate.getMonth() !== date.getMonth()){
+      window._miniCal.gotoDate(date);
+      setTimeout(() => syncMiniCalendarSelection(date), 0);
+    } else {
+      syncMiniCalendarSelection(date);
+    }
+  } else {
+    syncMiniCalendarSelection(date);
+  }
 
   const r = await fetch(`/api/appointments?start=${dateStr}T00:00:00&end=${dateStr}T23:59:59`);
   const appts = await r.json();
@@ -2212,7 +2273,21 @@ function quickCreateAt(min, tid){
 }
 function toLocal(d){const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;}
 function quickCreate(){const n=new Date();n.setMinutes(0,0,0);if(n.getHours()<9)n.setHours(9);const e=new Date(n.getTime()+CFG.slotMinutes*60000);openCreate(toLocal(n),toLocal(e));}
-function quickCreateFor(pid){
+async function fetchPatientForReservation(pid){
+  const cached = PATIENTS_BY_ID.get(pid);
+  if(cached) return cached;
+  try {
+    const r = await fetch(`/api/patients/${encodeURIComponent(pid)}?_=${Date.now()}`);
+    if(!r.ok) return null;
+    const p = await r.json();
+    _upsertPatientCache(p);
+    return p;
+  } catch(e){
+    return null;
+  }
+}
+
+async function quickCreateFor(pid){
   // 예약 탭으로 전환 + 신규 예약 모달 열고 환자 자동 선택
   const reserveBtn = document.querySelector('.tab-btn[onclick*="tab-reserve"]');
   if(reserveBtn && !document.getElementById('tab-reserve').classList.contains('active')){
@@ -2222,8 +2297,8 @@ function quickCreateFor(pid){
   if(n.getHours()<9) n.setHours(9);
   const e=new Date(n.getTime()+CFG.slotMinutes*60000);
   openCreate(toLocal(n),toLocal(e));
-  setTimeout(()=>{
-    const p = PATIENTS_BY_ID.get(pid);
+  setTimeout(async ()=>{
+    const p = await fetchPatientForReservation(pid);
     if(!p){ const s=document.getElementById('f-pid'); if(s) s.value=pid; return; }
     _pmRememberRecentPatient(p);
     pidPick(p.id, p.chart_no||'-', p.name||'?', p.birth_date||'-', p.phone||'-');
@@ -2520,11 +2595,15 @@ async function countManualOnSlot(dateStr, startMin, excludeApptId){
 let _modalState = { manualTherapistAuto: null, patientId: null, newPatientUserTouched: false };
 let _pendingCreateReservationState = null;
 
-function renderCreateTreatmentChecks(categoryId, checkedCodes = []){
+function renderCreateTreatmentChecks(checkedCodes = []){
   const checkedSet = new Set(checkedCodes || []);
-  const codes = treatmentCodesForCategory(categoryId);
+  const codes = (TX_META.treatment_codes || [])
+    .filter(code => {
+      const tx = txByCode(code);
+      return !tx || tx.active !== false;
+    });
   if(!codes.length){
-    return '<div class="muted" style="padding:8px 4px;font-size:12px;">선택한 과에 활성 치료항목이 없습니다.</div>';
+    return '<div class="muted" style="padding:8px 4px;font-size:12px;">활성 치료항목이 없습니다.</div>';
   }
   return codes.map(code => {
     const name = TX_META.treatment_names[code] || code;
@@ -2539,13 +2618,6 @@ function renderCreateTreatmentChecks(categoryId, checkedCodes = []){
   }).join('');
 }
 
-function onCreateTreatmentCategoryChange(){
-  const catId = _v('f-treatment-category');
-  const box = document.getElementById('f-tx-list');
-  if(box) box.innerHTML = renderCreateTreatmentChecks(catId);
-  onTxCheckChange();
-}
-
 function openCreate(startStr, endStr){
   const sd = new Date(startStr);
   const dateVal = toLocal(sd).slice(0,10);
@@ -2554,12 +2626,7 @@ function openCreate(startStr, endStr){
 
   _modalState = { manualTherapistAuto: null, patientId: null, newPatientUserTouched: false };
 
-  const cats = activeTreatmentCategories();
-  const selectedCatId = (cats[0] && cats[0].id) || '';
-  const categoryOptions = cats.length
-    ? cats.map(c => `<option value="${c.id}" ${c.id===selectedCatId?'selected':''}>${escapeHtml(c.name||'')}</option>`).join('')
-    : '<option value="">활성 과 없음</option>';
-  const trChecks = renderCreateTreatmentChecks(selectedCatId);
+  const trChecks = renderCreateTreatmentChecks();
 
   showModal(`<div class="modal-title-row">
       <h3>새 예약</h3>
@@ -2575,8 +2642,7 @@ function openCreate(startStr, endStr){
     </div>
 
     <div class="chk-group">
-      <div class="chk-label">과 / 치료항목 <small class="muted">(선택한 과 항목만 표시)</small></div>
-      <select id="f-treatment-category" onchange="onCreateTreatmentCategoryChange()">${categoryOptions}</select>
+      <div class="chk-label">치료항목 <small class="muted">(전체 항목에서 선택)</small></div>
       <div id="f-tx-list" class="tx-check-list">${trChecks}</div>
     </div>
 
@@ -2624,7 +2690,6 @@ function captureCreateReservationState(){
     date,
     time,
     duration,
-    categoryId: _v('f-treatment-category') || '',
     codes: [...document.querySelectorAll('.f-tx-chk:checked')].map(x => x.value),
     therapistId: _v('f-tid') || '',
     eswtHandlerId: _v('f-eswt-tid') || '',
@@ -2663,12 +2728,8 @@ async function restoreCreateReservationAfterPatient(newP){
   const [startStr, endStr] = _reservationStateRange(state);
   openCreate(startStr, endStr);
   setTimeout(async () => {
-    const catSel = document.getElementById('f-treatment-category');
-    if(catSel && state.categoryId && [...catSel.options].some(o => o.value === state.categoryId)){
-      catSel.value = state.categoryId;
-      const box = document.getElementById('f-tx-list');
-      if(box) box.innerHTML = renderCreateTreatmentChecks(state.categoryId, state.codes || []);
-    }
+    const box = document.getElementById('f-tx-list');
+    if(box) box.innerHTML = renderCreateTreatmentChecks(state.codes || []);
     if(document.getElementById('f-date')) document.getElementById('f-date').value = state.date || document.getElementById('f-date').value;
     if(document.getElementById('f-time')) document.getElementById('f-time').value = state.time || document.getElementById('f-time').value;
     if(document.getElementById('f-dur')) document.getElementById('f-dur').value = state.duration || document.getElementById('f-dur').value;
@@ -2842,21 +2903,53 @@ async function rebuildEswtSelect(codes){
   }
 }
 
-// 환자 검색
-function pidSearch(){
-  const q = document.getElementById('f-pid-search').value.trim().toLowerCase();
-  const box = document.getElementById('f-pid-results');
-  if(!q){ box.innerHTML=''; box.style.display='none'; return; }
-  const hits = PATIENTS.filter(p =>
-    (p.name||'').toLowerCase().includes(q) ||
-    (p.chart_no||'').toLowerCase().includes(q) ||
-    (p.phone||'').toLowerCase().includes(q) ||
-    (p.birth_date||'').toLowerCase().includes(q)
-  ).slice(0,10);
+// 환자 검색 — 서버 검색 기반. 전체 환자 캐시가 아직 로딩 중이어도 바로 찾는다.
+let _pidSearchTimer = null;
+let _pidSearchSeq = 0;
+
+function _renderPidSearchRows(box, hits){
   box.innerHTML = hits.length
     ? hits.map(p => `<div class="pid-row" onclick='pidPick(${JSON.stringify(p.id)}, ${JSON.stringify(p.chart_no||"-")}, ${JSON.stringify(p.name||"?")}, ${JSON.stringify(p.birth_date||"-")}, ${JSON.stringify(p.phone||"-")})'><b>${p.chart_no||'-'}</b> / ${p.name} <span class="muted">/ ${p.birth_date||'-'} / ${p.phone||'-'}</span></div>`).join('')
     : '<div class="pid-row muted">일치 환자 없음</div>';
   box.style.display = 'block';
+}
+
+function pidSearch(){
+  const input = document.getElementById('f-pid-search');
+  const box = document.getElementById('f-pid-results');
+  const q = (input?.value || '').trim();
+  clearTimeout(_pidSearchTimer);
+  if(!q){ box.innerHTML=''; box.style.display='none'; return; }
+
+  const qLower = q.toLowerCase();
+  const localHits = (PATIENTS || []).filter(p =>
+    (p.name||'').toLowerCase().includes(qLower) ||
+    (p.chart_no||'').toLowerCase().includes(qLower) ||
+    (p.phone||'').toLowerCase().includes(qLower) ||
+    (p.birth_date||'').toLowerCase().includes(qLower)
+  ).slice(0,10);
+  if(localHits.length) _renderPidSearchRows(box, localHits);
+  else {
+    box.innerHTML = '<div class="pid-row muted">검색 중...</div>';
+    box.style.display = 'block';
+  }
+
+  const seq = ++_pidSearchSeq;
+  _pidSearchTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(`/api/patients/search?q=${encodeURIComponent(q)}&limit=10&offset=0&_=${Date.now()}`);
+      if(!r.ok) throw new Error(r.statusText);
+      const data = await r.json();
+      if(seq !== _pidSearchSeq) return;
+      const hits = data.items || [];
+      hits.forEach(_upsertPatientCache);
+      _renderPidSearchRows(box, hits);
+    } catch(e){
+      if(seq !== _pidSearchSeq) return;
+      box.innerHTML = `<div class="pid-row muted">검색 실패: ${escapeHtml(e.message || e)}</div>`;
+      box.style.display = 'block';
+    }
+  }, 120);
 }
 
 async function pidPick(id, chart, name, birth, phone){
@@ -3056,7 +3149,7 @@ async function openAppt(aid){
     ? '<span class="badge red">⚠ 노쇼</span>'
     : ({
         reserved: '<span class="badge gray">▦ 예약됨</span>',
-        approved: '<span class="badge green">✓ 수납승인</span>',
+        approved: '<span class="badge green">✓ 치료완료</span>',
         canceled: '<span class="badge red">× 취소됨</span>',
       }[status] || '');
 
@@ -3125,31 +3218,26 @@ async function openAppt(aid){
     </div>`;
   }
 
-  // 원무과 승인 섹션
+  // 치료완료 섹션
   let approveSection = '';
   if(status === 'reserved'){
     approveSection = `<div class="approval-section active">
-      <h4>원무과 승인 <small class="muted">(수납 처리 후 클릭)</small></h4>
-      <button class="primary green" onclick="approveAppt('${aid}')">✓ 원무과 승인</button>
+      <h4>치료완료 <small class="muted">(치료 후 클릭)</small></h4>
+      <button class="primary green" onclick="approveAppt('${aid}')">✓ 치료완료</button>
     </div>`;
   } else if(status === 'approved'){
     approveSection = `<div class="approval-section done">
-      <h4>원무과 승인 ✓</h4>
-      <p class="muted">${ep.approved_at || '-'} · <b>${ep.approved_by || '원무과'}</b> 승인</p>
-      <button onclick="revertApprove('${aid}')">↩ 승인 취소</button>
+      <h4>치료완료 ✓</h4>
+      <p class="muted">${ep.approved_at || '-'} · 치료완료 처리됨</p>
+      <button onclick="revertApprove('${aid}')">↩ 치료완료 취소</button>
     </div>`;
   }
 
   // 취소/삭제
   let cancelBlock = '';
   if(status === 'reserved'){
-    // 20-3-1-UI (post-19-P / F-10): 노쇼 체크박스 — 통계 별도 집계용 (사용자 §3-7 (ii))
     cancelBlock = `<hr><h4>취소 / 삭제</h4>
       <input id="c-memo" placeholder="취소 사유 (선택)">
-      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;cursor:pointer;color:#7C2D12;">
-        <input type="checkbox" id="c-no-show" style="width:16px;height:16px;">
-        <span>⚠ 노쇼 (no-show) 처리 — 통계에 별도 집계</span>
-      </label>
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
         <button class="danger" onclick="cancelAppt('${aid}')">예약 취소</button>
         <button class="danger" onclick="deleteAppt('${aid}')" style="background:#991b1b;color:#fff;border-color:#991b1b">🗑️ 완전 삭제</button>
@@ -3355,20 +3443,20 @@ async function saveApptTime(aid){
 }
 
 async function approveAppt(aid){
-  const ok = await confirmBlock('원무과 승인하시겠습니까?<br><small>완료 카운트가 자동으로 증가합니다.</small>');
+  const ok = await confirmBlock('치료완료 처리하시겠습니까?<br><small>완료 카운트가 자동으로 증가합니다.</small>');
   if(!ok) return;
   const r = await fetch(`/api/appointments/${aid}/approve`, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ approved_by:'원무과', version: window._currentApptVersion }),
+    body: JSON.stringify({ approved_by:'치료완료', version: window._currentApptVersion }),
   });
   if(r.status === 409){ await handleConflict(r, aid); return; }
-  if(!r.ok){ alert('승인 실패\n' + await r.text()); return; }
+  if(!r.ok){ alert('치료완료 처리 실패\n' + await r.text()); return; }
   closeModal(); refresh();
 }
 
 async function revertApprove(aid){
-  const ok = await confirmBlock('승인을 취소하시겠습니까?<br><small>완료 카운트가 자동으로 감소합니다.</small>');
+  const ok = await confirmBlock('치료완료를 취소하시겠습니까?<br><small>완료 카운트가 자동으로 감소합니다.</small>');
   if(!ok) return;
   const r = await fetch(`/api/appointments/${aid}/revert-approve`, {
     method:'POST',
@@ -3376,18 +3464,15 @@ async function revertApprove(aid){
     body: JSON.stringify({ version: window._currentApptVersion }),
   });
   if(r.status === 409){ await handleConflict(r, aid); return; }
-  if(!r.ok){ alert('승인 취소 실패\n' + await r.text()); return; }
+  if(!r.ok){ alert('치료완료 취소 실패\n' + await r.text()); return; }
   closeModal(); refresh();
 }
 
 async function cancelAppt(aid){
   const memoEl = document.getElementById('c-memo');
-  // 20-3-1-UI (post-19-P / F-10): 노쇼 체크박스 → body.no_show — backend cancel 이 동시 처리
-  const noShowEl = document.getElementById('c-no-show');
   const body = {
     memo: memoEl ? memoEl.value : '',
     version: window._currentApptVersion,
-    no_show: !!(noShowEl && noShowEl.checked),
   };
   const r = await fetch(`/api/appointments/${aid}/cancel`, {
     method:'POST',
@@ -3618,12 +3703,8 @@ function cancelNewPatientFromCreateModal(){
   const [startStr, endStr] = _reservationStateRange(state);
   openCreate(startStr, endStr);
   setTimeout(async () => {
-    const catSel = document.getElementById('f-treatment-category');
-    if(catSel && state.categoryId && [...catSel.options].some(o => o.value === state.categoryId)){
-      catSel.value = state.categoryId;
-      const box = document.getElementById('f-tx-list');
-      if(box) box.innerHTML = renderCreateTreatmentChecks(state.categoryId, state.codes || []);
-    }
+    const box = document.getElementById('f-tx-list');
+    if(box) box.innerHTML = renderCreateTreatmentChecks(state.codes || []);
     if(document.getElementById('f-dur')) document.getElementById('f-dur').value = state.duration || '';
     if(document.getElementById('f-memo')) document.getElementById('f-memo').value = state.memo || '';
     if(document.getElementById('f-is-new')) document.getElementById('f-is-new').checked = state.isNewPatient || false;
@@ -3668,8 +3749,8 @@ async function saveNewPatientAndReserve(){
   const newP = await r.json();
   _upsertPatientCache(newP);
   _pmRememberRecentPatient(newP);
-  // 환자 캐시 갱신
-  await _reloadPatientsCache();
+  // 전체 환자 캐시 재로딩은 대량 데이터에서 느릴 수 있으므로 백그라운드로만 갱신한다.
+  _loadPatientsBackground();
   closeModal();
   // 새 예약 모달을 그 환자로 자동 진입
   await restoreCreateReservationAfterPatient(newP);
@@ -4025,7 +4106,7 @@ function editPatient(p){
   const rxBlock = visibleItems.length ? `
     <div class="rx-grid-head">처방 횟수 <small class="muted">(표 표시 항목만)</small></div>
     <div class="rx-grid">${rxRow}</div>
-    <div class="rx-grid-head">완료 횟수 <small class="muted">(승인 시 자동 증가)</small></div>
+    <div class="rx-grid-head">완료 횟수 <small class="muted">(치료완료 시 자동 증가)</small></div>
     <div class="rx-grid">${doneRow}</div>
   ` : '<p class="muted" style="margin:10px 0">표시 ON 인 치료항목이 없습니다. 관리자 탭 → 치료항목에서 설정하세요.</p>';
 
@@ -4407,6 +4488,35 @@ async function deleteEmployeeCategory(cid){
 // ─────── 재고 관리 (과별 품목 + 동적 관리 열) ───────
 
 let INVENTORY_DATA = null;
+const INVENTORY_COLLAPSED_KEY = 'inventory_collapsed_categories';
+let INVENTORY_COLLAPSED = {};
+
+try {
+  INVENTORY_COLLAPSED = JSON.parse(localStorage.getItem(INVENTORY_COLLAPSED_KEY) || '{}') || {};
+} catch(e) {
+  INVENTORY_COLLAPSED = {};
+}
+
+function inventoryIsCollapsed(categoryId){
+  return !!INVENTORY_COLLAPSED[categoryId];
+}
+
+function saveInventoryCollapsed(){
+  try { localStorage.setItem(INVENTORY_COLLAPSED_KEY, JSON.stringify(INVENTORY_COLLAPSED)); } catch(e) {}
+}
+
+function toggleInventoryCategory(categoryId){
+  INVENTORY_COLLAPSED[categoryId] = !inventoryIsCollapsed(categoryId);
+  saveInventoryCollapsed();
+  const card = document.getElementById(`inv-card-${categoryId}`);
+  const collapsed = inventoryIsCollapsed(categoryId);
+  if(card) card.classList.toggle('collapsed', collapsed);
+  const btn = document.getElementById(`inv-collapse-${categoryId}`);
+  if(btn){
+    btn.textContent = collapsed ? '▸' : '▾';
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+}
 
 function inventoryAuthor(categoryId){
   return (document.getElementById(`inv-author-${categoryId}`)?.value || '').trim();
@@ -4502,10 +4612,17 @@ function renderInventoryCategory(section){
     </tr>`;
   }).join('');
   const emptyRow = `<tr><td colspan="${colCount}" class="muted" style="text-align:left;padding:14px">등록된 품목 없음</td></tr>`;
-  return `<div class="inventory-category-card">
+  const collapsed = inventoryIsCollapsed(c.id);
+  return `<div id="inv-card-${escapeAttr(c.id)}" class="inventory-category-card ${collapsed ? 'collapsed' : ''}">
     <div class="inventory-category-head">
       <div>
-        <h3><span class="color-dot" style="background:${c.color || '#9CA3AF'}"></span> ${escapeHtml(c.name || '')}</h3>
+        <div class="inventory-category-title">
+          <button class="inventory-collapse-btn" id="inv-collapse-${escapeAttr(c.id)}"
+                  onclick="toggleInventoryCategory('${c.id}')"
+                  aria-expanded="${collapsed ? 'false' : 'true'}"
+                  title="과 접기/펼치기">${collapsed ? '▸' : '▾'}</button>
+          <h3><span class="color-dot" style="background:${c.color || '#9CA3AF'}"></span> ${escapeHtml(c.name || '')}</h3>
+        </div>
         <div class="inventory-author-row">
           <label>마지막 작성자
             <input id="inv-author-${c.id}" value="${escapeAttr(state.last_author || '')}" placeholder="작성자 이름">
@@ -4514,12 +4631,12 @@ function renderInventoryCategory(section){
           <span class="muted">${state.last_author ? '최근 기록 ' + escapeHtml(inventoryDateLabel(state.last_written_at)) : '작성자 기록 없음'}</span>
         </div>
       </div>
-      <div class="sheet-toolbar">
-        <button class="primary" onclick="editInventoryItem('${c.id}', null)">+ 품목 추가</button>
-        <button class="small" onclick="editInventoryField('${c.id}', null)">+ 관리 열 추가</button>
+      <div class="sheet-toolbar inventory-category-actions">
+        <button class="small inventory-action-btn" onclick="editInventoryItem('${c.id}', null)">+ 품목 추가</button>
+        <button class="small inventory-action-btn" onclick="editInventoryField('${c.id}', null)">+ 관리 열 추가</button>
       </div>
     </div>
-    <div style="overflow-x:auto;">
+    <div class="inventory-category-body" style="overflow-x:auto;">
       <table class="data-table inventory-table">
         <thead><tr>
           <th class="inventory-item-col">품목</th>
@@ -4842,6 +4959,8 @@ async function delTherapist(tid){ return delEmployee(tid); }
 
 let REVENUE_RECORDS = null;
 let REVENUE_STATS = null;
+let DAILY_REPORT = null;
+let DAILY_CASH_LEDGER = null;
 let _revenueInitialized = false;
 
 function revenueDateStr(d){
@@ -4893,6 +5012,10 @@ function initStats(){
   if(!_revenueInitialized){
     revenueSetRange('rev-record', fromStr, toStr);
     revenueSetRange('rev-stat', fromStr, toStr);
+    const reportDateEl = document.getElementById('daily-report-date');
+    if(reportDateEl) reportDateEl.value = revenueDateStr(new Date());
+    const cashLedgerDateEl = document.getElementById('daily-cash-ledger-date');
+    if(cashLedgerDateEl) cashLedgerDateEl.value = revenueDateStr(new Date());
     _revenueInitialized = true;
   }
   loadRevenueRecords();
@@ -4905,7 +5028,437 @@ function switchRevenueTab(name, btn){
   const pane = document.getElementById('revenue-pane-' + name);
   if(pane) pane.classList.add('active');
   if(name === 'records') loadRevenueRecords();
+  if(name === 'cash-ledger') loadDailyCashLedger();
   if(name === 'stats') loadRevenueStats();
+  if(name === 'daily-report') loadDailyReport();
+}
+
+function applyDailyCashLedgerPreset(preset){
+  if(preset === 'today'){
+    const el = document.getElementById('daily-cash-ledger-date');
+    if(el) el.value = revenueDateStr(new Date());
+  }
+  loadDailyCashLedger();
+}
+
+function applyDailyReportPreset(preset){
+  if(preset === 'today'){
+    const el = document.getElementById('daily-report-date');
+    if(el) el.value = revenueDateStr(new Date());
+  }
+  loadDailyReport();
+}
+
+function dailyReportSelectedCodes(){
+  return [...document.querySelectorAll('.daily-report-treatment-check:checked')]
+    .map(x => x.value)
+    .filter(Boolean);
+}
+
+function dailyReportCurrentFields(){
+  return [...document.querySelectorAll('.daily-report-field')].map((box, idx) => {
+    const type = box.dataset.type || 'long_text';
+    const label = box.querySelector('.daily-report-field-label')?.value || '';
+    let value = '';
+    if(type === 'checkbox'){
+      value = !!box.querySelector('.daily-report-field-value')?.checked;
+    } else {
+      value = box.querySelector('.daily-report-field-value')?.value || '';
+    }
+    return {
+      id: box.dataset.id || '',
+      label,
+      type,
+      value,
+      sort_order: idx,
+    };
+  });
+}
+
+function dailyReportTreatmentBase(code){
+  const t = (DAILY_REPORT?.treatments || []).find(x => x.code === code) || {};
+  return {
+    code,
+    treatment_id: t.id || '',
+    treatment_name: t.name || code,
+    treatment_short: t.short || t.name || code,
+    category_id: t.category_id || '',
+    category_name: t.category_name || '',
+    quantity_total: 0,
+    price_total: 0,
+    incentive_total: 0,
+    net_total: 0,
+    record_count: 0,
+  };
+}
+
+function dailyReportBuildAuto(selectedCodes){
+  const byCode = {};
+  (DAILY_REPORT?.settlement_items || []).forEach(row => {
+    if(row && row.code) byCode[row.code] = row;
+  });
+  const items = (selectedCodes || []).map(code => Object.assign(
+    dailyReportTreatmentBase(code),
+    byCode[code] || {}
+  ));
+  const totals = items.reduce((acc, row) => {
+    acc.quantity_total += Number(row.quantity_total || 0);
+    acc.price_total += Number(row.price_total || 0);
+    acc.incentive_total += Number(row.incentive_total || 0);
+    acc.net_total += Number(row.net_total || 0);
+    acc.record_count += Number(row.record_count || 0);
+    return acc;
+  }, {quantity_total:0, price_total:0, incentive_total:0, net_total:0, record_count:0});
+  return {items, totals};
+}
+
+function openDailyReportRevenueRecord(){
+  const reportDate = document.getElementById('daily-report-date')?.value || revenueDateStr(new Date());
+  revenueSetRange('rev-record', reportDate, reportDate);
+  const tabBtn = [...document.querySelectorAll('#admin-stats .revenue-sub-tab')]
+    .find(b => (b.getAttribute('onclick') || '').includes("'records'"));
+  switchRevenueTab('records', tabBtn);
+}
+
+function triggerDailyMedicalSummaryUpload(){
+  document.getElementById('daily-medical-summary-file')?.click();
+}
+
+async function importDailyMedicalSummaryExcel(input){
+  const file = input?.files?.[0];
+  if(!file) return;
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const r = await adminFetch('/api/revenue/daily-medical-summary/import', {
+      method: 'POST',
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok || data.ok === false) throw new Error(data.detail || data.error || r.statusText);
+    const imported = Number(data.imported || data.changed?.upserted || 0);
+    const skipped = Number(data.skipped || 0);
+    alert(`기간별 데이터 ${imported.toLocaleString()}일치를 반영했습니다.${skipped ? `\n건너뛴 행 ${skipped.toLocaleString()}개` : ''}`);
+    await loadDailyReport();
+  } catch(e){
+    alert('기간별 데이터 업로드 실패: ' + (e && e.message ? e.message : e));
+  } finally {
+    if(input) input.value = '';
+  }
+}
+
+function renderDailyReportRevenue(){
+  const rec = DAILY_REPORT?.revenue_record || {};
+  const hasRecord = !!rec.exists;
+  const memo = (rec.memo || '').trim();
+  const updatedLabel = rec.updated_at
+    ? rec.updated_at.slice(0, 16).replace('T', ' ')
+    : '';
+  return `
+    <div class="stats-section daily-report-revenue-section">
+      <div class="daily-report-section-head">
+        <h3 class="stats-section-title">매출 기록</h3>
+        <button class="small" onclick="openDailyReportRevenueRecord()">${hasRecord ? '매출 기록 수정' : '매출 기록 입력'}</button>
+      </div>
+      <div class="daily-report-revenue-meta">
+        <span>${escapeHtml(revenueDateLabel(rec.record_date || DAILY_REPORT?.report_date || ''))}</span>
+        <span>${escapeHtml(rec.category_name || '전체')}</span>
+        ${updatedLabel ? `<span>수정 ${escapeHtml(updatedLabel)}</span>` : ''}
+      </div>
+      <div class="stats-summary-grid daily-report-summary-grid daily-report-revenue-grid">
+        <div class="stat-card"><div class="stat-label">실매출 합계</div><div class="stat-value">${revenueMoney(rec.total_amount)}</div></div>
+        <div class="stat-card"><div class="stat-label">현금</div><div class="stat-value">${revenueMoney(rec.cash_amount)}</div></div>
+        <div class="stat-card"><div class="stat-label">카드</div><div class="stat-value">${revenueMoney(rec.card_amount)}</div></div>
+        <div class="stat-card"><div class="stat-label">계좌</div><div class="stat-value">${revenueMoney(rec.transfer_amount)}</div></div>
+        <div class="stat-card"><div class="stat-label">미수납</div><div class="stat-value">${revenueMoney(revenueUnpaidApplied(rec))}</div></div>
+        <div class="stat-card"><div class="stat-label">건강생활유지비</div><div class="stat-value">${revenueMoney(rec.health_living_fee)}</div></div>
+        <div class="stat-card"><div class="stat-label">장애인기금</div><div class="stat-value">${revenueMoney(rec.disability_fund)}</div></div>
+        <div class="stat-card"><div class="stat-label">기타</div><div class="stat-value">${revenueMoney(rec.other_amount)}</div></div>
+      </div>
+      ${hasRecord
+        ? `<div class="daily-report-revenue-memo"><b>메모</b><span>${memo ? escapeHtml(memo) : '없음'}</span></div>`
+        : `<div class="settlement-note daily-report-revenue-empty"><b>매출 기록 없음</b><span>매출 기록 탭에서 먼저 입력하면 이 보고서의 메인 기준으로 표시됩니다.</span></div>`}
+    </div>`;
+}
+
+function renderDailyReportMedicalSummary(){
+  const data = DAILY_REPORT?.medical_summary || {};
+  const hasData = !!data.exists;
+  const updatedLabel = data.updated_at
+    ? data.updated_at.slice(0, 16).replace('T', ' ')
+    : '';
+  const fileLabel = (data.source_filename || '').trim();
+  return `
+    <div class="stats-section daily-report-medical-section">
+      <div class="daily-report-section-head">
+        <h3 class="stats-section-title">기간별 데이터</h3>
+        <button class="small" onclick="triggerDailyMedicalSummaryUpload()">엑셀 업로드</button>
+      </div>
+      <div class="daily-report-revenue-meta">
+        <span>${escapeHtml(revenueDateLabel(data.report_date || DAILY_REPORT?.report_date || ''))}</span>
+        ${fileLabel ? `<span>${escapeHtml(fileLabel)}</span>` : ''}
+        ${updatedLabel ? `<span>수정 ${escapeHtml(updatedLabel)}</span>` : ''}
+      </div>
+      <div class="stats-summary-grid daily-report-summary-grid daily-report-medical-grid">
+        <div class="stat-card"><div class="stat-label">총진료비</div><div class="stat-value">${revenueMoney(data.total_medical_fee)}</div></div>
+        <div class="stat-card"><div class="stat-label">공단부담총액</div><div class="stat-value">${revenueMoney(data.nhis_burden_total)}</div></div>
+        <div class="stat-card"><div class="stat-label">본인부담총액</div><div class="stat-value">${revenueMoney(data.patient_burden_total)}</div></div>
+        <div class="stat-card"><div class="stat-label">급여총액</div><div class="stat-value">${revenueMoney(data.covered_total)}</div></div>
+        <div class="stat-card"><div class="stat-label">비급여총액</div><div class="stat-value">${revenueMoney(data.uncovered_total)}</div></div>
+      </div>
+      ${hasData
+        ? ''
+        : `<div class="settlement-note daily-report-revenue-empty"><b>기간별 데이터 없음</b><span>엑셀 업로드 후 해당 날짜의 값이 표시됩니다.</span></div>`}
+    </div>`;
+}
+
+function renderDailyReportJournal(){
+  const journal = DAILY_REPORT?.journal || {};
+  const revenueLines = journal.revenue_lines || [];
+  const medicalLines = journal.medical_lines || [];
+  const treatmentLines = journal.treatment_lines || [];
+  const totals = journal.totals || {};
+  const revenueRows = revenueLines.map(row => `
+    <tr>
+      <td>${escapeHtml(row.label || '')}</td>
+      <td>${revenueMoney(row.amount)}</td>
+      <td>${escapeHtml(row.source || '')}</td>
+    </tr>`).join('');
+  const medicalRows = medicalLines.map(row => `
+    <tr>
+      <td>${escapeHtml(row.label || '')}</td>
+      <td>${revenueMoney(row.amount)}</td>
+      <td>${escapeHtml(row.source || '')}</td>
+    </tr>`).join('');
+  const treatmentRows = treatmentLines.map(row => `
+    <tr>
+      <td>${escapeHtml(row.label || row.code || '')}</td>
+      <td>${revenueQuantity(row.quantity_total)}</td>
+      <td>${revenueMoney(row.price_total)}</td>
+      <td>${revenueMoney(row.incentive_total)}</td>
+    </tr>`).join('');
+  return `
+    <div class="stats-section daily-report-journal-section">
+      <h3 class="stats-section-title">업무일지 반영</h3>
+      <div class="daily-report-journal-grid">
+        <div>
+          <h4>매출 입력</h4>
+          <div style="overflow-x:auto;">
+            <table class="data-table daily-report-journal-table">
+              <thead><tr><th>항목</th><th>금액</th><th>출처</th></tr></thead>
+              <tbody>${revenueRows || '<tr><td colspan="3">매출 기록 없음</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h4>기간별 데이터</h4>
+          <div style="overflow-x:auto;">
+            <table class="data-table daily-report-journal-table">
+              <thead><tr><th>항목</th><th>금액</th><th>출처</th></tr></thead>
+              <tbody>${medicalRows || '<tr><td colspan="3">기간별 데이터 없음</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h4>정산 입력</h4>
+          <div class="daily-report-journal-total">
+            <span>수량 ${revenueQuantity(totals.quantity_total)}</span>
+            <span>수가 ${revenueMoney(totals.price_total)}</span>
+            <span>인센티브 ${revenueMoney(totals.incentive_total)}</span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="data-table daily-report-journal-table">
+              <thead><tr><th>항목</th><th>수량</th><th>정산 수가</th><th>인센티브</th></tr></thead>
+              <tbody>${treatmentRows || '<tr><td colspan="4">정산 기록 없음</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderDailyReportAuto(){
+  const el = document.getElementById('daily-report-auto');
+  if(!el || !DAILY_REPORT) return;
+  const selected = dailyReportSelectedCodes();
+  DAILY_REPORT.selected_treatment_codes = selected;
+  const auto = dailyReportBuildAuto(selected);
+  DAILY_REPORT.auto = auto;
+  const rows = (auto.items || []).map(row => `
+    <tr>
+      <td>${escapeHtml(row.treatment_short || row.treatment_name || row.code)}</td>
+      <td>${revenueQuantity(row.quantity_total)}</td>
+      <td>${revenueMoney(row.price_total)}</td>
+      <td>${revenueMoney(row.incentive_total)}</td>
+      <td>${revenueMoney(row.net_total)}</td>
+    </tr>`).join('');
+  el.innerHTML = `
+    <div class="stats-summary-grid daily-report-summary-grid">
+      <div class="stat-card"><div class="stat-label">선택 항목</div><div class="stat-value">${revenueQuantity(selected.length)}</div></div>
+      <div class="stat-card"><div class="stat-label">정산 수량</div><div class="stat-value">${revenueQuantity(auto.totals.quantity_total)}</div></div>
+      <div class="stat-card"><div class="stat-label">정산 수가</div><div class="stat-value">${revenueMoney(auto.totals.price_total)}</div></div>
+      <div class="stat-card"><div class="stat-label">차감 후</div><div class="stat-value">${revenueMoney(auto.totals.net_total)}</div></div>
+    </div>
+    <div class="stats-section">
+      <h3 class="stats-section-title">정산 참고</h3>
+      ${rows
+        ? `<div style="overflow-x:auto;"><table class="data-table daily-report-auto-table"><thead><tr><th>치료항목</th><th>수량</th><th>정산 수가</th><th>인센티브</th><th>차감 후</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : '<p class="muted" style="margin:0;">선택한 치료항목이 없습니다.</p>'}
+    </div>`;
+}
+
+function dailyReportSelectionChanged(){
+  document.querySelectorAll('.daily-report-treatment-chip').forEach(label => {
+    const input = label.querySelector('.daily-report-treatment-check');
+    label.classList.toggle('active', !!input?.checked);
+  });
+  renderDailyReportAuto();
+}
+
+function renderDailyReportField(field){
+  const type = field.type || 'long_text';
+  const id = field.id || ('field_' + Math.random().toString(16).slice(2));
+  let control = '';
+  if(type === 'short_text'){
+    control = `<input class="daily-report-field-value" type="text" maxlength="200" value="${escapeAttr(field.value || '')}" placeholder="내용">`;
+  } else if(type === 'number'){
+    control = `<input class="daily-report-field-value" type="number" min="0" step="1" value="${escapeAttr(field.value ?? 0)}">`;
+  } else if(type === 'checkbox'){
+    control = `<label class="daily-report-check-row"><input class="daily-report-field-value" type="checkbox" ${field.value ? 'checked' : ''}> <span>체크됨</span></label>`;
+  } else {
+    control = `<textarea class="daily-report-field-value" maxlength="2000" rows="4" placeholder="내용">${escapeHtml(field.value || '')}</textarea>`;
+  }
+  return `<div class="daily-report-field" data-id="${escapeAttr(id)}" data-type="${escapeAttr(type)}">
+    <div class="daily-report-field-head">
+      <input class="daily-report-field-label" type="text" maxlength="50" value="${escapeAttr(field.label || '')}" placeholder="칸 제목">
+      <span class="daily-report-field-type">${escapeHtml(field.type_label || type)}</span>
+      <button class="small danger" onclick="removeDailyReportField(this)">삭제</button>
+    </div>
+    ${control}
+  </div>`;
+}
+
+function renderDailyReport(data){
+  DAILY_REPORT = data || {};
+  const body = document.getElementById('daily-report-body');
+  if(!body) return;
+  const selected = new Set(DAILY_REPORT.selected_treatment_codes || []);
+  const settlementCodes = new Set(DAILY_REPORT.settlement_codes || []);
+  const treatmentRows = (DAILY_REPORT.treatments || [])
+    .filter(t => t.active || selected.has(t.code) || settlementCodes.has(t.code));
+  const chips = treatmentRows.map(t => {
+    const checked = selected.has(t.code);
+    const hasData = settlementCodes.has(t.code);
+    return `<label class="daily-report-treatment-chip ${checked ? 'active' : ''} ${hasData ? 'has-data' : ''}">
+      <input class="daily-report-treatment-check" type="checkbox" value="${escapeAttr(t.code)}" ${checked ? 'checked' : ''} onchange="dailyReportSelectionChanged()">
+      <span>${escapeHtml(t.short || t.name || t.code)}</span>
+      ${hasData ? '<small>정산 있음</small>' : ''}
+    </label>`;
+  }).join('');
+  body.innerHTML = `
+    ${renderDailyReportRevenue()}
+    ${renderDailyReportMedicalSummary()}
+    ${renderDailyReportJournal()}
+    <div class="stats-section daily-report-treatment-section">
+      <h3 class="stats-section-title">정산 참고 치료항목</h3>
+      <div class="daily-report-treatment-list">${chips || '<p class="muted" style="margin:0;">등록된 치료항목이 없습니다.</p>'}</div>
+    </div>
+    <div id="daily-report-auto"></div>
+    <div class="stats-section">
+      <div class="daily-report-section-head">
+        <h3 class="stats-section-title">직접 작성 보고</h3>
+        <button class="small" onclick="addDailyReportField()">칸 추가</button>
+      </div>
+      <div id="daily-report-fields">
+        ${(DAILY_REPORT.custom_fields || []).map(renderDailyReportField).join('') || '<p class="muted daily-report-empty">추가된 보고 칸이 없습니다.</p>'}
+      </div>
+    </div>`;
+  renderDailyReportAuto();
+}
+
+async function loadDailyReport(){
+  const dateEl = document.getElementById('daily-report-date');
+  if(dateEl && !dateEl.value) dateEl.value = revenueDateStr(new Date());
+  const reportDate = dateEl?.value || '';
+  if(!reportDate) return;
+  const loading = document.getElementById('daily-report-loading');
+  const body = document.getElementById('daily-report-body');
+  try {
+    if(loading) loading.style.display = 'block';
+    const r = await adminFetch(`/api/revenue/daily-report?date=${encodeURIComponent(reportDate)}&_=${Date.now()}`);
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(data.detail || r.statusText);
+    renderDailyReport(data);
+  } catch(e){
+    if(body) body.innerHTML = `<p class="muted" style="color:#DC2626;padding:12px;">일일 업무 보고 조회 실패: ${escapeHtml(e && e.message ? e.message : e)}</p>`;
+  } finally {
+    if(loading) loading.style.display = 'none';
+  }
+}
+
+function addDailyReportField(){
+  showModal(`<h3>보고 칸 추가</h3>
+    <label>칸 제목 <input id="daily-report-new-label" type="text" maxlength="50" placeholder="예: 특이사항"></label>
+    <label>입력 타입
+      <select id="daily-report-new-type">
+        <option value="long_text">긴글</option>
+        <option value="short_text">짧은글</option>
+        <option value="number">숫자</option>
+        <option value="checkbox">체크</option>
+      </select>
+    </label>
+    <div class="modal-actions">
+      <button onclick="closeModal()">취소</button>
+      <button class="primary" onclick="confirmAddDailyReportField()">추가</button>
+    </div>`);
+}
+
+function confirmAddDailyReportField(){
+  const label = (document.getElementById('daily-report-new-label')?.value || '').trim();
+  const type = document.getElementById('daily-report-new-type')?.value || 'long_text';
+  if(!label){ alert('칸 제목을 입력하세요.'); return; }
+  const box = document.getElementById('daily-report-fields');
+  if(!box) return;
+  const empty = box.querySelector('.daily-report-empty');
+  if(empty) empty.remove();
+  const typeLabel = {short_text:'짧은글', long_text:'긴글', number:'숫자', checkbox:'체크'}[type] || '긴글';
+  const field = {id:'field_' + Date.now().toString(36), label, type, type_label:typeLabel, value: type === 'checkbox' ? false : (type === 'number' ? 0 : '')};
+  box.insertAdjacentHTML('beforeend', renderDailyReportField(field));
+  closeModal();
+}
+
+function removeDailyReportField(btn){
+  const field = btn.closest('.daily-report-field');
+  if(field) field.remove();
+  const box = document.getElementById('daily-report-fields');
+  if(box && !box.querySelector('.daily-report-field')){
+    box.innerHTML = '<p class="muted daily-report-empty">추가된 보고 칸이 없습니다.</p>';
+  }
+}
+
+async function saveDailyReport(){
+  const reportDate = document.getElementById('daily-report-date')?.value || '';
+  if(!reportDate){ alert('날짜를 선택하세요.'); return; }
+  const customFields = dailyReportCurrentFields();
+  const blank = customFields.find(f => !(f.label || '').trim());
+  if(blank){ alert('보고 칸 제목을 입력하세요.'); return; }
+  try {
+    const r = await adminFetch('/api/revenue/daily-report', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        report_date: reportDate,
+        selected_treatment_codes: dailyReportSelectedCodes(),
+        custom_fields: customFields,
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok || data.ok === false) throw new Error(data.detail || data.error || r.statusText);
+    renderDailyReport(data);
+    alert('일일 업무 보고를 저장했습니다.');
+  } catch(e){
+    alert('일일 업무 보고 저장 실패: ' + (e && e.message ? e.message : e));
+  }
 }
 
 function populateRevenueCategorySelect(id, categories, selectedId){
@@ -4920,28 +5473,331 @@ function populateRevenueCategorySelect(id, categories, selectedId){
 }
 
 function syncRevenueCategorySelects(categories, selectedId){
-  populateRevenueCategorySelect('rev-record-category', categories, selectedId);
   populateRevenueCategorySelect('rev-stat-category', categories, selectedId);
 }
+
+const REVENUE_CASH_DENOMS = [50000, 10000, 5000, 1000, 500, 100, 10];
+const REVENUE_PAYMENT_FIELDS = [
+  {key:'cash_amount', label:'현금', defaultSign:'+'},
+  {key:'card_amount', label:'카드', defaultSign:'+'},
+  {key:'transfer_amount', label:'계좌', defaultSign:'+'},
+  {key:'unpaid_amount', label:'미수납', defaultSign:'-'},
+  {key:'health_living_fee', label:'건강생활유지비', defaultSign:'-'},
+  {key:'disability_fund', label:'장애인기금', defaultSign:'-'},
+  {key:'other_amount', label:'기타', defaultSign:'+'},
+];
+const REVENUE_SIGN_STORAGE_KEY = 'dosu.revenue.fieldSigns.v1';
+const REVENUE_FIELD_DEFAULT_SIGNS = Object.fromEntries(REVENUE_PAYMENT_FIELDS.map(f => [f.key, f.defaultSign]));
+let REVENUE_FIELD_SIGNS = loadRevenueFieldSigns();
 
 function revenueMoney(v){
   const n = Math.round(Number(v || 0));
   return n.toLocaleString() + '원';
 }
 
+function loadRevenueFieldSigns(){
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(REVENUE_SIGN_STORAGE_KEY) || '{}') || {};
+  } catch(e){
+    saved = {};
+  }
+  const out = {...REVENUE_FIELD_DEFAULT_SIGNS};
+  Object.keys(out).forEach(key => {
+    if(saved[key] === '+' || saved[key] === '-') out[key] = saved[key];
+  });
+  return out;
+}
+
+function saveRevenueFieldSigns(){
+  try {
+    localStorage.setItem(REVENUE_SIGN_STORAGE_KEY, JSON.stringify(REVENUE_FIELD_SIGNS));
+  } catch(e){}
+}
+
+function revenueFieldSign(field){
+  return REVENUE_FIELD_SIGNS[field] === '-' ? '-' : '+';
+}
+
+function revenueFieldLabel(field){
+  return (REVENUE_PAYMENT_FIELDS.find(f => f.key === field) || {}).label || field;
+}
+
+function renderRevenueSignControl(field){
+  const sign = revenueFieldSign(field);
+  return `<span class="revenue-sign-control" data-revenue-sign-field="${escapeAttr(field)}">
+    <button type="button" class="revenue-sign-btn ${sign === '+' ? 'active' : ''}" data-sign-option="+" onclick="setRevenueFieldSign('${escapeAttr(field)}','+')"><span class="revenue-sign-check">✓</span><span>+</span></button>
+    <button type="button" class="revenue-sign-btn ${sign === '-' ? 'active' : ''}" data-sign-option="-" onclick="setRevenueFieldSign('${escapeAttr(field)}','-')"><span class="revenue-sign-check">✓</span><span>-</span></button>
+  </span>`;
+}
+
+function refreshRevenueSignControls(){
+  document.querySelectorAll('[data-revenue-sign-field]').forEach(group => {
+    const field = group.dataset.revenueSignField || '';
+    const sign = revenueFieldSign(field);
+    group.querySelectorAll('.revenue-sign-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.signOption === sign);
+    });
+  });
+}
+
+function applyRevenueInputSign(input){
+  const raw = String(input?.value || '').trim();
+  if(!input || !raw || raw === '-' || raw === '−') return;
+  const amount = Math.abs(revenueAmountValue(raw));
+  input.value = amount ? revenueAmountDisplay(revenueFieldSign(input.dataset.field) === '-' ? -amount : amount) : '';
+}
+
+function setRevenueFieldSign(field, sign){
+  if(!REVENUE_FIELD_DEFAULT_SIGNS[field]) return;
+  REVENUE_FIELD_SIGNS[field] = sign === '-' ? '-' : '+';
+  saveRevenueFieldSigns();
+  refreshRevenueSignControls();
+  document.querySelectorAll(`.revenue-amount-input[data-field="${field}"]`).forEach(input => applyRevenueInputSign(input));
+  recalcRevenueRecordTotals();
+}
+
 function revenueAmountValue(v){
-  const cleaned = String(v || '').replace(/[^\d]/g, '');
-  return Math.max(0, parseInt(cleaned || '0', 10) || 0);
+  const raw = String(v || '').trim();
+  const negative = raw.startsWith('-') || raw.startsWith('−');
+  const cleaned = raw.replace(/[^\d]/g, '');
+  const n = parseInt(cleaned || '0', 10) || 0;
+  return negative ? -n : n;
 }
 
 function revenueAmountDisplay(v){
   const n = revenueAmountValue(v);
-  return n ? n.toLocaleString() : '';
+  if(!n) return '';
+  return n < 0 ? '-' + Math.abs(n).toLocaleString() : n.toLocaleString();
 }
 
 function revenueQuantity(v){
   const n = Math.max(0, parseInt(v || '0') || 0);
   return n.toLocaleString();
+}
+
+function revenueCashCounts(rec){
+  const raw = rec?.cash_counts || {};
+  const counts = {};
+  REVENUE_CASH_DENOMS.forEach(denom => {
+    counts[String(denom)] = Math.max(0, parseInt(raw[String(denom)] || raw[denom] || 0, 10) || 0);
+  });
+  return counts;
+}
+
+function revenueCashCountsFromRow(tr){
+  const counts = {};
+  REVENUE_CASH_DENOMS.forEach(denom => {
+    const input = tr.querySelector(`.revenue-cash-count-input[data-denom="${denom}"]`);
+    counts[String(denom)] = Math.max(0, parseInt(input?.value || '0', 10) || 0);
+  });
+  return counts;
+}
+
+function revenueCashCountsFromDataset(el){
+  let raw = {};
+  try {
+    raw = JSON.parse(el?.dataset?.cashCounts || '{}');
+  } catch(e){
+    raw = {};
+  }
+  return revenueCashCounts({cash_counts: raw});
+}
+
+function revenueCashCountsTotal(counts){
+  return REVENUE_CASH_DENOMS.reduce((sum, denom) => {
+    return sum + denom * (Math.max(0, parseInt(counts[String(denom)] || 0, 10) || 0));
+  }, 0);
+}
+
+function revenueCashCountsHasValue(counts){
+  return Object.values(counts || {}).some(v => (parseInt(v || 0, 10) || 0) > 0);
+}
+
+function renderRevenueCashLedger(rec){
+  const counts = revenueCashCounts(rec);
+  const hasCounts = revenueCashCountsHasValue(counts);
+  const total = revenueCashCountsTotal(counts);
+  const rows = REVENUE_CASH_DENOMS.map(denom => {
+    const count = counts[String(denom)] || 0;
+    return `<label class="cash-ledger-item">
+      <span>${denom.toLocaleString()}원</span>
+      <input class="revenue-cash-count-input" type="number" min="0" step="1"
+             data-denom="${denom}" value="${count || ''}" inputmode="numeric"
+             oninput="updateRevenueCashLedger(this)">
+      <b data-cash-subtotal="${denom}">${revenueMoney(denom * count)}</b>
+    </label>`;
+  }).join('');
+  return `<details class="cash-ledger" ${hasCounts ? 'open' : ''}>
+    <summary>현금 기입장</summary>
+    <div class="cash-ledger-grid">${rows}</div>
+    <div class="cash-ledger-total"><span>총합</span><b data-cash-ledger-total>${revenueMoney(total)}</b></div>
+  </details>`;
+}
+
+function updateRevenueCashLedger(input){
+  const tr = input.closest('.revenue-record-row');
+  if(!tr) return;
+  const counts = revenueCashCountsFromRow(tr);
+  REVENUE_CASH_DENOMS.forEach(denom => {
+    const sub = tr.querySelector(`[data-cash-subtotal="${denom}"]`);
+    if(sub) sub.textContent = revenueMoney(denom * (counts[String(denom)] || 0));
+  });
+  const total = revenueCashCountsTotal(counts);
+  const totalEl = tr.querySelector('[data-cash-ledger-total]');
+  if(totalEl) totalEl.textContent = revenueMoney(total);
+  const cashInput = tr.querySelector('.revenue-amount-input[data-field="cash_amount"]');
+  if(cashInput){
+    cashInput.value = revenueAmountDisplay(total);
+    cashInput.dataset.cashLedger = revenueCashCountsHasValue(counts) ? '1' : '';
+  }
+  recalcRevenueRecordTotals();
+}
+
+function normalizeRevenueCashAmount(input){
+  input.dataset.cashLedger = '';
+  normalizeRevenueAmount(input);
+  const tr = input.closest('.revenue-record-row');
+  if(!tr) return;
+  tr.querySelectorAll('.revenue-cash-count-input').forEach(el => { el.value = ''; });
+  tr.querySelectorAll('[data-cash-subtotal]').forEach(el => { el.textContent = revenueMoney(0); });
+  const totalEl = tr.querySelector('[data-cash-ledger-total]');
+  if(totalEl) totalEl.textContent = revenueMoney(0);
+}
+
+function dailyCashLedgerDate(){
+  const el = document.getElementById('daily-cash-ledger-date');
+  if(el && !el.value) el.value = revenueDateStr(new Date());
+  return el?.value || revenueDateStr(new Date());
+}
+
+function dailyCashLedgerRecord(){
+  const dateStr = dailyCashLedgerDate();
+  return (DAILY_CASH_LEDGER?.records || [])[0] || {
+    record_date: dateStr,
+    cash_amount: 0,
+    cash_counts: {},
+    card_amount: 0,
+    transfer_amount: 0,
+    unpaid_amount: 0,
+    health_living_fee: 0,
+    disability_fund: 0,
+    other_amount: 0,
+    memo: '',
+  };
+}
+
+function revenueAppliedAmount(field, value){
+  return revenueAmountValue(value);
+}
+
+function revenueUnpaidApplied(rec){
+  if(rec && rec.unpaid_applied_amount !== undefined && rec.unpaid_applied_amount !== null){
+    return Number(rec.unpaid_applied_amount || 0);
+  }
+  return Number(rec?.unpaid_amount || 0);
+}
+
+function dailyCashLedgerCounts(){
+  const counts = {};
+  REVENUE_CASH_DENOMS.forEach(denom => {
+    const input = document.querySelector(`.daily-cash-count-input[data-denom="${denom}"]`);
+    counts[String(denom)] = Math.max(0, parseInt(input?.value || '0', 10) || 0);
+  });
+  return counts;
+}
+
+function updateDailyCashLedger(input){
+  if(input){
+    const n = Math.max(0, parseInt(input.value || '0', 10) || 0);
+    input.value = n ? String(n) : '';
+  }
+  const counts = dailyCashLedgerCounts();
+  REVENUE_CASH_DENOMS.forEach(denom => {
+    const sub = document.querySelector(`[data-daily-cash-subtotal="${denom}"]`);
+    if(sub) sub.textContent = revenueMoney(denom * (counts[String(denom)] || 0));
+  });
+  const totalEl = document.querySelector('[data-daily-cash-total]');
+  if(totalEl) totalEl.textContent = revenueMoney(revenueCashCountsTotal(counts));
+}
+
+async function loadDailyCashLedger(){
+  const dateStr = dailyCashLedgerDate();
+  if(!dateStr) return;
+  const loading = document.getElementById('daily-cash-ledger-loading');
+  const body = document.getElementById('daily-cash-ledger-body');
+  try {
+    if(loading) loading.style.display = 'block';
+    const params = new URLSearchParams({date_from: dateStr, date_to: dateStr});
+    const r = await adminFetch(`/api/revenue/records?${params.toString()}`);
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(data.detail || r.statusText);
+    DAILY_CASH_LEDGER = data;
+    renderDailyCashLedger(data);
+  } catch(e){
+    if(body) body.innerHTML = `<p class="muted" style="color:#DC2626;padding:12px;">현금기입장 조회 실패: ${escapeHtml(e && e.message ? e.message : e)}</p>`;
+  } finally {
+    if(loading) loading.style.display = 'none';
+  }
+}
+
+function renderDailyCashLedger(data){
+  const body = document.getElementById('daily-cash-ledger-body');
+  if(!body) return;
+  const dateStr = data?.date_from || dailyCashLedgerDate();
+  const rec = (data?.records || [])[0] || {record_date: dateStr, cash_counts: {}};
+  const counts = revenueCashCounts(rec);
+  const rows = REVENUE_CASH_DENOMS.map(denom => {
+    const count = counts[String(denom)] || 0;
+    return `<tr>
+      <td>${denom.toLocaleString()}원</td>
+      <td><input class="daily-cash-count-input" type="number" min="0" step="1" inputmode="numeric" data-denom="${denom}" value="${count || ''}" oninput="updateDailyCashLedger(this)"></td>
+      <td data-daily-cash-subtotal="${denom}">${revenueMoney(denom * count)}</td>
+    </tr>`;
+  }).join('');
+  body.innerHTML = `<div class="daily-cash-ledger-wrap">
+    <table class="data-table daily-cash-ledger-table">
+      <thead><tr><th>단위</th><th>수량</th><th>금액</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="2">${escapeHtml(revenueDateLabel(rec.record_date || dateStr))} 총합</td><td data-daily-cash-total>${revenueMoney(revenueCashCountsTotal(counts))}</td></tr></tfoot>
+    </table>
+  </div>`;
+}
+
+async function saveDailyCashLedger(){
+  const dateStr = dailyCashLedgerDate();
+  if(!dateStr) return;
+  if(!document.querySelector('.daily-cash-count-input')){
+    await loadDailyCashLedger();
+  }
+  const counts = dailyCashLedgerCounts();
+  const rec = dailyCashLedgerRecord();
+  const entry = {
+    record_date: dateStr,
+    category_id: '',
+    cash_amount: revenueCashCountsTotal(counts),
+    cash_counts: counts,
+    card_amount: revenueAmountValue(rec.card_amount),
+    transfer_amount: revenueAmountValue(rec.transfer_amount),
+    unpaid_amount: revenueAmountValue(rec.unpaid_amount),
+    health_living_fee: revenueAmountValue(rec.health_living_fee),
+    disability_fund: revenueAmountValue(rec.disability_fund),
+    other_amount: revenueAmountValue(rec.other_amount),
+    memo: rec.memo || '',
+  };
+  try {
+    const r = await adminFetch('/api/revenue/records/grid', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({date_from: dateStr, date_to: dateStr, category_id: '', entries:[entry]}),
+    });
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok || data.ok === false) throw new Error(data.detail || data.error || r.statusText);
+    DAILY_CASH_LEDGER = data;
+    renderDailyCashLedger(data);
+  } catch(e){
+    alert('현금기입장 저장 실패: ' + (e && e.message ? e.message : e));
+  }
 }
 
 function revenueDateLabel(dateStr){
@@ -4952,8 +5808,11 @@ function revenueDateLabel(dateStr){
 }
 
 function normalizeRevenueAmount(input){
-  const formatted = revenueAmountDisplay(input.value);
-  if(input.value !== formatted) input.value = formatted;
+  if(String(input.value || '').trim() === '-' || String(input.value || '').trim() === '−'){
+    recalcRevenueRecordTotals();
+    return;
+  }
+  applyRevenueInputSign(input);
   recalcRevenueRecordTotals();
 }
 
@@ -4962,7 +5821,7 @@ function recalcRevenueRecordTotals(){
   document.querySelectorAll('.revenue-record-row').forEach(tr => {
     let total = 0;
     tr.querySelectorAll('.revenue-amount-input').forEach(inp => {
-      total += revenueAmountValue(inp.value);
+      total += revenueAppliedAmount(inp.dataset.field, inp.value);
     });
     grand += total;
     const cell = tr.querySelector('[data-revenue-row-total]');
@@ -4975,7 +5834,7 @@ function recalcRevenueRecordTotals(){
 async function loadRevenueRecords(){
   const fromStr = document.getElementById('rev-record-from')?.value || '';
   const toStr = document.getElementById('rev-record-to')?.value || '';
-  const categoryId = document.getElementById('rev-record-category')?.value || '';
+  const categoryId = '';
   if(!fromStr || !toStr) return;
   if(fromStr > toStr){ alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
   const loading = document.getElementById('revenue-record-loading');
@@ -5001,25 +5860,36 @@ function renderRevenueRecords(data){
   const body = document.getElementById('revenue-record-body');
   if(!body) return;
   const records = data.records || [];
-  const rows = records.map(rec => `
-    <tr class="revenue-record-row" data-date="${escapeAttr(rec.record_date)}">
+  const paymentHeaders = REVENUE_PAYMENT_FIELDS.map(field => `
+    <th>
+      <div class="revenue-sign-header">
+        <span>${escapeHtml(field.label)}</span>
+        ${renderRevenueSignControl(field.key)}
+      </div>
+    </th>`).join('');
+  const rows = records.map(rec => {
+    const cashCounts = revenueCashCounts(rec);
+    const paymentCells = REVENUE_PAYMENT_FIELDS.map(field => `
+      <td><input class="revenue-amount-input" data-field="${escapeAttr(field.key)}" inputmode="decimal" value="${escapeAttr(revenueAmountDisplay(rec[field.key]))}" oninput="normalizeRevenueAmount(this)"></td>
+    `).join('');
+    return `
+    <tr class="revenue-record-row" data-date="${escapeAttr(rec.record_date)}" data-cash-counts="${escapeAttr(JSON.stringify(cashCounts))}">
       <td class="revenue-date-cell">${escapeHtml(revenueDateLabel(rec.record_date))}</td>
-      <td><input class="revenue-amount-input" data-field="cash_amount" inputmode="numeric" value="${escapeAttr(revenueAmountDisplay(rec.cash_amount))}" oninput="normalizeRevenueAmount(this)"></td>
-      <td><input class="revenue-amount-input" data-field="card_amount" inputmode="numeric" value="${escapeAttr(revenueAmountDisplay(rec.card_amount))}" oninput="normalizeRevenueAmount(this)"></td>
-      <td><input class="revenue-amount-input" data-field="transfer_amount" inputmode="numeric" value="${escapeAttr(revenueAmountDisplay(rec.transfer_amount))}" oninput="normalizeRevenueAmount(this)"></td>
-      <td><input class="revenue-amount-input" data-field="other_amount" inputmode="numeric" value="${escapeAttr(revenueAmountDisplay(rec.other_amount))}" oninput="normalizeRevenueAmount(this)"></td>
+      ${paymentCells}
       <td data-revenue-row-total>${revenueMoney(rec.total_amount)}</td>
       <td><input class="revenue-memo-input" value="${escapeAttr(rec.memo || '')}" placeholder="메모"></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   body.innerHTML = records.length
     ? `<div style="overflow-x:auto;">
         <table class="data-table revenue-record-table">
-          <thead><tr><th>날짜</th><th>현금</th><th>카드</th><th>계좌</th><th>기타</th><th>합계</th><th>메모</th></tr></thead>
+          <thead><tr><th>날짜</th>${paymentHeaders}<th>합계</th><th>메모</th></tr></thead>
           <tbody>${rows}</tbody>
-          <tfoot><tr><td colspan="5">기간 합계</td><td id="revenue-record-grand-total">${revenueMoney(0)}</td><td></td></tr></tfoot>
+          <tfoot><tr><td colspan="${1 + REVENUE_PAYMENT_FIELDS.length}">기간 합계</td><td id="revenue-record-grand-total">${revenueMoney(0)}</td><td></td></tr></tfoot>
         </table>
       </div>`
     : '<p class="muted" style="padding:12px;">조회 기간이 비어 있습니다.</p>';
+  refreshRevenueSignControls();
   recalcRevenueRecordTotals();
 }
 
@@ -5027,12 +5897,22 @@ async function saveRevenueRecords(){
   if(!REVENUE_RECORDS){ await loadRevenueRecords(); if(!REVENUE_RECORDS) return; }
   const fromStr = document.getElementById('rev-record-from')?.value || '';
   const toStr = document.getElementById('rev-record-to')?.value || '';
-  const categoryId = document.getElementById('rev-record-category')?.value || '';
+  const categoryId = '';
   const entries = [...document.querySelectorAll('.revenue-record-row')].map(tr => {
     const entry = {record_date: tr.dataset.date, category_id: categoryId, memo: tr.querySelector('.revenue-memo-input')?.value || ''};
     tr.querySelectorAll('.revenue-amount-input').forEach(inp => {
       entry[inp.dataset.field] = revenueAmountValue(inp.value);
     });
+    const cashCounts = revenueCashCountsFromRow(tr);
+    if(revenueCashCountsHasValue(cashCounts)){
+      entry.cash_counts = cashCounts;
+      entry.cash_amount = revenueCashCountsTotal(cashCounts);
+    } else {
+      const storedCashCounts = revenueCashCountsFromDataset(tr);
+      if(revenueCashCountsHasValue(storedCashCounts) && entry.cash_amount === revenueCashCountsTotal(storedCashCounts)){
+        entry.cash_counts = storedCashCounts;
+      }
+    }
     return entry;
   });
   try {
@@ -5130,6 +6010,9 @@ function renderRevenueStats(data){
       <td>${revenueMoney(row.cash_amount)}</td>
       <td>${revenueMoney(row.card_amount)}</td>
       <td>${revenueMoney(row.transfer_amount)}</td>
+      <td>${revenueMoney(row.unpaid_amount)}</td>
+      <td>${revenueMoney(row.health_living_fee)}</td>
+      <td>${revenueMoney(row.disability_fund)}</td>
       <td>${revenueMoney(row.other_amount)}</td>
     </tr>`).join('');
   body.innerHTML = `
@@ -5153,7 +6036,7 @@ function renderRevenueStats(data){
     <div class="stats-section">
       <h3 class="stats-section-title">일별 매출</h3>
       ${dailyRows
-        ? `<div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>날짜</th><th>합계</th><th>현금</th><th>카드</th><th>계좌</th><th>기타</th></tr></thead><tbody>${dailyRows}</tbody></table></div>`
+        ? `<div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>날짜</th><th>합계</th><th>현금</th><th>카드</th><th>계좌</th><th>미수납</th><th>건강생활유지비</th><th>장애인기금</th><th>기타</th></tr></thead><tbody>${dailyRows}</tbody></table></div>`
         : '<p class="muted" style="margin:0;">해당 기간 매출 기록이 없습니다.</p>'}
     </div>`;
 }
@@ -7774,7 +8657,7 @@ function editTreatmentModal(t){
       </label>
       <label>완료 +N
         <input id="t-inc" type="number" min="0" max="10" value="${t.count_increment||1}">
-        <small class="muted">승인 시 누적량</small>
+        <small class="muted">치료완료 시 누적량</small>
       </label>
     </div>
 

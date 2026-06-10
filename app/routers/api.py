@@ -627,8 +627,9 @@ def _backup_db_before_update() -> dict:
       - 실패해도 예외를 던지지 않음 → 업데이트를 막지 않는다 (안전망일 뿐).
       - 결과(ok/path/size/error)를 dict 로 반환해서 프론트가 표시할 수 있게 함.
     """
-    import sqlite3
     from pathlib import Path
+
+    from ..services.backup import sqlite_safe_copy
     try:
         src = Path(get_db_path())
         if not src.exists():
@@ -641,16 +642,18 @@ def _backup_db_before_update() -> dict:
         dst = backup_dir / f"clinic_before_update_v{APP_VERSION}_{ts}.db"
 
         # SQLite 의 공식 online-backup API — 락 걱정 없이 안전.
-        # with 블록은 connection 을 자동 close 하지 않으므로 명시적으로 close.
-        s = sqlite3.connect(str(src))
-        d = sqlite3.connect(str(dst))
-        try:
-            s.backup(d)
-        finally:
-            d.close()
-            s.close()
+        sqlite_safe_copy(src, dst)
 
         size_mb = round(dst.stat().st_size / 1024 / 1024, 2)
+
+        # 스냅샷도 보관 개수 정리 대상 — 자동백업이 꺼져 있어도 before_update
+        # 파일이 무한 누적되지 않도록 여기서도 정리 (스냅샷 그룹만 영향).
+        try:
+            from ..services.backup import _enforce_keep_limit
+            _enforce_keep_limit()
+        except Exception:
+            pass
+
         return {"ok": True, "path": str(dst), "filename": dst.name, "size_mb": size_mb}
     except Exception as e:
         return {"ok": False, "error": f"백업 실패: {e}"}
@@ -2614,6 +2617,26 @@ def sync_pull(since: str = Query(...), exclude_node: str = Query(""),
     } for o in ops]}
 
 
+@router.get("/sync/last-ts")
+def sync_last_ts(node_id: str = Query(...),
+                 db: Session = Depends(get_db),
+                 _: bool = Depends(require_admin_or_sync_token)):
+    """해당 node_id 의 op 을 어디(ts)까지 저장하고 있는지 반환 — 증분 push 용.
+
+    push 발신측이 이 값 이후의 op 만 보내면 되므로 매 주기 전체 이력 전송을
+    피한다. 이 노드가 데이터를 잃으면 last_ts 가 과거로 돌아가 발신측이
+    자동으로 다시 보내게 됨 (자기치유적 — 별도 상태 저장 없음).
+    """
+    row = (
+        db.query(models.SyncOp.ts)
+        .filter(models.SyncOp.node_id == node_id)
+        .order_by(models.SyncOp.ts.desc())
+        .first()
+    )
+    return {"node_id": node_id,
+            "last_ts": row[0].isoformat() if row else "1970-01-01T00:00:00"}
+
+
 @router.post("/sync/push")
 def sync_push(batch: schemas.SyncBatch, db: Session = Depends(get_db),
               _: bool = Depends(require_admin_or_sync_token)):
@@ -2626,26 +2649,31 @@ def sync_push(batch: schemas.SyncBatch, db: Session = Depends(get_db),
     from ..services.sync import ENTITY_MAP, apply_op
     applied = 0
     failed = 0
+    skipped_unknown = 0
     failures = []
     for op in batch.ops:
         if isinstance(op.get("payload"), str):
             try: op["payload"] = json.loads(op["payload"])
             except Exception: op["payload"] = {}
-        if op.get("entity") not in ENTITY_MAP:
-            failed += 1
-            failures.append({"op_id": op.get("id"), "entity": op.get("entity"), "error": "unsupported sync entity"})
-            continue
+        unknown = op.get("entity") not in ENTITY_MAP
         try:
             if apply_op(db, op):
                 db.commit()
-                applied += 1
+                if unknown:
+                    # 모르는 entity (이쪽이 구버전): 데이터 적용은 못 하지만
+                    # apply_op 이 SyncOp 행은 저장 → 발신측 last-ts 커서가
+                    # 전진해 같은 op 영구 재전송을 막는다.
+                    skipped_unknown += 1
+                else:
+                    applied += 1
         except Exception as e:
             failed += 1
             db.rollback()
             failures.append({"op_id": op.get("id"), "entity": op.get("entity"), "error": str(e)[:200]})
             # rollback 후에도 같은 세션을 계속 쓰려면 다음 op 부터 새로 시작
             continue
-    return {"applied": applied, "failed": failed, "failures": failures}
+    return {"applied": applied, "failed": failed,
+            "skipped_unknown": skipped_unknown, "failures": failures}
 
 
 @router.post("/sync/now")
@@ -2665,10 +2693,12 @@ def sync_now(_: bool = Depends(require_admin)):
 
 @router.get("/backup")
 def backup_now(_: bool = Depends(require_admin)):
+    from ..services.backup import sqlite_safe_copy
     src = get_db_path()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dst = get_backup_dir() / f"clinic_{ts}.db"
-    shutil.copy2(src, dst)
+    # WAL 모드에서는 raw 파일 복사 시 -wal 의 최신 데이터가 누락됨 → backup API 사용
+    sqlite_safe_copy(src, dst)
     return FileResponse(dst, filename=dst.name, media_type="application/octet-stream")
 
 
@@ -2692,10 +2722,12 @@ def restore(file: UploadFile = File(...), _: bool = Depends(require_admin)):
     from pathlib import Path
 
     from ..database import SessionLocal, engine
+    from ..services.backup import _remove_wal_sidecars, sqlite_safe_copy
 
     dst = Path(get_db_path())
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    shutil.copy2(dst, get_backup_dir() / f"clinic_before_restore_{ts}.db")
+    # WAL 모드 대응 — raw 복사는 -wal 의 최신 데이터가 누락됨
+    sqlite_safe_copy(dst, get_backup_dir() / f"clinic_before_restore_{ts}.db")
 
     filename = file.filename or "(이름없음)"
 
@@ -2728,6 +2760,10 @@ def restore(file: UploadFile = File(...), _: bool = Depends(require_admin)):
             engine.dispose()
         except Exception:
             pass
+
+        # 3.5) 구 DB 의 -wal/-shm 잔존 파일 제거 — 남은 채 교체하면 다음 오픈 때
+        #      구 WAL 이 새 DB 위에 재생되어 손상될 수 있음 (WAL 모드 필수 처리).
+        _remove_wal_sidecars(dst)
 
         # 4) atomic 교체 — Path.replace 는 Windows 에서도 atomic
         tmp.replace(dst)

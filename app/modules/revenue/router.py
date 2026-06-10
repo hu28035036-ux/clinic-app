@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -6,7 +6,7 @@ from app.models import models
 from app.routers.api import _log, audit, require_admin
 
 from . import service
-from .schemas import RevenueGridIn
+from .schemas import DailyReportIn, RevenueGridIn
 
 router = APIRouter(prefix="/api/revenue", tags=["revenue"])
 
@@ -66,4 +66,59 @@ def get_revenue_stats(
     try:
         return service.stats(db, date_from, date_to, category_id)
     except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.get("/daily-report")
+def get_daily_work_report(
+    date: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_admin),
+):
+    try:
+        return service.get_daily_report(db, date)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.post("/daily-medical-summary/import")
+async def import_daily_medical_summary(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_admin),
+):
+    try:
+        content = await file.read()
+        data = service.import_medical_summaries_from_excel(
+            db,
+            content,
+            file.filename or "",
+            log_callback=_log,
+            audit_callback=audit,
+        )
+        db.commit()
+        data["ok"] = True
+        return data
+    except ValueError as exc:
+        db.rollback()
+        raise _bad_request(exc) from exc
+
+
+@router.post("/daily-report")
+def save_daily_work_report(
+    payload: DailyReportIn,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_admin),
+):
+    try:
+        changed = service.save_daily_report(
+            db, payload, log_callback=_log, audit_callback=audit
+        )
+        db.commit()
+        data = service.get_daily_report(db, payload.report_date)
+        data["ok"] = True
+        data["changed"] = changed
+        return data
+    except ValueError as exc:
+        db.rollback()
         raise _bad_request(exc) from exc

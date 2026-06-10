@@ -2,6 +2,116 @@
   도수치료예약 - 배포 버전 기록
 ================================================================
 
+[ v1.3.23 ]  2026-06-10  (장기 운영 안정성 보강)
+
+  주요 변경
+  - 🔧 "가장 최근 백업으로 복원" 이 옛 스냅샷을 복원할 수 있던 버그 수정 (mtime 기준)
+  - 🔧 백업 보관 개수 정리를 일반/스냅샷 그룹 분리 적용 (스냅샷 무한 누적 + 자동백업 무력화 방지)
+  - 감사 로그 5년 보존 정책 하루 1회 자동 실행
+  - 배포 표준 스크립트 scripts/publish_release.ps1 추가 (ZIP 은 GitHub Release 자산으로만)
+  - SQLite WAL + busy_timeout 적용 (동시 쓰기 잠금 오류 예방)
+  - 자동/다운로드 백업 SQLite backup API 전환 + 복원 시 WAL 잔존 파일 정리
+  - config.json 원자적 저장 + 손상 시 .broken_* 보존 후 자동 재생성
+  - SyncOp 보존 기간 180일 자동 정리 + 동기화 증분 push (/api/sync/last-ts)
+  - 모르는 entity 수신 시에도 동기화 커서 전진 (영구 재전송 방지)
+
+  검증
+  - 신규 회귀 테스트 13건 (tests/test_sync_retention_and_safety.py)
+  - pytest tests: 2208 passed
+  - ruff check app tests: passed
+  - scripts/check_db_path.py: passed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ v1.3.22 ]  2026-06-10  (기간별 데이터 예시 엑셀 형식 호환)
+
+  주요 변경
+  - 카카오톡 일별 수입현황 예시 엑셀의 추가 컬럼을 무시하고 필요한 기간별 데이터 열만 자동 추출
+  - 날짜/총진료비/공단부담총액/본인부담총액/급여총액/비급여총액을 날짜별로 일일 업무 보고에 반영
+  - 날짜 없는 마지막 합계 행은 업로드 건너뜀 경고 없이 자동 제외
+
+  검증
+  - 예시 엑셀 파일 직접 파싱: 2026-06-09~2026-06-10 2일치 반영
+  - pytest tests\test_revenue.py: 9 passed
+  - ruff check .: passed
+  - run.py --check: passed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ v1.3.21 ]  2026-06-10  (매출 기록 미수납 차감 적용)
+
+  주요 변경
+  - 매출 기록의 미수납 입력값을 합계/통계/업무일지 반영에서 마이너스로 적용
+  - 입력칸 원값은 유지하고 계산용 unpaid_applied_amount를 응답에 추가
+  - 매출 기록/매출 통계 표의 미수납 헤더를 미수납(-)로 표시
+
+  검증
+  - pytest tests\test_revenue.py: 9 passed
+  - ruff check .: passed
+  - run.py --check: passed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ v1.3.20 ]  2026-06-10  (기간별 데이터 엑셀 업로드/일일보고 반영)
+
+  주요 변경
+  - 일일 업무 보고에서 기간별 데이터 엑셀 파일 업로드 지원
+  - 날짜/총진료비/공단부담총액/본인부담총액/급여총액/비급여총액 헤더 자동 탐지
+  - 같은 날짜가 여러 줄이면 합산해 날짜별 의료비 요약으로 저장
+  - 일일 업무 보고 화면과 업무일지 반영 영역에 의료비 요약 표시
+  - daily_medical_summaries 테이블과 /api/revenue/daily-medical-summary/import 관리자 API 추가
+  - 다중 PC 동기화 대상에 daily_medical_summary 포함
+
+  검증
+  - pytest tests\test_revenue.py: 9 passed
+  - pytest tests\test_migration_spec_discovery.py tests\test_pyinstaller_hidden_imports.py: 239 passed
+  - ruff check .: passed
+  - run.py --check: passed
+  - 렌더링된 main.html 인라인 스크립트 문법 검사: passed
+  - in-app 브라우저 localhost 접근은 ERR_BLOCKED_BY_CLIENT로 차단되어 자동 화면 클릭 검증 미수행
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ v1.3.19 ]  2026-06-10  (매출 기록/일일 현금 기입장/일일보고 연동)
+
+  주요 변경
+  - 매출 기록 입력 항목을 현금, 카드, 계좌, 미수납, 기타, 메모로 정리
+  - 현금/카드/계좌/미수납/기타 금액의 마이너스 입력 지원
+  - 일일 현금 기입장 하위탭 추가 및 권종별 수량 기반 자동 합계 계산
+  - 일일보고 업무일지 반영 영역에 매출 기록과 정산 집계 연결
+  - 신규 환자 등록 후 새 예약창 환자 검색 캐시 갱신 보강
+  - 미니캘린더 선택일 표시와 좁은 브라우저 폭 예약표 표시 보강
+  - revenue_records.unpaid_amount 컬럼 추가 마이그레이션 포함
+
+  검증
+  - pytest: 2194 passed, 1 skipped, 10 xfailed
+  - ruff check .: passed
+  - run.py --check: passed
+  - node --check app\static\js\ai_helper.js: passed
+  - 로컬 브라우저 스모크: 매출 음수/미수납 입력, 일일보고 업무일지 반영, 좁은 화면 확인
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ v1.3.18 ]  2026-06-08  (매출 일일 업무 보고 추가)
+
+  주요 변경
+  - 매출 관리 하위탭에 `일일 업무 보고` 추가
+  - 날짜별 보고서 1개 저장 및 치료항목 복수 선택 지원
+  - 선택 치료항목의 정산 기준 수량/수가/인센티브/차감 후 금액 자동 계산
+  - 직접 작성 보고 칸 동적 추가/삭제 및 짧은글/긴글/숫자/체크 타입 지원
+  - daily_work_reports 마이그레이션과 /api/revenue/daily-report 관리자 API 추가
+  - 예약 상세의 원무과 승인 문구를 치료완료로 변경하고 노쇼 처리 UI 제거
+  - 새 예약 모달에서 과 선택 없이 전체 치료항목 체크박스 표시
+  - 재고관리 과별 접기/펼치기와 품목/관리 열 추가 버튼 크기 통일
+
+  검증
+  - pytest tests\test_revenue.py: 6 passed
+  - run.py --check: passed
+  - node --check app\static\js\ai_helper.js: passed
+  - 로컬 브라우저 스모크: 하위탭 전환, 자동 정산 표시, 보고 칸 추가/입력/삭제 확인
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 [ v1.3.16 ]  2026-06-08  (자동업데이트 완료 안내 안정화)
 
   주요 변경

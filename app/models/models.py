@@ -386,8 +386,12 @@ class RevenueRecord(Base):
     record_date = Column(String(10), nullable=False, index=True)
     category_id = Column(String(32), nullable=False, default="", index=True)
     cash_amount = Column(Integer, nullable=False, default=0)
+    cash_counts_json = Column(Text, nullable=False, default="{}")
     card_amount = Column(Integer, nullable=False, default=0)
     transfer_amount = Column(Integer, nullable=False, default=0)
+    unpaid_amount = Column(Integer, nullable=False, default=0)
+    health_living_fee = Column(Integer, nullable=False, default=0)
+    disability_fund = Column(Integer, nullable=False, default=0)
     other_amount = Column(Integer, nullable=False, default=0)
     memo = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -396,6 +400,32 @@ class RevenueRecord(Base):
     __table_args__ = (
         UniqueConstraint("record_date", "category_id", name="uq_revenue_record_date_category"),
     )
+
+
+class DailyWorkReport(Base):
+    """User-authored daily work report with settlement-based auto data."""
+    __tablename__ = "daily_work_reports"
+    id = Column(String(32), primary_key=True, default=uid)
+    report_date = Column(String(10), nullable=False, unique=True, index=True)
+    selected_treatment_codes_json = Column(Text, nullable=False, default="[]")
+    custom_fields_json = Column(Text, nullable=False, default="[]")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DailyMedicalSummary(Base):
+    """Imported date-based medical cost summary for daily work reports."""
+    __tablename__ = "daily_medical_summaries"
+    id = Column(String(32), primary_key=True, default=uid)
+    summary_date = Column(String(10), nullable=False, unique=True, index=True)
+    total_medical_fee = Column(Integer, nullable=False, default=0)
+    nhis_burden_total = Column(Integer, nullable=False, default=0)
+    patient_burden_total = Column(Integer, nullable=False, default=0)
+    covered_total = Column(Integer, nullable=False, default=0)
+    uncovered_total = Column(Integer, nullable=False, default=0)
+    source_filename = Column(String(255), nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ManualCount(Base):

@@ -3,6 +3,7 @@ from . import constants
 from .models import (
     Employee, EmployeeCategory, EmployeeTreatment, EmployeeLeave, Patient, PatientTreatmentCount,
     Treatment, Appointment, TreatmentAssignment, SettlementRecord, RevenueRecord,
+    DailyWorkReport, DailyMedicalSummary,
     InventoryCategoryState, InventoryField, InventoryItem, InventoryValue,
     SystemSetting, AuditLog, SyncOp, SmsSetting, SmsLog, SmsTemplate,
     APPT_STATUSES, uid,
