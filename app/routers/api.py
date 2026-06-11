@@ -2921,6 +2921,33 @@ _DC_EXTRA_PHONE_ALIASES = [
 ]
 
 
+def _dc_phone_header_priority(header_name: str) -> int:
+    """전화 후보 컬럼 우선순위. 휴대폰 계열을 일반 전화/연락처보다 먼저 본다."""
+    h = (header_name or "").replace(" ", "").lower()
+    if any(token in h for token in ("휴대폰", "핸드폰", "이동전화", "mobile", "cell", "hp")):
+        return 0
+    if any(token in h for token in ("연락처", "전화번호", "전화", "phone")):
+        return 1
+    return 2
+
+
+def _dc_collect_phone_columns(header):
+    """휴대폰/전화번호/연락처/보조번호 계열 컬럼을 모두 수집한다.
+
+    기존에는 첫 번째 전화 관련 헤더만 메인 후보로 잡아, ``전화번호`` 뒤에 있는
+    ``휴대폰`` 컬럼의 010 번호를 놓칠 수 있었다.
+    """
+    phone_aliases = {a.lower() for a in _DC_HEADER_ALIASES["phone"]}
+    extra_aliases = {a.lower() for a in _DC_EXTRA_PHONE_ALIASES}
+    compact_aliases = {(a or "").replace(" ", "").lower() for a in phone_aliases | extra_aliases}
+    matches = []
+    for i, h in enumerate(header):
+        compact_h = (h or "").replace(" ", "").lower()
+        if h in phone_aliases or h in extra_aliases or compact_h in compact_aliases:
+            matches.append((_dc_phone_header_priority(h), i))
+    return [i for _priority, i in sorted(matches)]
+
+
 def _dc_find_header_row(rows):
     """헤더가 1행이 아닐 수 있음(타이틀/설명 행이 있는 경우) → 최대 10행까지 스캔해서
     'name' alias 가 포함된 첫 행을 헤더로 선택."""
@@ -3170,12 +3197,8 @@ def _dc_parse_excel(file_bytes: bytes):
                 col_idx[key] = i
                 break
 
-    # 추가 전화 컬럼들 (보조연락처/전화2/추가번호 등) — 여러 개 수집
-    extra_phone_cols = []
-    low_extras = [a.lower() for a in _DC_EXTRA_PHONE_ALIASES]
-    for i, h in enumerate(header):
-        if h in low_extras and i != col_idx.get("phone"):
-            extra_phone_cols.append(i)
+    # 전화 후보 컬럼들 (휴대폰/전화번호/연락처/보조번호 등) — 여러 개 수집
+    phone_cols = _dc_collect_phone_columns(header)
 
     if "name" not in col_idx:
         raise HTTPException(
@@ -3201,9 +3224,9 @@ def _dc_parse_excel(file_bytes: bytes):
         chart_raw = _get("chart_no")
         chart = (str(chart_raw).strip() if chart_raw not in (None, "") else None)
 
-        # 전화 후보: 메인 컬럼 + 추가 컬럼 전부 모으기
-        phone_candidates = [_get("phone")]
-        for i in extra_phone_cols:
+        # 전화 후보: 휴대폰/전화번호/연락처 계열을 전부 모아 010 휴대폰을 우선 선택
+        phone_candidates = []
+        for i in phone_cols:
             if i < len(row):
                 phone_candidates.append(row[i])
         main_phone, extra_mobiles, landlines, invalid_phones = _dc_split_phones(phone_candidates)
