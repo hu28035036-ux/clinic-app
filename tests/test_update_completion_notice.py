@@ -3,8 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from app import config as app_config
+from app.routers import api as api_router
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _admin_headers(client) -> dict:
+    resp = client.post("/api/admin/login", json={"password": "admin1234"})
+    assert resp.status_code == 200, resp.text
+    return {"X-Admin-Token": resp.json()["token"]}
 
 
 def _set_last_seen(version: str) -> dict:
@@ -61,3 +68,46 @@ def test_update_ui_has_one_time_completion_notice_contract():
     assert "업데이트 안내 화면" in src or "update_completed" in src
     assert "자동 새로고침" in src
     assert "화면이 멈춥니다" not in src
+
+
+def test_check_update_uses_and_saves_payload_manifest_url(client, monkeypatch):
+    original = app_config.load_config()
+    payload_url = "https://hu28035036-ux.github.io/clinic-updates/manifest.json"
+    seen = {}
+
+    def fake_fetch(url: str, timeout: int = 8) -> dict:
+        seen["url"] = url
+        seen["timeout"] = timeout
+        return {
+            "version": "9.9.9",
+            "download_url": "https://example.com/dosu.zip",
+            "sha256": "abc123",
+            "notes": "테스트 업데이트",
+            "mandatory": False,
+        }
+
+    cfg = dict(original)
+    cfg["update_manifest_url"] = "https://old.example.invalid/manifest.json"
+    app_config.save_config(cfg)
+    monkeypatch.setattr(api_router, "_fetch_update_manifest", fake_fetch)
+    try:
+        resp = client.post(
+            "/api/about/check-update",
+            json={"update_manifest_url": payload_url},
+            headers=_admin_headers(client),
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["available"] is True
+        assert body["latest_version"] == "9.9.9"
+        assert seen == {"url": payload_url, "timeout": 8}
+        assert app_config.load_config()["update_manifest_url"] == payload_url
+    finally:
+        app_config.save_config(original)
+
+
+def test_update_ui_sends_manifest_url_in_check_body():
+    src = (PROJECT_ROOT / "app" / "templates" / "main.html").read_text(encoding="utf-8")
+
+    assert "const url = (document.getElementById('update-url-input')?.value || '').trim();" in src
+    assert "body: JSON.stringify({ update_manifest_url: url })" in src

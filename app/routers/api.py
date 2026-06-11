@@ -439,8 +439,62 @@ def about():
     }
 
 
+def _update_manifest_url_from_payload(payload: Optional[dict], cfg: dict) -> str:
+    if isinstance(payload, dict) and "update_manifest_url" in payload:
+        return str(payload.get("update_manifest_url") or "").strip()
+    return str(cfg.get("update_manifest_url") or "").strip()
+
+
+def _update_error_message(exc: Exception) -> str:
+    msg = str(exc).strip()
+    reason = getattr(exc, "reason", None)
+    if reason:
+        reason_msg = str(reason).strip()
+        if reason_msg and reason_msg not in msg:
+            msg = f"{msg} ({reason_msg})" if msg else reason_msg
+    if not msg:
+        msg = exc.__class__.__name__
+    if "WinError 10013" in msg:
+        msg += " / Windows 방화벽 또는 백신에서 프로그램의 인터넷 접속을 차단했을 수 있습니다."
+    if "CERTIFICATE_VERIFY_FAILED" in msg or "certificate verify failed" in msg.lower():
+        msg += " / Windows 인증서 저장소 또는 보안 프로그램의 HTTPS 검사 설정을 확인하세요."
+    return msg
+
+
+def _update_ssl_context(url: str):
+    if not url.lower().startswith("https://"):
+        return None
+    try:
+        import ssl
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        try:
+            import ssl
+            return ssl.create_default_context()
+        except Exception:
+            return None
+
+
+def _fetch_update_manifest(url: str, timeout: int = 8) -> dict:
+    import json as _json
+    import urllib.request
+
+    req = urllib.request.Request(url, headers={"User-Agent": "dosu-clinic-updater/1.0"})
+    context = _update_ssl_context(url)
+    kwargs = {"timeout": timeout}
+    if context is not None:
+        kwargs["context"] = context
+    with urllib.request.urlopen(req, **kwargs) as r:
+        raw = r.read().decode("utf-8", errors="ignore")
+    data = _json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError("매니페스트 JSON 최상위가 객체가 아닙니다.")
+    return data
+
+
 @router.post("/about/check-update")
-def check_update(_: bool = Depends(require_admin)):
+def check_update(payload: Optional[dict] = Body(default=None), _: bool = Depends(require_admin)):
     """원격 manifest URL 이 설정되어 있으면 최신 버전 정보를 가져와 비교.
     manifest 형식:
         {"version":"1.2.3","download_url":"...","notes":"...","mandatory":false}
@@ -450,9 +504,12 @@ def check_update(_: bool = Depends(require_admin)):
       - up_to_date:True  → 최신
       - available:True   → 새 버전 있음 + 다운로드/릴리즈노트
     """
-    import urllib.request, urllib.error, json as _json
+    import urllib.error
     cfg = load_config()
-    url = (cfg.get("update_manifest_url") or "").strip()
+    url = _update_manifest_url_from_payload(payload, cfg)
+    if url != (cfg.get("update_manifest_url") or "").strip():
+        cfg["update_manifest_url"] = url
+        save_config(cfg)
     base = {
         "current_version": APP_VERSION,
         "checked_at": datetime.utcnow().isoformat() + "Z",
@@ -461,14 +518,11 @@ def check_update(_: bool = Depends(require_admin)):
         return {**base, "configured": False,
                 "message": "업데이트 매니페스트 URL이 설정되지 않았습니다. 시스템 설정에서 URL을 입력하거나, 배포처 안내에 따라 수동으로 교체하세요."}
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "dosu-clinic-updater/1.0"})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            raw = r.read().decode("utf-8", errors="ignore")
-        data = _json.loads(raw)
+        data = _fetch_update_manifest(url, timeout=8)
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
-        return {**base, "configured": True, "error": f"매니페스트 조회 실패: {e}"}
+        return {**base, "configured": True, "error": f"매니페스트 조회 실패: {_update_error_message(e)}"}
     except Exception as e:
-        return {**base, "configured": True, "error": f"매니페스트 파싱 실패: {e}"}
+        return {**base, "configured": True, "error": f"매니페스트 파싱 실패: {_update_error_message(e)}"}
 
     remote_ver = str(data.get("version") or "").strip()
     if not remote_ver:
@@ -529,7 +583,7 @@ def download_update(_: bool = Depends(require_admin)):
       - sha256_matched: 서버가 sha256 제공했을 경우 검증 결과
       - error: 실패 사유
     """
-    import urllib.request, urllib.error, hashlib, json as _json
+    import hashlib
     from pathlib import Path
 
     if not _is_frozen():
@@ -543,11 +597,9 @@ def download_update(_: bool = Depends(require_admin)):
     if not url:
         raise HTTPException(400, "업데이트 매니페스트 URL이 설정되지 않았습니다.")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "dosu-clinic-updater/1.0"})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            manifest = _json.loads(r.read().decode("utf-8", errors="ignore"))
+        manifest = _fetch_update_manifest(url, timeout=8)
     except Exception as e:
-        raise HTTPException(502, f"매니페스트 조회 실패: {e}")
+        raise HTTPException(502, f"매니페스트 조회 실패: {_update_error_message(e)}")
 
     dl_url = (manifest.get("download_url") or "").strip()
     expected_sha = (manifest.get("sha256") or "").strip().lower()
@@ -574,8 +626,13 @@ def download_update(_: bool = Depends(require_admin)):
 
     # 다운로드 (스트리밍 + sha256 누적 계산)
     try:
+        import urllib.request
         req = urllib.request.Request(dl_url, headers={"User-Agent": "dosu-clinic-updater/1.0"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        context = _update_ssl_context(dl_url)
+        kwargs = {"timeout": 60}
+        if context is not None:
+            kwargs["context"] = context
+        with urllib.request.urlopen(req, **kwargs) as resp:
             h = hashlib.sha256()
             total = 0
             with open(zip_path, "wb") as f:
@@ -590,7 +647,7 @@ def download_update(_: bool = Depends(require_admin)):
         if zip_path.exists():
             try: zip_path.unlink()
             except Exception: pass
-        raise HTTPException(502, f"다운로드 실패: {e}")
+        raise HTTPException(502, f"다운로드 실패: {_update_error_message(e)}")
 
     # SHA256 검증 (매니페스트에 제공된 경우에만)
     sha_matched = None

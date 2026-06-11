@@ -7605,7 +7605,12 @@ async function checkUpdate(){
   const r = document.getElementById('update-result');
   if(r) r.textContent = '확인 중...';
   try {
-    const res = await adminFetch('/api/about/check-update', {method:'POST'});
+    const url = (document.getElementById('update-url-input')?.value || '').trim();
+    const res = await adminFetch('/api/about/check-update', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ update_manifest_url: url }),
+    });
     if(!res.ok){
       if(r) r.textContent = '요청 실패: ' + await res.text();
       return;
