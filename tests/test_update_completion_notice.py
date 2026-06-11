@@ -58,8 +58,15 @@ def test_about_returns_update_completion_notice_once(client):
         app_config.save_config(original)
 
 
-def test_update_ui_has_one_time_completion_notice_contract():
+def _ui_source() -> str:
+    # 메인 UI 소스 = 템플릿(main.html) + 분리된 JS(main.js)
     src = (PROJECT_ROOT / "app" / "templates" / "main.html").read_text(encoding="utf-8")
+    src += (PROJECT_ROOT / "app" / "static" / "js" / "main.js").read_text(encoding="utf-8")
+    return src
+
+
+def test_update_ui_has_one_time_completion_notice_contract():
+    src = _ui_source()
 
     assert "function maybeShowUpdateCompletedNotice(a)" in src
     assert "a && a.update_completed" in src
@@ -107,7 +114,7 @@ def test_check_update_uses_and_saves_payload_manifest_url(client, monkeypatch):
 
 
 def test_update_ui_sends_manifest_url_in_check_body():
-    src = (PROJECT_ROOT / "app" / "templates" / "main.html").read_text(encoding="utf-8")
+    src = _ui_source()
 
     assert "const url = (document.getElementById('update-url-input')?.value || '').trim();" in src
     assert "body: JSON.stringify({ update_manifest_url: url })" in src
