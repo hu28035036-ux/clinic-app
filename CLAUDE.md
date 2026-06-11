@@ -107,8 +107,9 @@ venv/Scripts/pyinstaller.exe --noconfirm dosu_clinic.spec
 ## 🔍 자주 보는 파일
 
 - `app/routers/api.py` — 모든 API 엔드포인트 (긴 파일, ~3800줄)
-- `app/templates/main.html` — 메인 페이지 + 모든 탭 JS (~5000줄)
-- `app/static/css/app.css` — 디자인 + 레이아웃 (~3000줄)
+- `app/templates/main.html` — 메인 페이지 HTML + Jinja 설정 상수 (~450줄)
+- `app/static/js/main.js` — 모든 탭 JS (~9100줄, main.html 에서 분리됨. `?v={{ app_version }}` 캐시 무효화로 로드)
+- `app/static/css/app.css` — 디자인 + 레이아웃 (~3300줄)
 - `app/config.py` — 버전·기본설정·APP_NAME
 
 ## 📝 버전업 시 문서 업데이트 체크리스트
