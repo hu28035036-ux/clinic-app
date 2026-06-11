@@ -14,6 +14,71 @@ from .schemas import DailyReportField, DailyReportIn, RevenueGridIn, RevenueReco
 
 
 PAYMENT_FIELDS = (
+    "total_medical_fee",
+    "nhis_burden_total",
+    "cash_amount",
+    "card_amount",
+    "receivable_income",
+    "unpaid_amount",
+    "health_living_fee",
+    "certificate_amount",
+    "disability_fund",
+    "uninsured_amount",
+    "meal_amount",
+    "other_amount",
+    "discount_amount",
+    "free_amount",
+    "cash_expense_amount",
+    "transfer_amount",
+)
+PAYMENT_LABELS = {
+    "total_medical_fee": "총진료비",
+    "nhis_burden_total": "공단부담총액",
+    "cash_amount": "현금수납액",
+    "card_amount": "카드수납액",
+    "receivable_income": "미수입금",
+    "unpaid_amount": "미수발생",
+    "health_living_fee": "건강생활유지비",
+    "certificate_amount": "입,통원확인서",
+    "disability_fund": "장애인기금",
+    "uninsured_amount": "비급여",
+    "meal_amount": "식대",
+    "other_amount": "기타",
+    "discount_amount": "할인",
+    "free_amount": "FREE",
+    "cash_expense_amount": "현금지출",
+    "transfer_amount": "계좌입금",
+}
+REVENUE_TOTAL_LABELS = {
+    "collected_amount": "수납액",
+    "total_expense": "총지출",
+    "cash_total": "현금",
+}
+REVENUE_TOTAL_FORMULAS = {
+    "collected_amount": (
+        ("field", "total_medical_fee", 1),
+        ("field", "nhis_burden_total", -1),
+        ("field", "unpaid_amount", -1),
+        ("field", "health_living_fee", -1),
+        ("field", "disability_fund", -1),
+    ),
+    "total_expense": (
+        ("total", "collected_amount", 1),
+        ("field", "card_amount", -1),
+        ("field", "discount_amount", -1),
+        ("field", "free_amount", -1),
+        ("field", "cash_expense_amount", -1),
+        ("field", "transfer_amount", -1),
+    ),
+    "cash_total": (
+        ("total", "collected_amount", 1),
+        ("total", "total_expense", -1),
+    ),
+}
+REVENUE_FIELD_MEMO_KEYS = (*PAYMENT_FIELDS, *REVENUE_TOTAL_LABELS.keys())
+# m032 이전 형식 감지용: 총진료비·공단부담총액 없이 아래 항목만 있으면
+# 수납액 공식(총진료비 기반) 결과가 부정확하므로 화면에 재입력 안내를 띄운다.
+LEGACY_VALUE_FIELDS = (
     "cash_amount",
     "card_amount",
     "transfer_amount",
@@ -22,14 +87,25 @@ PAYMENT_FIELDS = (
     "disability_fund",
     "other_amount",
 )
-PAYMENT_LABELS = {
-    "cash_amount": "현금",
-    "card_amount": "카드",
-    "transfer_amount": "계좌",
-    "unpaid_amount": "미수납",
-    "health_living_fee": "건강생활유지비",
-    "disability_fund": "장애인기금",
-    "other_amount": "기타",
+REVENUE_RECORD_HEADER_ALIASES = {
+    "record_date": ("날짜", "일자", "진료일자", "진료일", "내원일", "수납일", "record date", "date"),
+    "total_medical_fee": ("총진료비", "총 진료비", "진료비총액", "진료비 총액"),
+    "nhis_burden_total": ("공단부담총액", "공단 부담 총액", "공단부담금", "공단부담", "공담부담총액"),
+    "cash_amount": ("현금수납액", "현금수납앱", "현금 수납액", "현금", "수납현금", "수납(현금)"),
+    "card_amount": ("카드수납액", "카드 수납액", "카드", "수납카드", "수납(카드)"),
+    "receivable_income": ("미수입금", "미수 입금", "미수수납", "미수 회수", "미수회수"),
+    "unpaid_amount": ("미수발생", "미수 발생", "미수", "미수금", "미수납"),
+    "health_living_fee": ("건강생활유지비", "건강 생활 유지비", "건생비"),
+    "certificate_amount": ("입,통원확인서", "입통원확인서", "입 통원 확인서", "확인서", "통원확인서"),
+    "disability_fund": ("장애인기금", "장애인 기금"),
+    "uninsured_amount": ("비급여", "비급여액", "비급여총액"),
+    "meal_amount": ("식대", "식대총액"),
+    "other_amount": ("기타", "기타금액"),
+    "discount_amount": ("할인", "할인액", "할인금액"),
+    "free_amount": ("FREE", "free", "무료", "프리"),
+    "cash_expense_amount": ("현금지출", "현금 지출", "지출현금"),
+    "transfer_amount": ("계좌입금", "계좌 입금", "계좌", "입금계좌", "계좌이체"),
+    "memo": ("메모", "비고", "참고"),
 }
 CASH_DENOMINATIONS = (50000, 10000, 5000, 1000, 500, 100, 10)
 
@@ -129,6 +205,35 @@ def _medical_header_field(value) -> str | None:
     return None
 
 
+def _revenue_header_lookup(labels: dict[str, str] | None = None) -> dict[str, str]:
+    out = {}
+    for field, aliases in REVENUE_RECORD_HEADER_ALIASES.items():
+        for alias in aliases:
+            key = _normalize_excel_header(alias)
+            if key:
+                out[key] = field
+    for field, label in (labels or {}).items():
+        if field not in (*PAYMENT_FIELDS, "record_date", "memo"):
+            continue
+        key = _normalize_excel_header(label)
+        if key:
+            out[key] = field
+    return out
+
+
+def _revenue_header_field(value, labels: dict[str, str] | None = None) -> str | None:
+    norm = _normalize_excel_header(value)
+    if not norm:
+        return None
+    lookup = _revenue_header_lookup(labels)
+    if norm in lookup:
+        return lookup[norm]
+    for key, field in sorted(lookup.items(), key=lambda x: len(x[0]), reverse=True):
+        if key and key in norm:
+            return field
+    return None
+
+
 def _parse_excel_date(value) -> str | None:
     if value is None:
         return None
@@ -169,6 +274,20 @@ def _parse_excel_date(value) -> str | None:
             return date(int(digits[:4]), int(digits[4:6]), int(digits[6:8])).isoformat()
         except Exception:
             return None
+    match = re.fullmatch(r"(\d{1,2})\s*[월./\-]\s*(\d{1,2})\s*일?\s*\.?", text)
+    if match:
+        month, day_num = int(match.group(1)), int(match.group(2))
+        if 1 <= month <= 12 and 1 <= day_num <= 31:
+            today = date.today()
+            try:
+                parsed = date(today.year, month, day_num)
+                # 매출은 과거 데이터이므로 미래 날짜가 되면 작년으로 본다
+                # (예: 1월에 작년 12월 일계표를 가져오는 경우).
+                if parsed > today:
+                    parsed = date(today.year - 1, month, day_num)
+            except Exception:
+                return None
+            return parsed.isoformat()
     return None
 
 
@@ -215,15 +334,44 @@ def _cash_counts_total(counts: dict[str, int]) -> int:
     return sum(denom * _amount(counts.get(str(denom))) for denom in CASH_DENOMINATIONS)
 
 
+def _field_memos(value) -> dict[str, str]:
+    raw = value or {}
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw or "{}")
+        except Exception:
+            raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    out = {}
+    for key in REVENUE_FIELD_MEMO_KEYS:
+        text = str(raw.get(key) or "").strip()
+        if text:
+            out[key] = text[:300]
+    return out
+
+
 def _payment_applied_amount(field: str, value) -> int:
     return _money_amount(value)
 
 
+def _field_value(data, field: str) -> int:
+    return _money_amount(getattr(data, field, 0) if not isinstance(data, dict) else data.get(field))
+
+
+def _calculated_revenue_totals(data) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for total_key, terms in REVENUE_TOTAL_FORMULAS.items():
+        amount = 0
+        for source, field, sign in terms:
+            base = totals.get(field, 0) if source == "total" else _field_value(data, field)
+            amount += base * sign
+        totals[total_key] = amount
+    return totals
+
+
 def _total_from_parts(data) -> int:
-    return sum(
-        _payment_applied_amount(f, getattr(data, f, 0) if not isinstance(data, dict) else data.get(f))
-        for f in PAYMENT_FIELDS
-    )
+    return _calculated_revenue_totals(data)["collected_amount"]
 
 
 def serialize_category(c: models.EmployeeCategory) -> dict:
@@ -260,20 +408,23 @@ def serialize_record(rec: models.RevenueRecord | None, record_date: str, categor
         "record_date": record_date,
         "category_id": category_id,
         "category_name": categories.get(category_id, "전체") if category_id else "전체",
-        "cash_amount": int(rec.cash_amount or 0) if rec else 0,
         "cash_counts": _cash_counts(rec.cash_counts_json if rec else None),
-        "card_amount": int(rec.card_amount or 0) if rec else 0,
-        "transfer_amount": int(rec.transfer_amount or 0) if rec else 0,
-        "unpaid_amount": int(getattr(rec, "unpaid_amount", 0) or 0) if rec else 0,
-        "health_living_fee": int(getattr(rec, "health_living_fee", 0) or 0) if rec else 0,
-        "disability_fund": int(getattr(rec, "disability_fund", 0) or 0) if rec else 0,
-        "other_amount": int(rec.other_amount or 0) if rec else 0,
+        "field_memos": _field_memos(getattr(rec, "field_memos_json", "{}") if rec else None),
         "memo": (rec.memo or "") if rec else "",
         "created_at": rec.created_at.isoformat() if rec and rec.created_at else None,
         "updated_at": rec.updated_at.isoformat() if rec and rec.updated_at else None,
     }
+    for field in PAYMENT_FIELDS:
+        data[field] = int(getattr(rec, field, 0) or 0) if rec else 0
+    data["legacy_format"] = bool(
+        rec
+        and not data["total_medical_fee"]
+        and not data["nhis_burden_total"]
+        and any(data[field] for field in LEGACY_VALUE_FIELDS)
+    )
     data["unpaid_applied_amount"] = _payment_applied_amount("unpaid_amount", data["unpaid_amount"])
-    data["total_amount"] = _total_from_parts(data)
+    data.update(_calculated_revenue_totals(data))
+    data["total_amount"] = data["collected_amount"]
     return data
 
 
@@ -306,7 +457,11 @@ def list_records(db: Session, date_from: str, date_to: str, category_id: str = "
 def _entry_has_value(entry: RevenueRecordEntry) -> bool:
     if entry.cash_counts is not None and _cash_counts_total(_cash_counts(entry.cash_counts)) > 0:
         return True
-    return any(_money_amount(getattr(entry, f, 0)) != 0 for f in PAYMENT_FIELDS) or bool((entry.memo or "").strip())
+    return (
+        any(_money_amount(getattr(entry, f, 0)) != 0 for f in PAYMENT_FIELDS)
+        or bool((entry.memo or "").strip())
+        or bool(_field_memos(entry.field_memos))
+    )
 
 
 def upsert_grid(
@@ -353,12 +508,11 @@ def upsert_grid(
         else:
             rec.cash_amount = _money_amount(entry.cash_amount)
             rec.cash_counts_json = "{}"
-        rec.card_amount = _money_amount(entry.card_amount)
-        rec.transfer_amount = _money_amount(entry.transfer_amount)
-        rec.unpaid_amount = _money_amount(entry.unpaid_amount)
-        rec.health_living_fee = _money_amount(entry.health_living_fee)
-        rec.disability_fund = _money_amount(entry.disability_fund)
-        rec.other_amount = _money_amount(entry.other_amount)
+        for field in PAYMENT_FIELDS:
+            if field == "cash_amount":
+                continue
+            setattr(rec, field, _money_amount(getattr(entry, field, 0)))
+        rec.field_memos_json = json.dumps(_field_memos(entry.field_memos), ensure_ascii=False)
         rec.memo = (entry.memo or "").strip()[:500]
         rec.updated_at = datetime.utcnow()
         db.flush()
@@ -396,36 +550,42 @@ def _revenue_summary(records: list[models.RevenueRecord]) -> dict:
     }
     daily = []
     total = 0
+    total_expense = 0
+    cash_total = 0
+    legacy_count = 0
     for rec in records:
         row = serialize_record(rec, rec.record_date, rec.category_id)
         total += row["total_amount"]
+        total_expense += row["total_expense"]
+        cash_total += row["cash_total"]
+        if row["legacy_format"]:
+            legacy_count += 1
         for key in PAYMENT_FIELDS:
             by_payment[key]["amount"] += _payment_applied_amount(key, row[key])
-        daily.append({
+        daily_row = {
             "date": rec.record_date,
             "total_amount": row["total_amount"],
-            "cash_amount": row["cash_amount"],
-            "card_amount": row["card_amount"],
-            "transfer_amount": row["transfer_amount"],
-            "unpaid_amount": row["unpaid_applied_amount"],
+            "collected_amount": row["collected_amount"],
+            "total_expense": row["total_expense"],
+            "cash_total": row["cash_total"],
             "unpaid_raw_amount": row["unpaid_amount"],
-            "health_living_fee": row["health_living_fee"],
-            "disability_fund": row["disability_fund"],
-            "other_amount": row["other_amount"],
-        })
-    return {
+        }
+        for key in PAYMENT_FIELDS:
+            daily_row[key] = row["unpaid_applied_amount"] if key == "unpaid_amount" else row[key]
+        daily.append(daily_row)
+    summary = {
         "record_count": len(records),
         "revenue_total": total,
-        "cash_amount": by_payment["cash_amount"]["amount"],
-        "card_amount": by_payment["card_amount"]["amount"],
-        "transfer_amount": by_payment["transfer_amount"]["amount"],
-        "unpaid_amount": by_payment["unpaid_amount"]["amount"],
-        "health_living_fee": by_payment["health_living_fee"]["amount"],
-        "disability_fund": by_payment["disability_fund"]["amount"],
-        "other_amount": by_payment["other_amount"]["amount"],
+        "collected_amount": total,
+        "total_expense": total_expense,
+        "cash_total": cash_total,
+        "legacy_count": legacy_count,
         "by_payment": list(by_payment.values()),
         "daily": daily,
     }
+    for key in PAYMENT_FIELDS:
+        summary[key] = by_payment[key]["amount"]
+    return summary
 
 
 def _settlement_summary(db: Session, start: date, end: date, category_id: str) -> dict:
@@ -718,6 +878,134 @@ def _cell(row: tuple, idx: int):
     return row[idx] if idx < len(row) else None
 
 
+def _detect_revenue_record_header(rows: list[tuple], labels: dict[str, str] | None = None) -> tuple[int, dict[str, int]]:
+    for row_idx, row in enumerate(rows[:30]):
+        mapping: dict[str, int] = {}
+        for col_idx, value in enumerate(row):
+            field = _revenue_header_field(value, labels)
+            if field and field not in mapping:
+                mapping[field] = col_idx
+        if "record_date" in mapping and any(field in mapping for field in PAYMENT_FIELDS):
+            return row_idx, mapping
+    raise ValueError("엑셀 헤더에 날짜와 매출 입력 항목이 필요합니다.")
+
+
+def _serialize_record_data(
+    record_date: str,
+    category_id: str = "",
+    values: dict[str, int] | None = None,
+    memo: str = "",
+    categories: dict[str, str] | None = None,
+) -> dict:
+    data = {
+        "id": "",
+        "record_date": record_date,
+        "category_id": category_id,
+        "category_name": (categories or {}).get(category_id, "전체") if category_id else "전체",
+        "cash_counts": {},
+        "field_memos": {},
+        "memo": memo,
+        "created_at": None,
+        "updated_at": None,
+    }
+    values = values or {}
+    for field in PAYMENT_FIELDS:
+        data[field] = _money_amount(values.get(field))
+    data["unpaid_applied_amount"] = _payment_applied_amount("unpaid_amount", data["unpaid_amount"])
+    data.update(_calculated_revenue_totals(data))
+    data["total_amount"] = data["collected_amount"]
+    return data
+
+
+def preview_records_from_excel(
+    db: Session,
+    file_bytes: bytes,
+    filename: str = "",
+    labels: dict[str, str] | None = None,
+) -> dict:
+    if not file_bytes:
+        raise ValueError("엑셀 파일이 비어 있습니다.")
+    try:
+        import openpyxl
+    except Exception as exc:
+        raise ValueError("엑셀 파싱 라이브러리(openpyxl)를 불러올 수 없습니다.") from exc
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    except Exception as exc:
+        raise ValueError(f"엑셀 파일을 열 수 없습니다: {exc}") from exc
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise ValueError("엑셀 파일에 데이터가 없습니다.")
+    header_idx, mapping = _detect_revenue_record_header(rows, labels)
+
+    grouped: dict[str, dict[str, int]] = {}
+    memo_by_day: dict[str, list[str]] = {}
+    skipped = 0
+    for row in rows[header_idx + 1:]:
+        if not any(str(value or "").strip() for value in row):
+            continue
+        raw_day = _cell(row, mapping["record_date"])
+        day = _parse_excel_date(raw_day)
+        if not day:
+            total_label = _normalize_excel_header(raw_day)
+            if not str(raw_day or "").strip() or total_label in {"합계", "총계", "소계", "total", "sum"}:
+                continue
+            skipped += 1
+            continue
+        item = grouped.setdefault(day, {field: 0 for field in PAYMENT_FIELDS})
+        for field in PAYMENT_FIELDS:
+            if field in mapping:
+                item[field] += _parse_excel_amount(_cell(row, mapping[field]))
+        if "memo" in mapping:
+            memo = str(_cell(row, mapping["memo"]) or "").strip()
+            if memo:
+                memo_by_day.setdefault(day, []).append(memo)
+
+    if not grouped:
+        raise ValueError("가져올 매출 기록 데이터가 없습니다.")
+
+    dates = sorted(grouped.keys())
+    # 이미 저장된 기록이 있는 날짜 — 프론트에서 덮어쓰기 확인창을 띄우는 데 사용
+    existing_dates = sorted({
+        row[0]
+        for row in db.query(models.RevenueRecord.record_date)
+        .filter(
+            models.RevenueRecord.record_date >= dates[0],
+            models.RevenueRecord.record_date <= dates[-1],
+            models.RevenueRecord.category_id == "",
+        )
+        .all()
+        if row[0] in grouped
+    })
+    categories = category_name_map(db)
+    records = [
+        _serialize_record_data(
+            day,
+            "",
+            grouped[day],
+            " / ".join(memo_by_day.get(day, []))[:500],
+            categories,
+        )
+        for day in dates
+    ]
+    return {
+        "date_from": dates[0],
+        "date_to": dates[-1],
+        "category_id": "",
+        "categories": active_categories(db),
+        "records": records,
+        "existing_dates": existing_dates,
+        "imported": len(records),
+        "skipped": skipped,
+        "source_filename": (filename or "").strip()[:255],
+        "fields": [
+            {"key": field, "label": PAYMENT_LABELS[field]}
+            for field in PAYMENT_FIELDS
+        ],
+    }
+
+
 def import_medical_summaries_from_excel(
     db: Session,
     file_bytes: bytes,
@@ -880,15 +1168,23 @@ def _auto_summary(db: Session, report_date: str, selected_codes: list[str]) -> d
 
 def _daily_journal_summary(revenue_record: dict, settlement_items: list[dict], medical_summary: dict) -> dict:
     revenue_lines = [
-        {"key": "total_amount", "label": "총 매출", "amount": _money_amount(revenue_record.get("total_amount")), "source": "매출 기록"},
-        {"key": "cash_amount", "label": "현금 수납액", "amount": _money_amount(revenue_record.get("cash_amount")), "source": "매출 기록"},
-        {"key": "card_amount", "label": "카드 총액", "amount": _money_amount(revenue_record.get("card_amount")), "source": "매출 기록"},
-        {"key": "transfer_amount", "label": "계좌이체", "amount": _money_amount(revenue_record.get("transfer_amount")), "source": "매출 기록"},
-        {"key": "unpaid_amount", "label": "미수납", "amount": _money_amount(revenue_record.get("unpaid_applied_amount")), "source": "매출 기록"},
-        {"key": "health_living_fee", "label": "건강생활유지비", "amount": _money_amount(revenue_record.get("health_living_fee")), "source": "매출 기록"},
-        {"key": "disability_fund", "label": "장애인기금", "amount": _money_amount(revenue_record.get("disability_fund")), "source": "매출 기록"},
-        {"key": "other_amount", "label": "기타", "amount": _money_amount(revenue_record.get("other_amount")), "source": "매출 기록"},
+        {"key": "collected_amount", "label": REVENUE_TOTAL_LABELS["collected_amount"], "amount": _money_amount(revenue_record.get("collected_amount")), "source": "매출 기록"},
+        {"key": "total_expense", "label": REVENUE_TOTAL_LABELS["total_expense"], "amount": _money_amount(revenue_record.get("total_expense")), "source": "매출 기록"},
+        {"key": "cash_total", "label": REVENUE_TOTAL_LABELS["cash_total"], "amount": _money_amount(revenue_record.get("cash_total")), "source": "매출 기록"},
     ]
+    revenue_lines.extend(
+        {
+            "key": field,
+            "label": PAYMENT_LABELS[field],
+            "amount": _money_amount(
+                revenue_record.get("unpaid_applied_amount")
+                if field == "unpaid_amount"
+                else revenue_record.get(field)
+            ),
+            "source": "매출 기록",
+        }
+        for field in PAYMENT_FIELDS
+    )
     treatment_lines = sorted(
         [
             {

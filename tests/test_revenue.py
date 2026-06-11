@@ -75,10 +75,16 @@ def test_revenue_records_grid_stats_and_delete(client):
             {
                 "record_date": "2099-09-01",
                 "category_id": category["id"],
+                "total_medical_fee": 50000,
+                "nhis_burden_total": 40000,
                 "cash_amount": 1000,
                 "card_amount": 2000,
                 "transfer_amount": 3000,
                 "other_amount": 4000,
+                "field_memos": {
+                    "total_medical_fee": "총진료비 확인",
+                    "collected_amount": "수납액 메모",
+                },
                 "memo": "첫 매출",
             },
             {
@@ -106,6 +112,10 @@ def test_revenue_records_grid_stats_and_delete(client):
     assert [r["record_date"] for r in records] == ["2099-09-01", "2099-09-02"]
     assert records[0]["total_amount"] == 10000
     assert records[0]["memo"] == "첫 매출"
+    assert records[0]["field_memos"] == {
+        "total_medical_fee": "총진료비 확인",
+        "collected_amount": "수납액 메모",
+    }
     assert records[1]["total_amount"] == 0
 
     stats = client.get(
@@ -120,24 +130,36 @@ def test_revenue_records_grid_stats_and_delete(client):
     assert body["delta"]["revenue_total"] == {"amount": 10000, "pct": None}
     by_payment = {row["key"]: row["amount"] for row in body["current"]["by_payment"]}
     assert by_payment == {
+        "total_medical_fee": 50000,
+        "nhis_burden_total": 40000,
         "cash_amount": 1000,
         "card_amount": 2000,
+        "receivable_income": 0,
         "transfer_amount": 3000,
         "unpaid_amount": 0,
         "health_living_fee": 0,
+        "certificate_amount": 0,
         "disability_fund": 0,
+        "uninsured_amount": 0,
+        "meal_amount": 0,
         "other_amount": 4000,
+        "discount_amount": 0,
+        "free_amount": 0,
+        "cash_expense_amount": 0,
     }
     assert body["settlement"]["price_total"] == 0
     assert body["settlement"]["revenue_minus_settlement_price"] == 10000
     assert body["settlement"]["revenue_after_incentive"] == 10000
 
     payload["entries"][0].update({
+        "total_medical_fee": 0,
+        "nhis_burden_total": 0,
         "cash_amount": 0,
         "card_amount": 0,
         "transfer_amount": 0,
         "unpaid_amount": 0,
         "other_amount": 0,
+        "field_memos": {},
         "memo": "",
     })
     deleted = client.post("/api/revenue/records/grid", json=payload, headers=headers)
@@ -163,6 +185,8 @@ def test_revenue_records_allow_unpaid_and_negative_amounts(client):
             {
                 "record_date": "2099-09-04",
                 "category_id": category["id"],
+                "total_medical_fee": 10000,
+                "nhis_burden_total": 0,
                 "cash_amount": 10000,
                 "card_amount": -2000,
                 "transfer_amount": 3000,
@@ -175,6 +199,7 @@ def test_revenue_records_allow_unpaid_and_negative_amounts(client):
             {
                 "record_date": "2099-09-05",
                 "category_id": category["id"],
+                "total_medical_fee": 1000,
                 "cash_amount": 1000,
                 "card_amount": -1000,
                 "transfer_amount": 0,
@@ -194,14 +219,17 @@ def test_revenue_records_allow_unpaid_and_negative_amounts(client):
     )
     assert listed.status_code == 200, listed.text
     first, second = listed.json()["records"]
-    assert first["total_amount"] == 4000
+    assert first["total_amount"] == 16000
+    assert first["collected_amount"] == 16000
+    assert first["total_expense"] == 15000
+    assert first["cash_total"] == 1000
     assert first["card_amount"] == -2000
     assert first["unpaid_amount"] == -5000
     assert first["unpaid_applied_amount"] == -5000
     assert first["health_living_fee"] == -700
     assert first["disability_fund"] == -300
     assert first["other_amount"] == -1000
-    assert second["total_amount"] == 0
+    assert second["total_amount"] == 1000
     assert second["cash_amount"] == 1000
     assert second["card_amount"] == -1000
 
@@ -211,8 +239,13 @@ def test_revenue_records_allow_unpaid_and_negative_amounts(client):
     )
     assert stats.status_code == 200, stats.text
     body = stats.json()
-    assert body["current"]["revenue_total"] == 4000
+    assert body["current"]["revenue_total"] == 17000
+    assert body["current"]["collected_amount"] == 17000
+    assert body["current"]["total_expense"] == 17000
+    assert body["current"]["cash_total"] == 0
     by_payment = {row["key"]: row["amount"] for row in body["current"]["by_payment"]}
+    assert by_payment["total_medical_fee"] == 11000
+    assert by_payment["nhis_burden_total"] == 0
     assert by_payment["cash_amount"] == 11000
     assert by_payment["card_amount"] == -3000
     assert by_payment["transfer_amount"] == 3000
@@ -241,6 +274,7 @@ def test_revenue_cash_counts_calculate_cash_amount(client):
         "entries": [{
             "record_date": "2099-09-03",
             "category_id": category["id"],
+            "total_medical_fee": 81500,
             "cash_amount": 123,
             "cash_counts": cash_counts,
             "card_amount": 940,
@@ -260,6 +294,102 @@ def test_revenue_cash_counts_calculate_cash_amount(client):
     assert record["cash_amount"] == 80560
     assert record["cash_counts"] == cash_counts
     assert record["total_amount"] == 81500
+
+
+def test_revenue_record_excel_import_preview_fills_editable_records(client):
+    headers = _admin_headers(client)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append([
+        "날짜",
+        "총진료비",
+        "공단부담총액",
+        "현금수납액",
+        "카드수납액",
+        "미수입금",
+        "미수발생",
+        "건강생활유지비",
+        "입,통원확인서",
+        "장애인기금",
+        "비급여",
+        "식대",
+        "기타",
+        "할인",
+        "FREE",
+        "현금지출",
+        "계좌입금",
+        "메모",
+    ])
+    ws.append([
+        "2099/09/06",
+        100000,
+        40000,
+        10000,
+        20000,
+        3000,
+        5000,
+        1000,
+        2000,
+        500,
+        9000,
+        800,
+        700,
+        600,
+        400,
+        300,
+        11000,
+        "엑셀",
+    ])
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    imported = client.post(
+        "/api/revenue/records/import-preview",
+        files={
+            "file": (
+                "revenue-records.xlsx",
+                bio.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        data={"labels_json": '{"cash_amount":"현금수납액"}'},
+        headers=headers,
+    )
+    assert imported.status_code == 200, imported.text
+    body = imported.json()
+    assert body["ok"] is True
+    assert body["date_from"] == "2099-09-06"
+    assert body["date_to"] == "2099-09-06"
+    assert body["imported"] == 1
+    record = body["records"][0]
+    assert record["total_medical_fee"] == 100000
+    assert record["nhis_burden_total"] == 40000
+    assert record["cash_amount"] == 10000
+    assert record["card_amount"] == 20000
+    assert record["receivable_income"] == 3000
+    assert record["unpaid_amount"] == 5000
+    assert record["health_living_fee"] == 1000
+    assert record["certificate_amount"] == 2000
+    assert record["disability_fund"] == 500
+    assert record["uninsured_amount"] == 9000
+    assert record["meal_amount"] == 800
+    assert record["other_amount"] == 700
+    assert record["discount_amount"] == 600
+    assert record["free_amount"] == 400
+    assert record["cash_expense_amount"] == 300
+    assert record["transfer_amount"] == 11000
+    assert record["collected_amount"] == 53500
+    assert record["total_expense"] == 21200
+    assert record["cash_total"] == 32300
+    assert record["memo"] == "엑셀"
+
+    listed = client.get(
+        "/api/revenue/records?date_from=2099-09-06&date_to=2099-09-06",
+        headers=headers,
+    )
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["records"][0]["total_medical_fee"] == 0
 
 
 def test_revenue_stats_settlement_by_treatment(client):
@@ -328,6 +458,8 @@ def test_daily_work_report_save_get_auto_summary_and_delete(client):
         "entries": [
             {
                 "record_date": "2099-10-01",
+                "total_medical_fee": 10000,
+                "nhis_burden_total": 1300,
                 "cash_amount": 1000,
                 "card_amount": 2000,
                 "transfer_amount": 3000,
@@ -370,6 +502,11 @@ def test_daily_work_report_save_get_auto_summary_and_delete(client):
     assert initial_body["revenue_record"]["category_id"] == ""
     assert initial_body["revenue_record"]["category_name"] == "전체"
     assert initial_body["revenue_record"]["total_amount"] == 9350
+    assert initial_body["revenue_record"]["collected_amount"] == 9350
+    assert initial_body["revenue_record"]["total_expense"] == 4350
+    assert initial_body["revenue_record"]["cash_total"] == 5000
+    assert initial_body["revenue_record"]["total_medical_fee"] == 10000
+    assert initial_body["revenue_record"]["nhis_burden_total"] == 1300
     assert initial_body["revenue_record"]["cash_amount"] == 1000
     assert initial_body["revenue_record"]["card_amount"] == 2000
     assert initial_body["revenue_record"]["transfer_amount"] == 3000
@@ -380,7 +517,10 @@ def test_daily_work_report_save_get_auto_summary_and_delete(client):
     assert initial_body["revenue_record"]["other_amount"] == 4000
     assert initial_body["revenue_record"]["memo"] == "일일 보고 매출"
     journal_lines = {row["key"]: row for row in initial_body["journal"]["revenue_lines"]}
-    assert journal_lines["total_amount"]["amount"] == 9350
+    assert journal_lines["collected_amount"]["amount"] == 9350
+    assert journal_lines["total_expense"]["amount"] == 4350
+    assert journal_lines["cash_total"]["amount"] == 5000
+    assert journal_lines["total_medical_fee"]["amount"] == 10000
     assert journal_lines["unpaid_amount"]["amount"] == -500
     assert journal_lines["health_living_fee"]["amount"] == -120
     assert journal_lines["disability_fund"]["amount"] == -30
@@ -576,3 +716,111 @@ def test_daily_work_report_requires_admin(client):
         files={"file": ("empty.xlsx", b"", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
     )
     assert import_resp.status_code == 401
+    preview_resp = client.post(
+        "/api/revenue/records/import-preview",
+        files={"file": ("empty.xlsx", b"", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert preview_resp.status_code == 401
+
+
+def test_parse_excel_date_without_year_uses_current_year():
+    from datetime import date
+
+    from app.modules.revenue.service import _parse_excel_date
+
+    today = date.today()
+    # 연도 없는 날짜(오늘의 월/일) → 올해로 기록
+    assert _parse_excel_date(f"{today.month}/{today.day}") == today.isoformat()
+    assert _parse_excel_date(f"{today.month}월 {today.day}일") == today.isoformat()
+    assert _parse_excel_date(f"{today.month}.{today.day}") == today.isoformat()
+    # 잘못된 월/일은 무시
+    assert _parse_excel_date("13/40") is None
+    assert _parse_excel_date("0/15") is None
+    # 연도가 있으면 기존 동작 유지
+    assert _parse_excel_date("2099-09-06") == "2099-09-06"
+
+
+def test_revenue_record_import_preview_reports_existing_dates(client):
+    headers = _admin_headers(client)
+    saved = client.post("/api/revenue/records/grid", json={
+        "date_from": "2099-09-10",
+        "date_to": "2099-09-10",
+        "category_id": "",
+        "entries": [{
+            "record_date": "2099-09-10",
+            "category_id": "",
+            "total_medical_fee": 30000,
+            "nhis_burden_total": 20000,
+            "cash_amount": 10000,
+        }],
+    }, headers=headers)
+    assert saved.status_code == 200, saved.text
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["날짜", "총진료비", "현금수납액"])
+    ws.append(["2099/09/10", 50000, 5000])
+    ws.append(["2099/09/11", 60000, 6000])
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    imported = client.post(
+        "/api/revenue/records/import-preview",
+        files={
+            "file": (
+                "revenue-records.xlsx",
+                bio.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=headers,
+    )
+    assert imported.status_code == 200, imported.text
+    body = imported.json()
+    assert body["imported"] == 2
+    # 이미 저장된 2099-09-10 만 existing_dates 에 포함
+    assert body["existing_dates"] == ["2099-09-10"]
+
+
+def test_revenue_legacy_record_flag_and_stats_count(client):
+    headers = _admin_headers(client)
+    saved = client.post("/api/revenue/records/grid", json={
+        "date_from": "2099-09-12",
+        "date_to": "2099-09-13",
+        "category_id": "",
+        "entries": [
+            {
+                # 이전 형식: 총진료비/공단부담 없이 현금·카드만 존재
+                "record_date": "2099-09-12",
+                "category_id": "",
+                "cash_amount": 10000,
+                "card_amount": 5000,
+            },
+            {
+                # 새 형식: 총진료비 입력됨
+                "record_date": "2099-09-13",
+                "category_id": "",
+                "total_medical_fee": 30000,
+                "nhis_burden_total": 20000,
+                "cash_amount": 10000,
+            },
+        ],
+    }, headers=headers)
+    assert saved.status_code == 200, saved.text
+
+    listed = client.get(
+        "/api/revenue/records?date_from=2099-09-12&date_to=2099-09-13",
+        headers=headers,
+    )
+    assert listed.status_code == 200, listed.text
+    legacy, modern = listed.json()["records"]
+    assert legacy["legacy_format"] is True
+    assert modern["legacy_format"] is False
+
+    stats = client.get(
+        "/api/revenue/stats?date_from=2099-09-12&date_to=2099-09-13",
+        headers=headers,
+    )
+    assert stats.status_code == 200, stats.text
+    assert stats.json()["current"]["legacy_count"] == 1

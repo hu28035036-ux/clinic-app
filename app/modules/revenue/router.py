@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+import json
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -51,6 +53,33 @@ def save_revenue_records_grid(
         return data
     except ValueError as exc:
         db.rollback()
+        raise _bad_request(exc) from exc
+
+
+@router.post("/records/import-preview")
+async def preview_revenue_records_import(
+    file: UploadFile = File(...),
+    labels_json: str = Form(""),
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_admin),
+):
+    try:
+        labels = json.loads(labels_json or "{}")
+        if not isinstance(labels, dict):
+            labels = {}
+    except Exception:
+        labels = {}
+    try:
+        content = await file.read()
+        data = service.preview_records_from_excel(
+            db,
+            content,
+            file.filename or "",
+            labels={str(k): str(v) for k, v in labels.items()},
+        )
+        data["ok"] = True
+        return data
+    except ValueError as exc:
         raise _bad_request(exc) from exc
 
 

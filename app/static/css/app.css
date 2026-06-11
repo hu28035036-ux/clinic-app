@@ -1780,8 +1780,21 @@ select option:disabled {
   min-width: 12px;
 }
 
+.revenue-legacy-notice {
+  background: #FEF3C7;
+  border: 1px solid #F59E0B;
+  color: #92400E;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .revenue-record-table {
-  min-width: 1240px;
+  width: 100%;
+  min-width: 540px;
+  table-layout: fixed;
 }
 
 .revenue-record-table th,
@@ -1789,61 +1802,189 @@ select option:disabled {
   vertical-align: middle;
 }
 
-.revenue-sign-header {
-  display: grid;
-  justify-items: center;
-  gap: 4px;
-  min-width: 78px;
-}
-
-.revenue-sign-control {
-  display: inline-grid;
-  grid-template-columns: repeat(2, 24px);
-  gap: 1px;
-  padding: 1px;
-  border: 1px solid #CBD5E1;
-  border-radius: 5px;
-  background: #F8FAFC;
-}
-
-.revenue-sign-btn {
-  box-sizing: border-box;
+.revenue-field-header {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 1px;
-  width: 24px;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.revenue-field-drag-handle {
+  display: inline;
+  color: #64748B;
+  font: inherit;
+  font-size: .9em;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+}
+
+.revenue-field-drag-handle:active {
+  cursor: grabbing;
+}
+
+.revenue-header-edit-btn {
+  all: unset;
+  display: inline;
+  width: auto !important;
   min-width: 0 !important;
-  max-width: 24px;
-  height: 18px;
-  min-height: 18px;
+  height: auto !important;
+  min-height: 0 !important;
   padding: 0 !important;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 800;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #0F172A;
+  font: inherit;
+  font-size: .92em;
   line-height: 1;
   cursor: pointer;
 }
 
-.revenue-sign-check {
-  display: none;
-  color: #BBF7D0;
-  font-size: 8px;
-  font-weight: 900;
-  line-height: 1;
+.revenue-header-edit-btn:hover {
+  color: #1D4ED8;
+  background: transparent !important;
 }
 
-.revenue-sign-btn.active {
-  background: #1D4ED8;
-  color: #fff;
-  box-shadow: 0 0 0 1px #1E40AF inset;
+.revenue-row-dragging th,
+.revenue-row-dragging td {
+  opacity: .55;
 }
 
-.revenue-sign-btn.active .revenue-sign-check {
-  display: inline;
+.revenue-row-drop-before th,
+.revenue-row-drop-before td {
+  box-shadow: inset 0 2px 0 #2563EB;
+}
+
+.revenue-row-drop-after th,
+.revenue-row-drop-after td {
+  box-shadow: inset 0 -2px 0 #2563EB;
+}
+
+.revenue-formula-modal {
+  display: grid;
+  gap: 12px;
+}
+
+.revenue-formula-modal h3 {
+  margin: 0;
+}
+
+.revenue-formula-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.revenue-formula-terms {
+  display: grid;
+  gap: 8px;
+}
+
+.revenue-formula-term {
+  display: grid;
+  grid-template-columns: 96px minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.revenue-formula-term select {
+  min-height: 36px;
+}
+
+.revenue-formula-empty {
+  margin: 0;
+  padding: 10px 0;
+}
+
+.revenue-formula-error {
+  min-height: 18px;
+  margin: 0;
+  color: #DC2626;
+  font-size: 12px;
+}
+
+.revenue-daily-field-modal {
+  min-width: min(520px, 86vw);
+}
+
+.revenue-daily-field-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.revenue-daily-field-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.revenue-daily-field-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 34px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid #D7E3F0;
+  border-radius: 7px;
+  background: #fff;
+  color: #1F2937;
+  font-size: 13px;
+}
+
+.revenue-daily-field-option span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.revenue-record-table-transposed col.revenue-col-item {
+  width: 150px;
+}
+
+.revenue-record-table-transposed col.revenue-col-amount {
+  width: 170px;
+}
+
+.revenue-record-table-transposed col.revenue-col-memo {
+  width: auto;
+}
+
+.revenue-record-table-transposed th,
+.revenue-record-table-transposed td {
+  min-width: 0;
+}
+
+.revenue-field-axis,
+.revenue-field-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 150px !important;
+  min-width: 120px !important;
+  max-width: 150px;
+  background: #F8FAFC;
+}
+
+.revenue-field-axis {
+  z-index: 3;
+}
+
+.revenue-date-head,
+.revenue-memo-head,
+.revenue-period-head {
+  text-align: center;
+  white-space: nowrap;
 }
 
 .daily-cash-ledger-wrap {
@@ -1889,7 +2030,8 @@ select option:disabled {
 }
 
 .revenue-amount-input,
-.revenue-memo-input {
+.revenue-memo-input,
+.revenue-field-memo-input {
   width: 100%;
   min-height: 38px;
   border: 1px solid #CBD5E1;
@@ -1905,12 +2047,35 @@ select option:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.revenue-total-head,
+.revenue-total-cell {
+  background: #F8FAFC;
+}
+
+.revenue-total-cell,
+.revenue-period-total-cell {
+  min-width: 116px;
+  text-align: right;
+  color: #111827;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.revenue-period-total-cell {
+  background: #F8FAFC;
+}
+
 .revenue-memo-input {
   min-width: 180px;
 }
 
+.revenue-field-memo-input {
+  min-width: 220px;
+}
+
 .revenue-amount-input:focus,
-.revenue-memo-input:focus {
+.revenue-memo-input:focus,
+.revenue-field-memo-input:focus {
   border-color: #3B82F6;
   background: #EFF6FF;
   outline: none;
@@ -2453,7 +2618,7 @@ select option:disabled {
 }
 
 .inventory-actions-col {
-  width: 120px;
+  width: 86px;
 }
 
 .inventory-field-head {
@@ -2464,6 +2629,39 @@ select option:disabled {
   display: inline-flex;
   gap: 4px;
   margin-left: 6px;
+}
+
+.inventory-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #D7E3F0;
+  border-radius: 6px;
+  background: #fff;
+  color: #1F2937;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.inventory-icon-btn:hover {
+  background: #EFF6FF;
+  border-color: #93C5FD;
+  color: #1D4ED8;
+}
+
+.inventory-icon-btn-danger {
+  color: #DC2626;
+}
+
+.inventory-icon-btn-danger:hover {
+  background: #FEF2F2;
+  border-color: #FCA5A5;
+  color: #B91C1C;
 }
 
 .inventory-cell-input {
@@ -2489,6 +2687,10 @@ select option:disabled {
 
 .inventory-row-actions {
   white-space: nowrap;
+}
+
+.inventory-row-actions .inventory-icon-btn + .inventory-icon-btn {
+  margin-left: 4px;
 }
 
 @media (max-width: 760px) {
@@ -3732,6 +3934,40 @@ button.mini.danger {
   padding-left: 10px;
   border-left: 4px solid #0EA5E9;
   line-height: 1.4;
+}
+
+.stats-section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.stats-section-title-row .stats-section-title {
+  margin-bottom: 0;
+}
+
+.revenue-section-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #D7E3F0;
+  border-radius: 6px;
+  background: #fff;
+  color: #1F2937;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.revenue-section-edit-btn:hover {
+  background: #EFF6FF;
+  border-color: #93C5FD;
+  color: #1D4ED8;
 }
 
 /* ── 통계 탭 전용 레이아웃 개선 ─────────────────── */
@@ -5832,8 +6068,20 @@ label, .label, .form-label {
   font-size: 13px;
 }
 
+.daily-report-journal-panel {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+
 .daily-report-journal-table {
   min-width: 420px;
+}
+
+.daily-report-journal-money-table {
+  min-width: 320px;
 }
 
 .daily-report-journal-table th,
@@ -5864,6 +6112,28 @@ label, .label, .form-label {
   background: var(--gray-50);
   color: var(--gray-700);
   font-size: 12px;
+}
+
+.daily-report-journal-memo {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--gray-50);
+  color: var(--gray-700);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.daily-report-journal-memo b {
+  flex: 0 0 auto;
+  color: var(--text-title);
+}
+
+.daily-report-journal-memo span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 760px) {

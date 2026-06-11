@@ -259,16 +259,13 @@
 
       <div id="revenue-pane-records" class="revenue-pane active">
         <div class="stats-filter-bar revenue-toolbar">
-          <input id="rev-record-from" type="date" style="width:150px">
-          <span>~</span>
-          <input id="rev-record-to" type="date" style="width:150px">
+          <input id="rev-record-date" type="date" style="width:150px">
           <button class="primary" onclick="loadRevenueRecords()">조회</button>
           <button class="small" onclick="saveRevenueRecords()">저장</button>
+          <input id="revenue-record-import-file" type="file" accept=".xlsx,.xlsm" style="display:none" onchange="importRevenueRecordsExcel(this)">
+          <button class="small" onclick="triggerRevenueRecordImport()">엑셀 불러오기</button>
           <span class="toolbar-spacer"></span>
           <button class="small" onclick="applyRevenuePreset('record','today')">오늘</button>
-          <button class="small" onclick="applyRevenuePreset('record','week')">최근 7일</button>
-          <button class="small" onclick="applyRevenuePreset('record','month_now')">이번 달</button>
-          <button class="small" onclick="applyRevenuePreset('record','month_prev')">지난 달</button>
         </div>
         <div class="settlement-note">매일 실제 매출을 입력합니다. 이 기록이 매출 통계의 기준이 됩니다.</div>
         <div id="revenue-record-loading" style="display:none; padding:14px; color:#4B5563;">불러오는 중...</div>
@@ -310,14 +307,10 @@
         <div class="stats-filter-bar revenue-toolbar">
           <input id="daily-report-date" type="date" style="width:150px">
           <button class="primary" onclick="loadDailyReport()">조회</button>
-          <button class="small" onclick="saveDailyReport()">저장</button>
-          <input id="daily-medical-summary-file" type="file" accept=".xlsx,.xlsm" style="display:none" onchange="importDailyMedicalSummaryExcel(this)">
-          <button class="small" onclick="triggerDailyMedicalSummaryUpload()">기간별 데이터 업로드</button>
           <span class="toolbar-spacer"></span>
           <button class="small" onclick="applyDailyReportPreset('today')">오늘</button>
-          <button class="small" onclick="addDailyReportField()">칸 추가</button>
         </div>
-        <div class="settlement-note">선택한 치료항목의 정산 기준 수량/수가/인센티브를 자동으로 보여주고, 아래 보고 칸은 직접 추가해 저장합니다.</div>
+        <div class="settlement-note">선택한 날짜의 매출 기록과 정산 입력을 업무일지 반영 기준으로 보여줍니다.</div>
         <div id="daily-report-loading" style="display:none; padding:14px; color:#4B5563;">불러오는 중...</div>
         <div id="daily-report-body"></div>
       </div>
@@ -4582,8 +4575,8 @@ function renderInventoryCategory(section){
     <th class="inventory-field-head">
       <span>${escapeHtml(field.name || '')}</span>
       <span class="inventory-field-actions">
-        <button class="mini" onclick='editInventoryField("${c.id}", ${JSON.stringify(field).replace(/'/g,"&#39;")})'>수정</button>
-        <button class="mini danger" onclick="deleteInventoryField('${field.id}', '${c.id}')">삭제</button>
+        <button type="button" class="inventory-icon-btn" onclick='editInventoryField("${c.id}", ${JSON.stringify(field).replace(/'/g,"&#39;")})' title="관리 열 수정" aria-label="관리 열 수정">✎</button>
+        <button type="button" class="inventory-icon-btn inventory-icon-btn-danger" onclick="deleteInventoryField('${field.id}', '${c.id}')" title="관리 열 삭제" aria-label="관리 열 삭제">×</button>
       </span>
     </th>`).join('');
   const rows = items.map(item => {
@@ -4606,8 +4599,8 @@ function renderInventoryCategory(section){
       <td>${escapeHtml(item.unit || '')}</td>
       ${valueCells}
       <td class="inventory-row-actions">
-        <button class="mini" onclick='editInventoryItem("${c.id}", ${JSON.stringify(item).replace(/'/g,"&#39;")})'>수정</button>
-        <button class="mini danger" onclick="deleteInventoryItem('${item.id}', '${c.id}')">삭제</button>
+        <button type="button" class="inventory-icon-btn" onclick='editInventoryItem("${c.id}", ${JSON.stringify(item).replace(/'/g,"&#39;")})' title="품목 수정" aria-label="품목 수정">✎</button>
+        <button type="button" class="inventory-icon-btn inventory-icon-btn-danger" onclick="deleteInventoryItem('${item.id}', '${c.id}')" title="품목 삭제" aria-label="품목 삭제">×</button>
       </td>
     </tr>`;
   }).join('');
@@ -4979,6 +4972,11 @@ function revenueDefaultRange(){
 }
 
 function revenueSetRange(prefix, fromStr, toStr){
+  if(prefix === 'rev-record'){
+    const dateEl = document.getElementById('rev-record-date');
+    if(dateEl) dateEl.value = toStr || fromStr;
+    return;
+  }
   const fromEl = document.getElementById(prefix + '-from');
   const toEl = document.getElementById(prefix + '-to');
   if(fromEl) fromEl.value = fromStr;
@@ -5002,7 +5000,7 @@ function applyRevenuePreset(target, preset){
     start.setDate(end.getDate() - 29);
   }
   const prefix = target === 'record' ? 'rev-record' : 'rev-stat';
-  revenueSetRange(prefix, revenueDateStr(start), revenueDateStr(end));
+  revenueSetRange(prefix, revenueDateStr(target === 'record' ? end : start), revenueDateStr(end));
   if(target === 'record') loadRevenueRecords();
   else loadRevenueStats();
 }
@@ -5010,7 +5008,7 @@ function applyRevenuePreset(target, preset){
 function initStats(){
   const [fromStr, toStr] = revenueDefaultRange();
   if(!_revenueInitialized){
-    revenueSetRange('rev-record', fromStr, toStr);
+    revenueSetRange('rev-record', revenueDateStr(new Date()), revenueDateStr(new Date()));
     revenueSetRange('rev-stat', fromStr, toStr);
     const reportDateEl = document.getElementById('daily-report-date');
     if(reportDateEl) reportDateEl.value = revenueDateStr(new Date());
@@ -5112,124 +5110,20 @@ function dailyReportBuildAuto(selectedCodes){
   return {items, totals};
 }
 
-function openDailyReportRevenueRecord(){
-  const reportDate = document.getElementById('daily-report-date')?.value || revenueDateStr(new Date());
-  revenueSetRange('rev-record', reportDate, reportDate);
-  const tabBtn = [...document.querySelectorAll('#admin-stats .revenue-sub-tab')]
-    .find(b => (b.getAttribute('onclick') || '').includes("'records'"));
-  switchRevenueTab('records', tabBtn);
-}
-
-function triggerDailyMedicalSummaryUpload(){
-  document.getElementById('daily-medical-summary-file')?.click();
-}
-
-async function importDailyMedicalSummaryExcel(input){
-  const file = input?.files?.[0];
-  if(!file) return;
-  const form = new FormData();
-  form.append('file', file);
-  try {
-    const r = await adminFetch('/api/revenue/daily-medical-summary/import', {
-      method: 'POST',
-      body: form,
-    });
-    const data = await r.json().catch(() => ({}));
-    if(!r.ok || data.ok === false) throw new Error(data.detail || data.error || r.statusText);
-    const imported = Number(data.imported || data.changed?.upserted || 0);
-    const skipped = Number(data.skipped || 0);
-    alert(`기간별 데이터 ${imported.toLocaleString()}일치를 반영했습니다.${skipped ? `\n건너뛴 행 ${skipped.toLocaleString()}개` : ''}`);
-    await loadDailyReport();
-  } catch(e){
-    alert('기간별 데이터 업로드 실패: ' + (e && e.message ? e.message : e));
-  } finally {
-    if(input) input.value = '';
-  }
-}
-
-function renderDailyReportRevenue(){
-  const rec = DAILY_REPORT?.revenue_record || {};
-  const hasRecord = !!rec.exists;
-  const memo = (rec.memo || '').trim();
-  const updatedLabel = rec.updated_at
-    ? rec.updated_at.slice(0, 16).replace('T', ' ')
-    : '';
-  return `
-    <div class="stats-section daily-report-revenue-section">
-      <div class="daily-report-section-head">
-        <h3 class="stats-section-title">매출 기록</h3>
-        <button class="small" onclick="openDailyReportRevenueRecord()">${hasRecord ? '매출 기록 수정' : '매출 기록 입력'}</button>
-      </div>
-      <div class="daily-report-revenue-meta">
-        <span>${escapeHtml(revenueDateLabel(rec.record_date || DAILY_REPORT?.report_date || ''))}</span>
-        <span>${escapeHtml(rec.category_name || '전체')}</span>
-        ${updatedLabel ? `<span>수정 ${escapeHtml(updatedLabel)}</span>` : ''}
-      </div>
-      <div class="stats-summary-grid daily-report-summary-grid daily-report-revenue-grid">
-        <div class="stat-card"><div class="stat-label">실매출 합계</div><div class="stat-value">${revenueMoney(rec.total_amount)}</div></div>
-        <div class="stat-card"><div class="stat-label">현금</div><div class="stat-value">${revenueMoney(rec.cash_amount)}</div></div>
-        <div class="stat-card"><div class="stat-label">카드</div><div class="stat-value">${revenueMoney(rec.card_amount)}</div></div>
-        <div class="stat-card"><div class="stat-label">계좌</div><div class="stat-value">${revenueMoney(rec.transfer_amount)}</div></div>
-        <div class="stat-card"><div class="stat-label">미수납</div><div class="stat-value">${revenueMoney(revenueUnpaidApplied(rec))}</div></div>
-        <div class="stat-card"><div class="stat-label">건강생활유지비</div><div class="stat-value">${revenueMoney(rec.health_living_fee)}</div></div>
-        <div class="stat-card"><div class="stat-label">장애인기금</div><div class="stat-value">${revenueMoney(rec.disability_fund)}</div></div>
-        <div class="stat-card"><div class="stat-label">기타</div><div class="stat-value">${revenueMoney(rec.other_amount)}</div></div>
-      </div>
-      ${hasRecord
-        ? `<div class="daily-report-revenue-memo"><b>메모</b><span>${memo ? escapeHtml(memo) : '없음'}</span></div>`
-        : `<div class="settlement-note daily-report-revenue-empty"><b>매출 기록 없음</b><span>매출 기록 탭에서 먼저 입력하면 이 보고서의 메인 기준으로 표시됩니다.</span></div>`}
-    </div>`;
-}
-
-function renderDailyReportMedicalSummary(){
-  const data = DAILY_REPORT?.medical_summary || {};
-  const hasData = !!data.exists;
-  const updatedLabel = data.updated_at
-    ? data.updated_at.slice(0, 16).replace('T', ' ')
-    : '';
-  const fileLabel = (data.source_filename || '').trim();
-  return `
-    <div class="stats-section daily-report-medical-section">
-      <div class="daily-report-section-head">
-        <h3 class="stats-section-title">기간별 데이터</h3>
-        <button class="small" onclick="triggerDailyMedicalSummaryUpload()">엑셀 업로드</button>
-      </div>
-      <div class="daily-report-revenue-meta">
-        <span>${escapeHtml(revenueDateLabel(data.report_date || DAILY_REPORT?.report_date || ''))}</span>
-        ${fileLabel ? `<span>${escapeHtml(fileLabel)}</span>` : ''}
-        ${updatedLabel ? `<span>수정 ${escapeHtml(updatedLabel)}</span>` : ''}
-      </div>
-      <div class="stats-summary-grid daily-report-summary-grid daily-report-medical-grid">
-        <div class="stat-card"><div class="stat-label">총진료비</div><div class="stat-value">${revenueMoney(data.total_medical_fee)}</div></div>
-        <div class="stat-card"><div class="stat-label">공단부담총액</div><div class="stat-value">${revenueMoney(data.nhis_burden_total)}</div></div>
-        <div class="stat-card"><div class="stat-label">본인부담총액</div><div class="stat-value">${revenueMoney(data.patient_burden_total)}</div></div>
-        <div class="stat-card"><div class="stat-label">급여총액</div><div class="stat-value">${revenueMoney(data.covered_total)}</div></div>
-        <div class="stat-card"><div class="stat-label">비급여총액</div><div class="stat-value">${revenueMoney(data.uncovered_total)}</div></div>
-      </div>
-      ${hasData
-        ? ''
-        : `<div class="settlement-note daily-report-revenue-empty"><b>기간별 데이터 없음</b><span>엑셀 업로드 후 해당 날짜의 값이 표시됩니다.</span></div>`}
-    </div>`;
-}
-
 function renderDailyReportJournal(){
   const journal = DAILY_REPORT?.journal || {};
+  const revenueRecord = DAILY_REPORT?.revenue_record || {};
   const revenueLines = journal.revenue_lines || [];
-  const medicalLines = journal.medical_lines || [];
+  const revenueSummaryKeys = new Set(['collected_amount', 'total_expense', 'cash_total']);
+  const revenueSummary = revenueLines.filter(row => revenueSummaryKeys.has(row.key));
+  const revenueDetail = revenueLines.filter(row => !revenueSummaryKeys.has(row.key) && Number(row.amount || 0) !== 0);
+  const revenueRows = revenueDetail.map(row => `
+    <tr>
+      <td>${escapeHtml(revenueFieldLabel(row.key) || row.label || row.key || '')}</td>
+      <td>${revenueMoney(row.amount)}</td>
+    </tr>`).join('');
   const treatmentLines = journal.treatment_lines || [];
   const totals = journal.totals || {};
-  const revenueRows = revenueLines.map(row => `
-    <tr>
-      <td>${escapeHtml(row.label || '')}</td>
-      <td>${revenueMoney(row.amount)}</td>
-      <td>${escapeHtml(row.source || '')}</td>
-    </tr>`).join('');
-  const medicalRows = medicalLines.map(row => `
-    <tr>
-      <td>${escapeHtml(row.label || '')}</td>
-      <td>${revenueMoney(row.amount)}</td>
-      <td>${escapeHtml(row.source || '')}</td>
-    </tr>`).join('');
   const treatmentRows = treatmentLines.map(row => `
     <tr>
       <td>${escapeHtml(row.label || row.code || '')}</td>
@@ -5241,25 +5135,20 @@ function renderDailyReportJournal(){
     <div class="stats-section daily-report-journal-section">
       <h3 class="stats-section-title">업무일지 반영</h3>
       <div class="daily-report-journal-grid">
-        <div>
-          <h4>매출 입력</h4>
+        <div class="daily-report-journal-panel">
+          <h4>매출 기록</h4>
+          <div class="daily-report-journal-total">
+            ${revenueSummary.map(row => `<span>${escapeHtml(revenueFieldLabel(row.key) || row.label || row.key || '')} ${revenueMoney(row.amount)}</span>`).join('') || '<span>매출 기록 없음</span>'}
+          </div>
           <div style="overflow-x:auto;">
-            <table class="data-table daily-report-journal-table">
-              <thead><tr><th>항목</th><th>금액</th><th>출처</th></tr></thead>
-              <tbody>${revenueRows || '<tr><td colspan="3">매출 기록 없음</td></tr>'}</tbody>
+            <table class="data-table daily-report-journal-table daily-report-journal-money-table">
+              <thead><tr><th>항목</th><th>금액</th></tr></thead>
+              <tbody>${revenueRows || `<tr><td colspan="2">${revenueRecord.exists ? '추가 금액 없음' : '매출 기록 없음'}</td></tr>`}</tbody>
             </table>
           </div>
+          ${revenueRecord.memo ? `<div class="daily-report-journal-memo"><b>메모</b><span>${escapeHtml(revenueRecord.memo)}</span></div>` : ''}
         </div>
-        <div>
-          <h4>기간별 데이터</h4>
-          <div style="overflow-x:auto;">
-            <table class="data-table daily-report-journal-table">
-              <thead><tr><th>항목</th><th>금액</th><th>출처</th></tr></thead>
-              <tbody>${medicalRows || '<tr><td colspan="3">기간별 데이터 없음</td></tr>'}</tbody>
-            </table>
-          </div>
-        </div>
-        <div>
+        <div class="daily-report-journal-panel">
           <h4>정산 입력</h4>
           <div class="daily-report-journal-total">
             <span>수량 ${revenueQuantity(totals.quantity_total)}</span>
@@ -5342,38 +5231,8 @@ function renderDailyReport(data){
   DAILY_REPORT = data || {};
   const body = document.getElementById('daily-report-body');
   if(!body) return;
-  const selected = new Set(DAILY_REPORT.selected_treatment_codes || []);
-  const settlementCodes = new Set(DAILY_REPORT.settlement_codes || []);
-  const treatmentRows = (DAILY_REPORT.treatments || [])
-    .filter(t => t.active || selected.has(t.code) || settlementCodes.has(t.code));
-  const chips = treatmentRows.map(t => {
-    const checked = selected.has(t.code);
-    const hasData = settlementCodes.has(t.code);
-    return `<label class="daily-report-treatment-chip ${checked ? 'active' : ''} ${hasData ? 'has-data' : ''}">
-      <input class="daily-report-treatment-check" type="checkbox" value="${escapeAttr(t.code)}" ${checked ? 'checked' : ''} onchange="dailyReportSelectionChanged()">
-      <span>${escapeHtml(t.short || t.name || t.code)}</span>
-      ${hasData ? '<small>정산 있음</small>' : ''}
-    </label>`;
-  }).join('');
   body.innerHTML = `
-    ${renderDailyReportRevenue()}
-    ${renderDailyReportMedicalSummary()}
-    ${renderDailyReportJournal()}
-    <div class="stats-section daily-report-treatment-section">
-      <h3 class="stats-section-title">정산 참고 치료항목</h3>
-      <div class="daily-report-treatment-list">${chips || '<p class="muted" style="margin:0;">등록된 치료항목이 없습니다.</p>'}</div>
-    </div>
-    <div id="daily-report-auto"></div>
-    <div class="stats-section">
-      <div class="daily-report-section-head">
-        <h3 class="stats-section-title">직접 작성 보고</h3>
-        <button class="small" onclick="addDailyReportField()">칸 추가</button>
-      </div>
-      <div id="daily-report-fields">
-        ${(DAILY_REPORT.custom_fields || []).map(renderDailyReportField).join('') || '<p class="muted daily-report-empty">추가된 보고 칸이 없습니다.</p>'}
-      </div>
-    </div>`;
-  renderDailyReportAuto();
+    ${renderDailyReportJournal()}`;
 }
 
 async function loadDailyReport(){
@@ -5478,83 +5337,570 @@ function syncRevenueCategorySelects(categories, selectedId){
 
 const REVENUE_CASH_DENOMS = [50000, 10000, 5000, 1000, 500, 100, 10];
 const REVENUE_PAYMENT_FIELDS = [
-  {key:'cash_amount', label:'현금', defaultSign:'+'},
-  {key:'card_amount', label:'카드', defaultSign:'+'},
-  {key:'transfer_amount', label:'계좌', defaultSign:'+'},
-  {key:'unpaid_amount', label:'미수납', defaultSign:'-'},
-  {key:'health_living_fee', label:'건강생활유지비', defaultSign:'-'},
-  {key:'disability_fund', label:'장애인기금', defaultSign:'-'},
-  {key:'other_amount', label:'기타', defaultSign:'+'},
+  {key:'total_medical_fee', label:'총진료비'},
+  {key:'nhis_burden_total', label:'공단부담총액'},
+  {key:'cash_amount', label:'현금수납액'},
+  {key:'card_amount', label:'카드수납액'},
+  {key:'receivable_income', label:'미수입금'},
+  {key:'unpaid_amount', label:'미수발생'},
+  {key:'health_living_fee', label:'건강생활유지비'},
+  {key:'certificate_amount', label:'입,통원확인서'},
+  {key:'disability_fund', label:'장애인기금'},
+  {key:'uninsured_amount', label:'비급여'},
+  {key:'meal_amount', label:'식대'},
+  {key:'other_amount', label:'기타'},
+  {key:'discount_amount', label:'할인'},
+  {key:'free_amount', label:'FREE'},
+  {key:'cash_expense_amount', label:'현금지출'},
+  {key:'transfer_amount', label:'계좌입금'},
 ];
-const REVENUE_SIGN_STORAGE_KEY = 'dosu.revenue.fieldSigns.v1';
-const REVENUE_FIELD_DEFAULT_SIGNS = Object.fromEntries(REVENUE_PAYMENT_FIELDS.map(f => [f.key, f.defaultSign]));
-let REVENUE_FIELD_SIGNS = loadRevenueFieldSigns();
+const REVENUE_TOTAL_FIELDS = [
+  {key:'collected_amount', label:'수납액', formula:[
+    {type:'field', key:'total_medical_fee', sign:1},
+    {type:'field', key:'nhis_burden_total', sign:-1},
+    {type:'field', key:'unpaid_amount', sign:-1},
+    {type:'field', key:'health_living_fee', sign:-1},
+    {type:'field', key:'disability_fund', sign:-1},
+  ]},
+  {key:'total_expense', label:'총지출', formula:[
+    {type:'total', key:'collected_amount', sign:1},
+    {type:'field', key:'card_amount', sign:-1},
+    {type:'field', key:'discount_amount', sign:-1},
+    {type:'field', key:'free_amount', sign:-1},
+    {type:'field', key:'cash_expense_amount', sign:-1},
+    {type:'field', key:'transfer_amount', sign:-1},
+  ]},
+  {key:'cash_total', label:'현금', formula:[
+    {type:'total', key:'collected_amount', sign:1},
+    {type:'total', key:'total_expense', sign:-1},
+  ]},
+];
+const REVENUE_FIELD_LABEL_STORAGE_KEY = 'dosu.revenue.fieldLabels.v1';
+const REVENUE_FIELD_ORDER_STORAGE_KEY = 'dosu.revenue.fieldOrder.v1';
+const REVENUE_TOTAL_FORMULA_STORAGE_KEY = 'dosu.revenue.totalFormulas.v1';
+const REVENUE_DAILY_FIELDS_STORAGE_KEY = 'dosu.revenue.dailyFields.v1';
+const REVENUE_FIELD_DEFAULT_LABELS = Object.fromEntries(
+  [...REVENUE_PAYMENT_FIELDS, ...REVENUE_TOTAL_FIELDS].map(f => [f.key, f.label])
+);
+let REVENUE_FIELD_LABELS = loadRevenueFieldLabels();
+let REVENUE_FIELD_ORDER = loadRevenueFieldOrder();
+let REVENUE_TOTAL_FORMULAS_CUSTOM = loadRevenueTotalFormulas();
+let REVENUE_DRAG_FIELD = '';
+let REVENUE_DAILY_FIELD_KEYS = loadRevenueDailyFieldKeys();
 
 function revenueMoney(v){
   const n = Math.round(Number(v || 0));
   return n.toLocaleString() + '원';
 }
 
-function loadRevenueFieldSigns(){
+function loadRevenueFieldLabels(){
   let saved = {};
   try {
-    saved = JSON.parse(localStorage.getItem(REVENUE_SIGN_STORAGE_KEY) || '{}') || {};
+    saved = JSON.parse(localStorage.getItem(REVENUE_FIELD_LABEL_STORAGE_KEY) || '{}') || {};
   } catch(e){
     saved = {};
   }
-  const out = {...REVENUE_FIELD_DEFAULT_SIGNS};
+  const out = {...REVENUE_FIELD_DEFAULT_LABELS};
   Object.keys(out).forEach(key => {
-    if(saved[key] === '+' || saved[key] === '-') out[key] = saved[key];
+    const label = String(saved[key] || '').trim();
+    if(label) out[key] = label.slice(0, 30);
   });
   return out;
 }
 
-function saveRevenueFieldSigns(){
+function saveRevenueFieldLabels(){
   try {
-    localStorage.setItem(REVENUE_SIGN_STORAGE_KEY, JSON.stringify(REVENUE_FIELD_SIGNS));
+    localStorage.setItem(REVENUE_FIELD_LABEL_STORAGE_KEY, JSON.stringify(REVENUE_FIELD_LABELS));
   } catch(e){}
 }
 
-function revenueFieldSign(field){
-  return REVENUE_FIELD_SIGNS[field] === '-' ? '-' : '+';
-}
-
 function revenueFieldLabel(field){
-  return (REVENUE_PAYMENT_FIELDS.find(f => f.key === field) || {}).label || field;
+  return REVENUE_FIELD_LABELS[field] || REVENUE_FIELD_DEFAULT_LABELS[field] || field;
 }
 
-function renderRevenueSignControl(field){
-  const sign = revenueFieldSign(field);
-  return `<span class="revenue-sign-control" data-revenue-sign-field="${escapeAttr(field)}">
-    <button type="button" class="revenue-sign-btn ${sign === '+' ? 'active' : ''}" data-sign-option="+" onclick="setRevenueFieldSign('${escapeAttr(field)}','+')"><span class="revenue-sign-check">✓</span><span>+</span></button>
-    <button type="button" class="revenue-sign-btn ${sign === '-' ? 'active' : ''}" data-sign-option="-" onclick="setRevenueFieldSign('${escapeAttr(field)}','-')"><span class="revenue-sign-check">✓</span><span>-</span></button>
-  </span>`;
+function revenueNormalizeFieldLabel(label){
+  return String(label || '').replace(/\s+/g, '').toLowerCase();
 }
 
-function refreshRevenueSignControls(){
-  document.querySelectorAll('[data-revenue-sign-field]').forEach(group => {
-    const field = group.dataset.revenueSignField || '';
-    const sign = revenueFieldSign(field);
-    group.querySelectorAll('.revenue-sign-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.signOption === sign);
-    });
+function revenueFieldKeyForCurrentLabel(label){
+  const normalized = revenueNormalizeFieldLabel(label);
+  if(!normalized) return '';
+  const matches = Object.keys(REVENUE_FIELD_DEFAULT_LABELS)
+    .filter(key => revenueNormalizeFieldLabel(revenueFieldLabel(key)) === normalized);
+  return matches.length === 1 ? matches[0] : '';
+}
+
+function revenueSetFieldLabel(field, rawLabel){
+  if(!REVENUE_FIELD_DEFAULT_LABELS[field]) return {ok:false, message:'헤더를 찾을 수 없습니다.'};
+  const label = String(rawLabel || '').trim();
+  if(!label){
+    REVENUE_FIELD_LABELS[field] = REVENUE_FIELD_DEFAULT_LABELS[field];
+    return {ok:true};
+  }
+  const duplicate = Object.keys(REVENUE_FIELD_DEFAULT_LABELS).find(key => (
+    key !== field && revenueNormalizeFieldLabel(revenueFieldLabel(key)) === revenueNormalizeFieldLabel(label)
+  ));
+  if(duplicate){
+    return {ok:false, message:`이미 사용 중인 헤더 이름입니다: ${revenueFieldLabel(duplicate)}`};
+  }
+  REVENUE_FIELD_LABELS[field] = label.slice(0, 30);
+  return {ok:true};
+}
+
+function revenueRefreshAfterFormulaChange(){
+  saveRevenueFieldLabels();
+  refreshRevenueFieldLabels();
+  recalcRevenueRecordTotals();
+  if(REVENUE_RECORDS) renderRevenueRecords(REVENUE_RECORDS);
+  if(REVENUE_STATS) renderRevenueStats(REVENUE_STATS);
+  if(DAILY_REPORT) renderDailyReport(DAILY_REPORT);
+}
+
+function revenueCurrentFieldLabels(){
+  return Object.fromEntries(Object.keys(REVENUE_FIELD_DEFAULT_LABELS).map(key => [key, revenueFieldLabel(key)]));
+}
+
+function revenueNormalizeFieldOrder(order){
+  const allKeys = revenueAllRecordFields().map(field => field.key);
+  const allowed = new Set(allKeys);
+  const normalized = [];
+  (Array.isArray(order) ? order : []).forEach(key => {
+    key = String(key || '').trim();
+    if(allowed.has(key) && !normalized.includes(key)) normalized.push(key);
+  });
+  allKeys.forEach(key => {
+    if(!normalized.includes(key)) normalized.push(key);
+  });
+  return normalized;
+}
+
+function loadRevenueFieldOrder(){
+  try {
+    return revenueNormalizeFieldOrder(JSON.parse(localStorage.getItem(REVENUE_FIELD_ORDER_STORAGE_KEY) || '[]'));
+  } catch(e){
+    return revenueNormalizeFieldOrder([]);
+  }
+}
+
+function saveRevenueFieldOrder(){
+  try {
+    localStorage.setItem(REVENUE_FIELD_ORDER_STORAGE_KEY, JSON.stringify(REVENUE_FIELD_ORDER));
+  } catch(e){}
+}
+
+function revenueOrderedRecordFields(){
+  const byKey = Object.fromEntries(revenueAllRecordFields().map(field => [field.key, field]));
+  return revenueNormalizeFieldOrder(REVENUE_FIELD_ORDER).map(key => byKey[key]).filter(Boolean);
+}
+
+function revenueNormalizeDailyFieldKeys(keys, defaultAll=false){
+  const allKeys = revenueAllRecordFields().map(field => field.key);
+  const allowed = new Set(allKeys);
+  const source = Array.isArray(keys) ? keys : [];
+  const normalized = source
+    .map(key => String(key || '').trim())
+    .filter((key, idx, arr) => allowed.has(key) && arr.indexOf(key) === idx);
+  return normalized.length || !defaultAll ? normalized : allKeys;
+}
+
+function loadRevenueDailyFieldKeys(){
+  try {
+    const raw = localStorage.getItem(REVENUE_DAILY_FIELDS_STORAGE_KEY);
+    return raw
+      ? revenueNormalizeDailyFieldKeys(JSON.parse(raw), true)
+      : revenueNormalizeDailyFieldKeys([], true);
+  } catch(e){
+    return revenueNormalizeDailyFieldKeys([], true);
+  }
+}
+
+function saveRevenueDailyFieldKeys(){
+  try {
+    localStorage.setItem(REVENUE_DAILY_FIELDS_STORAGE_KEY, JSON.stringify(REVENUE_DAILY_FIELD_KEYS));
+  } catch(e){}
+}
+
+function revenueDailyFieldsForStats(){
+  const selected = new Set(revenueNormalizeDailyFieldKeys(REVENUE_DAILY_FIELD_KEYS, true));
+  const fields = revenueOrderedRecordFields().filter(field => selected.has(field.key));
+  return fields.length ? fields : revenueOrderedRecordFields();
+}
+
+function openRevenueDailyFieldEditor(){
+  const selected = new Set(revenueNormalizeDailyFieldKeys(REVENUE_DAILY_FIELD_KEYS, true));
+  const rows = revenueOrderedRecordFields().map(field => `
+    <label class="revenue-daily-field-option">
+      <input class="revenue-daily-field-check" type="checkbox" value="${escapeAttr(field.key)}" ${selected.has(field.key) ? 'checked' : ''}>
+      <span>${escapeHtml(revenueFieldLabel(field.key))}</span>
+    </label>`).join('');
+  showModal(`<div class="revenue-formula-modal revenue-daily-field-modal">
+    <h3>일별 매출 항목</h3>
+    <div class="revenue-daily-field-actions">
+      <button type="button" class="small" onclick="setRevenueDailyFieldChecks(true)">전체 선택</button>
+      <button type="button" class="small" onclick="setRevenueDailyFieldChecks(false)">전체 해제</button>
+    </div>
+    <div class="revenue-daily-field-list">${rows}</div>
+    <p id="revenue-daily-field-error" class="revenue-formula-error"></p>
+    <div class="modal-actions">
+      <button onclick="closeModal()">취소</button>
+      <button class="primary" onclick="saveRevenueDailyFieldEditor()">적용</button>
+    </div>
+  </div>`);
+}
+
+function setRevenueDailyFieldChecks(checked){
+  document.querySelectorAll('.revenue-daily-field-check').forEach(input => {
+    input.checked = !!checked;
   });
 }
 
-function applyRevenueInputSign(input){
-  const raw = String(input?.value || '').trim();
-  if(!input || !raw || raw === '-' || raw === '−') return;
-  const amount = Math.abs(revenueAmountValue(raw));
-  input.value = amount ? revenueAmountDisplay(revenueFieldSign(input.dataset.field) === '-' ? -amount : amount) : '';
+function saveRevenueDailyFieldEditor(){
+  const keys = [...document.querySelectorAll('.revenue-daily-field-check:checked')]
+    .map(input => input.value)
+    .filter(Boolean);
+  const normalized = revenueNormalizeDailyFieldKeys(keys);
+  if(!normalized.length){
+    const el = document.getElementById('revenue-daily-field-error');
+    if(el) el.textContent = '하나 이상 선택하세요.';
+    return;
+  }
+  REVENUE_DAILY_FIELD_KEYS = normalized;
+  saveRevenueDailyFieldKeys();
+  closeModal();
+  if(REVENUE_STATS) renderRevenueStats(REVENUE_STATS);
 }
 
-function setRevenueFieldSign(field, sign){
-  if(!REVENUE_FIELD_DEFAULT_SIGNS[field]) return;
-  REVENUE_FIELD_SIGNS[field] = sign === '-' ? '-' : '+';
-  saveRevenueFieldSigns();
-  refreshRevenueSignControls();
-  document.querySelectorAll(`.revenue-amount-input[data-field="${field}"]`).forEach(input => applyRevenueInputSign(input));
-  recalcRevenueRecordTotals();
+function revenueFieldKind(fieldKey){
+  return REVENUE_TOTAL_FIELDS.some(field => field.key === fieldKey) ? 'total' : 'payment';
+}
+
+function revenueDefaultTotalFormula(totalKey){
+  const field = REVENUE_TOTAL_FIELDS.find(item => item.key === totalKey);
+  return (field?.formula || []).map(term => ({
+    type: term.type === 'total' ? 'total' : 'field',
+    key: term.key,
+    sign: Number(term.sign || 1) < 0 ? -1 : 1,
+  }));
+}
+
+function revenueFormulaAllowedSourceKeys(totalKey){
+  const totalIndex = REVENUE_TOTAL_FIELDS.findIndex(field => field.key === totalKey);
+  return [
+    ...REVENUE_PAYMENT_FIELDS.map(field => field.key),
+    ...REVENUE_TOTAL_FIELDS
+      .slice(0, Math.max(0, totalIndex))
+      .map(field => field.key),
+  ];
+}
+
+function revenueNormalizeFormulaTerms(totalKey, terms, fallbackToDefault=false){
+  const allowed = new Set(revenueFormulaAllowedSourceKeys(totalKey));
+  const source = Array.isArray(terms) ? terms : [];
+  const normalized = source
+    .map(term => {
+      const key = revenueFieldKeyForCurrentLabel(term?.label) || String(term?.key || '').trim();
+      if(!allowed.has(key)) return null;
+      return {
+        type: revenueFieldKind(key) === 'total' ? 'total' : 'field',
+        key,
+        sign: Number(term?.sign || 1) < 0 ? -1 : 1,
+      };
+    })
+    .filter(Boolean);
+  return normalized.length || !fallbackToDefault
+    ? normalized
+    : revenueDefaultTotalFormula(totalKey);
+}
+
+function loadRevenueTotalFormulas(){
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(REVENUE_TOTAL_FORMULA_STORAGE_KEY) || '{}') || {};
+  } catch(e){
+    saved = {};
+  }
+  const out = {};
+  REVENUE_TOTAL_FIELDS.forEach(field => {
+    if(Object.prototype.hasOwnProperty.call(saved, field.key)){
+      out[field.key] = revenueNormalizeFormulaTerms(field.key, saved[field.key]);
+    }
+  });
+  return out;
+}
+
+function saveRevenueTotalFormulas(){
+  try {
+    localStorage.setItem(REVENUE_TOTAL_FORMULA_STORAGE_KEY, JSON.stringify(REVENUE_TOTAL_FORMULAS_CUSTOM));
+  } catch(e){}
+}
+
+function revenueFormulaForTotal(totalKey){
+  if(Object.prototype.hasOwnProperty.call(REVENUE_TOTAL_FORMULAS_CUSTOM, totalKey)){
+    return revenueNormalizeFormulaTerms(totalKey, REVENUE_TOTAL_FORMULAS_CUSTOM[totalKey]);
+  }
+  return revenueDefaultTotalFormula(totalKey);
+}
+
+function revenueRecordDate(){
+  const el = document.getElementById('rev-record-date');
+  if(el && !el.value) el.value = revenueDateStr(new Date());
+  return el?.value || revenueDateStr(new Date());
+}
+
+function revenueAllRecordFields(){
+  return [...REVENUE_PAYMENT_FIELDS, ...REVENUE_TOTAL_FIELDS];
+}
+
+function revenueRecordFieldMemos(rec){
+  return (rec && typeof rec.field_memos === 'object' && rec.field_memos) ? rec.field_memos : {};
+}
+
+function renderRevenueEditableHeader(field){
+  return `<div class="revenue-field-header">
+    <span class="revenue-field-drag-handle" draggable="true" data-revenue-drag-field="${escapeAttr(field)}" ondragstart="startRevenueFieldDrag(event)" ondragend="endRevenueFieldDrag(event)" title="드래그로 순서 변경" aria-hidden="true">↕</span>
+    <span data-revenue-header-label="${escapeAttr(field)}">${escapeHtml(revenueFieldLabel(field))}</span>
+    <button type="button" class="revenue-header-edit-btn" onclick="editRevenueFieldLabel('${escapeAttr(field)}')" title="수정" aria-label="수정">✎</button>
+  </div>`;
+}
+
+function refreshRevenueFieldLabels(){
+  document.querySelectorAll('[data-revenue-header-label]').forEach(el => {
+    const field = el.dataset.revenueHeaderLabel || '';
+    el.textContent = revenueFieldLabel(field);
+  });
+}
+
+function editRevenueFieldLabel(field){
+  if(!REVENUE_FIELD_DEFAULT_LABELS[field]) return;
+  if(revenueFieldKind(field) === 'total'){
+    openRevenueFormulaEditor(field);
+    return;
+  }
+  openRevenueHeaderEditor(field);
+}
+
+function revenueEditorError(message){
+  const el = document.getElementById('revenue-formula-editor-error');
+  if(el) el.textContent = message || '';
+}
+
+function openRevenueHeaderEditor(field){
+  showModal(`<div class="revenue-formula-modal">
+    <h3>항목 수정</h3>
+    <label>이름
+      <input id="revenue-field-label-input" type="text" maxlength="30" value="${escapeAttr(revenueFieldLabel(field))}">
+    </label>
+    <p id="revenue-formula-editor-error" class="revenue-formula-error"></p>
+    <div class="modal-actions">
+      <button onclick="closeModal()">취소</button>
+      <button class="primary" onclick="saveRevenueHeaderEditor('${escapeAttr(field)}')">저장</button>
+    </div>
+  </div>`);
+  setTimeout(() => document.getElementById('revenue-field-label-input')?.focus(), 0);
+}
+
+function saveRevenueHeaderEditor(field){
+  const result = revenueSetFieldLabel(field, document.getElementById('revenue-field-label-input')?.value || '');
+  if(!result.ok){
+    revenueEditorError(result.message || '저장할 수 없습니다.');
+    return;
+  }
+  closeModal();
+  revenueRefreshAfterFormulaChange();
+}
+
+function revenueFormulaSourceOptionsHtml(totalKey, selectedKey){
+  const allowed = revenueFormulaAllowedSourceKeys(totalKey);
+  return allowed.map(key => {
+    const kind = revenueFieldKind(key) === 'total' ? '계산' : '입력';
+    return `<option value="${escapeAttr(key)}" ${key === selectedKey ? 'selected' : ''}>${escapeHtml(kind)} · ${escapeHtml(revenueFieldLabel(key))}</option>`;
+  }).join('');
+}
+
+function revenueFormulaTermsHtml(totalKey, terms){
+  const normalized = revenueNormalizeFormulaTerms(totalKey, terms);
+  if(!normalized.length){
+    return '<p class="muted revenue-formula-empty">공식 항목 없음</p>';
+  }
+  return normalized.map(term => `
+    <div class="revenue-formula-term">
+      <select class="revenue-formula-sign">
+        <option value="1" ${term.sign > 0 ? 'selected' : ''}>더하기</option>
+        <option value="-1" ${term.sign < 0 ? 'selected' : ''}>빼기</option>
+      </select>
+      <select class="revenue-formula-source">
+        ${revenueFormulaSourceOptionsHtml(totalKey, term.key)}
+      </select>
+      <button type="button" class="mini danger" onclick="removeRevenueFormulaTerm(this)">삭제</button>
+    </div>
+  `).join('');
+}
+
+function openRevenueFormulaEditor(totalKey){
+  const terms = revenueFormulaForTotal(totalKey);
+  showModal(`<div class="revenue-formula-modal">
+    <h3>${escapeHtml(revenueFieldLabel(totalKey))} 수정</h3>
+    <label>이름
+      <input id="revenue-field-label-input" type="text" maxlength="30" value="${escapeAttr(revenueFieldLabel(totalKey))}">
+    </label>
+    <div class="revenue-formula-head">
+      <b>공식</b>
+      <button type="button" class="small" onclick="addRevenueFormulaTerm('${escapeAttr(totalKey)}')">항목 추가</button>
+    </div>
+    <div id="revenue-formula-terms" class="revenue-formula-terms" data-total-field="${escapeAttr(totalKey)}">
+      ${revenueFormulaTermsHtml(totalKey, terms)}
+    </div>
+    <p id="revenue-formula-editor-error" class="revenue-formula-error"></p>
+    <div class="modal-actions">
+      <button onclick="closeModal()">취소</button>
+      <button onclick="resetRevenueFormulaEditor('${escapeAttr(totalKey)}')">기본값</button>
+      <button class="primary" onclick="saveRevenueFormulaEditor('${escapeAttr(totalKey)}')">저장</button>
+    </div>
+  </div>`);
+}
+
+function addRevenueFormulaTerm(totalKey){
+  const box = document.getElementById('revenue-formula-terms');
+  if(!box) return;
+  const firstKey = revenueFormulaAllowedSourceKeys(totalKey)[0] || '';
+  if(!firstKey) return;
+  const existing = [...box.querySelectorAll('.revenue-formula-term')].map(row => ({
+    key: row.querySelector('.revenue-formula-source')?.value || '',
+    sign: Number(row.querySelector('.revenue-formula-sign')?.value || 1),
+  }));
+  existing.push({key:firstKey, sign:1});
+  box.innerHTML = revenueFormulaTermsHtml(totalKey, existing);
+}
+
+function removeRevenueFormulaTerm(btn){
+  const row = btn.closest('.revenue-formula-term');
+  const box = document.getElementById('revenue-formula-terms');
+  if(row) row.remove();
+  if(box && !box.querySelector('.revenue-formula-term')){
+    box.innerHTML = '<p class="muted revenue-formula-empty">공식 항목 없음</p>';
+  }
+}
+
+function resetRevenueFormulaEditor(totalKey){
+  const box = document.getElementById('revenue-formula-terms');
+  if(box) box.innerHTML = revenueFormulaTermsHtml(totalKey, revenueDefaultTotalFormula(totalKey));
+}
+
+function saveRevenueFormulaEditor(totalKey){
+  const labelResult = revenueSetFieldLabel(totalKey, document.getElementById('revenue-field-label-input')?.value || '');
+  if(!labelResult.ok){
+    revenueEditorError(labelResult.message || '저장할 수 없습니다.');
+    return;
+  }
+  const terms = [...document.querySelectorAll('#revenue-formula-terms .revenue-formula-term')].map(row => ({
+    key: row.querySelector('.revenue-formula-source')?.value || '',
+    sign: Number(row.querySelector('.revenue-formula-sign')?.value || 1),
+  }));
+  REVENUE_TOTAL_FORMULAS_CUSTOM[totalKey] = revenueNormalizeFormulaTerms(totalKey, terms);
+  saveRevenueTotalFormulas();
+  closeModal();
+  revenueRefreshAfterFormulaChange();
+}
+
+function revenueRowAmounts(tr){
+  const amounts = {};
+  REVENUE_PAYMENT_FIELDS.forEach(field => { amounts[field.key] = 0; });
+  if(tr){
+    tr.querySelectorAll('.revenue-amount-input').forEach(inp => {
+      amounts[inp.dataset.field] = revenueAmountValue(inp.value);
+    });
+  } else {
+    REVENUE_PAYMENT_FIELDS.forEach(field => {
+      amounts[field.key] = 0;
+    });
+  }
+  return amounts;
+}
+
+function revenueCalculatedTotals(amounts){
+  const totals = {};
+  REVENUE_TOTAL_FIELDS.forEach(totalField => {
+    totals[totalField.key] = revenueFormulaForTotal(totalField.key).reduce((sum, term) => {
+      const source = term.type === 'total' ? totals : amounts;
+      const currentLabelKey = revenueFieldKeyForCurrentLabel(revenueFieldLabel(term.key));
+      const sourceKey = currentLabelKey || term.key;
+      return sum + Number(source?.[sourceKey] ?? source?.[term.key] ?? 0) * Number(term.sign || 1);
+    }, 0);
+  });
+  return totals;
+}
+
+function startRevenueFieldDrag(event){
+  const field = event.currentTarget?.dataset?.revenueDragField || '';
+  if(!field) return;
+  REVENUE_DRAG_FIELD = field;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', field);
+  const row = event.currentTarget.closest('tr');
+  if(row) row.classList.add('revenue-row-dragging');
+}
+
+function overRevenueFieldDrag(event){
+  const target = event.currentTarget?.dataset?.revenueFieldRow || '';
+  const source = REVENUE_DRAG_FIELD || event.dataTransfer.getData('text/plain');
+  if(!source || !target || source === target) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  const rect = event.currentTarget.getBoundingClientRect();
+  const after = event.clientY > rect.top + rect.height / 2;
+  event.currentTarget.classList.toggle('revenue-row-drop-before', !after);
+  event.currentTarget.classList.toggle('revenue-row-drop-after', after);
+}
+
+function leaveRevenueFieldDrag(event){
+  event.currentTarget.classList.remove('revenue-row-drop-before', 'revenue-row-drop-after');
+}
+
+function dropRevenueField(event){
+  const target = event.currentTarget?.dataset?.revenueFieldRow || '';
+  const source = REVENUE_DRAG_FIELD || event.dataTransfer.getData('text/plain');
+  const insertAfter = event.currentTarget.classList.contains('revenue-row-drop-after');
+  document.querySelectorAll('.revenue-row-drop-before, .revenue-row-drop-after').forEach(row => {
+    row.classList.remove('revenue-row-drop-before', 'revenue-row-drop-after');
+  });
+  if(!source || !target || source === target) return;
+  event.preventDefault();
+  const order = revenueNormalizeFieldOrder(REVENUE_FIELD_ORDER);
+  const from = order.indexOf(source);
+  let to = order.indexOf(target);
+  if(from < 0 || to < 0 || from === to) return;
+  order.splice(from, 1);
+  to = order.indexOf(target);
+  if(insertAfter) to += 1;
+  order.splice(to, 0, source);
+  REVENUE_FIELD_ORDER = revenueNormalizeFieldOrder(order);
+  saveRevenueFieldOrder();
+  if(REVENUE_RECORDS) renderRevenueRecords(REVENUE_RECORDS);
+  if(REVENUE_STATS) renderRevenueStats(REVENUE_STATS);
+}
+
+function endRevenueFieldDrag(){
+  REVENUE_DRAG_FIELD = '';
+  document.querySelectorAll('.revenue-row-dragging, .revenue-row-drop-before, .revenue-row-drop-after').forEach(row => {
+    row.classList.remove('revenue-row-dragging', 'revenue-row-drop-before', 'revenue-row-drop-after');
+  });
+}
+
+function revenueVisibleDates(){
+  return [...document.querySelectorAll('[data-revenue-date-col]')]
+    .map(el => el.dataset.revenueDateCol || '')
+    .filter(Boolean);
+}
+
+function revenueAmountsForDate(dateStr){
+  const amounts = {};
+  REVENUE_PAYMENT_FIELDS.forEach(field => { amounts[field.key] = 0; });
+  document.querySelectorAll('.revenue-amount-input').forEach(inp => {
+    if(inp.dataset.date === dateStr){
+      amounts[inp.dataset.field] = revenueAmountValue(inp.value);
+    }
+  });
+  return amounts;
 }
 
 function revenueAmountValue(v){
@@ -5675,14 +6021,24 @@ function dailyCashLedgerRecord(){
   const dateStr = dailyCashLedgerDate();
   return (DAILY_CASH_LEDGER?.records || [])[0] || {
     record_date: dateStr,
+    total_medical_fee: 0,
+    nhis_burden_total: 0,
     cash_amount: 0,
     cash_counts: {},
     card_amount: 0,
+    receivable_income: 0,
     transfer_amount: 0,
     unpaid_amount: 0,
     health_living_fee: 0,
+    certificate_amount: 0,
     disability_fund: 0,
+    uninsured_amount: 0,
+    meal_amount: 0,
     other_amount: 0,
+    discount_amount: 0,
+    free_amount: 0,
+    cash_expense_amount: 0,
+    field_memos: {},
     memo: '',
   };
 }
@@ -5775,14 +6131,24 @@ async function saveDailyCashLedger(){
   const entry = {
     record_date: dateStr,
     category_id: '',
+    total_medical_fee: revenueAmountValue(rec.total_medical_fee),
+    nhis_burden_total: revenueAmountValue(rec.nhis_burden_total),
     cash_amount: revenueCashCountsTotal(counts),
     cash_counts: counts,
     card_amount: revenueAmountValue(rec.card_amount),
+    receivable_income: revenueAmountValue(rec.receivable_income),
     transfer_amount: revenueAmountValue(rec.transfer_amount),
     unpaid_amount: revenueAmountValue(rec.unpaid_amount),
     health_living_fee: revenueAmountValue(rec.health_living_fee),
+    certificate_amount: revenueAmountValue(rec.certificate_amount),
     disability_fund: revenueAmountValue(rec.disability_fund),
+    uninsured_amount: revenueAmountValue(rec.uninsured_amount),
+    meal_amount: revenueAmountValue(rec.meal_amount),
     other_amount: revenueAmountValue(rec.other_amount),
+    discount_amount: revenueAmountValue(rec.discount_amount),
+    free_amount: revenueAmountValue(rec.free_amount),
+    cash_expense_amount: revenueAmountValue(rec.cash_expense_amount),
+    field_memos: rec.field_memos || {},
     memo: rec.memo || '',
   };
   try {
@@ -5812,36 +6178,32 @@ function normalizeRevenueAmount(input){
     recalcRevenueRecordTotals();
     return;
   }
-  applyRevenueInputSign(input);
+  input.value = revenueAmountDisplay(input.value);
   recalcRevenueRecordTotals();
 }
 
 function recalcRevenueRecordTotals(){
-  let grand = 0;
-  document.querySelectorAll('.revenue-record-row').forEach(tr => {
-    let total = 0;
-    tr.querySelectorAll('.revenue-amount-input').forEach(inp => {
-      total += revenueAppliedAmount(inp.dataset.field, inp.value);
+  revenueVisibleDates().forEach(dateStr => {
+    const amounts = revenueAmountsForDate(dateStr);
+    const totals = revenueCalculatedTotals(amounts);
+    REVENUE_TOTAL_FIELDS.forEach(field => {
+      const cell = document.querySelector(
+        `[data-revenue-date-total="${dateStr}"][data-revenue-total-field="${field.key}"]`
+      );
+      if(cell) cell.textContent = revenueMoney(totals[field.key]);
     });
-    grand += total;
-    const cell = tr.querySelector('[data-revenue-row-total]');
-    if(cell) cell.textContent = revenueMoney(total);
   });
-  const totalEl = document.getElementById('revenue-record-grand-total');
-  if(totalEl) totalEl.textContent = revenueMoney(grand);
 }
 
 async function loadRevenueRecords(){
-  const fromStr = document.getElementById('rev-record-from')?.value || '';
-  const toStr = document.getElementById('rev-record-to')?.value || '';
+  const dateStr = revenueRecordDate();
   const categoryId = '';
-  if(!fromStr || !toStr) return;
-  if(fromStr > toStr){ alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+  if(!dateStr) return;
   const loading = document.getElementById('revenue-record-loading');
   const body = document.getElementById('revenue-record-body');
   try {
     if(loading) loading.style.display = 'block';
-    const params = new URLSearchParams({date_from: fromStr, date_to: toStr});
+    const params = new URLSearchParams({date_from: dateStr, date_to: dateStr});
     if(categoryId) params.set('category_id', categoryId);
     const r = await adminFetch(`/api/revenue/records?${params.toString()}`);
     const data = await r.json().catch(() => ({}));
@@ -5856,70 +6218,144 @@ async function loadRevenueRecords(){
   }
 }
 
+function triggerRevenueRecordImport(){
+  document.getElementById('revenue-record-import-file')?.click();
+}
+
+async function importRevenueRecordsExcel(input){
+  const file = input?.files?.[0];
+  if(!file) return;
+  const form = new FormData();
+  form.append('file', file);
+  form.append('labels_json', JSON.stringify(revenueCurrentFieldLabels()));
+  const loading = document.getElementById('revenue-record-loading');
+  const body = document.getElementById('revenue-record-body');
+  try {
+    if(loading) loading.style.display = 'block';
+    const r = await adminFetch('/api/revenue/records/import-preview', {
+      method: 'POST',
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok || data.ok === false) throw new Error(data.detail || data.error || r.statusText);
+    const records = data.records || [];
+    const currentDate = revenueRecordDate();
+    const selected = records.find(rec => rec.record_date === currentDate) || records[0];
+    if(!selected) throw new Error('가져올 매출 기록 데이터가 없습니다.');
+    if((data.existing_dates || []).includes(selected.record_date)){
+      const replaceOk = confirm(`${revenueDateLabel(selected.record_date)}에는 이미 저장된 매출 기록이 있습니다.\n엑셀 데이터로 교체할까요?\n\n불러온 뒤 저장 버튼을 누르면 기존 금액·권종별 현금·항목별 메모가 엑셀 내용으로 바뀝니다.`);
+      if(!replaceOk) return;
+    }
+    const viewData = {
+      ...data,
+      date_from: selected.record_date,
+      date_to: selected.record_date,
+      records: [selected],
+    };
+    revenueSetRange('rev-record', selected.record_date, selected.record_date);
+    REVENUE_RECORDS = viewData;
+    syncRevenueCategorySelects(viewData.categories || [], viewData.category_id || '');
+    renderRevenueRecords(viewData);
+    const imported = Number(data.imported || records.length || 0);
+    const skipped = Number(data.skipped || 0);
+    const extra = imported > 1
+      ? `\n엑셀에는 ${imported.toLocaleString()}일치가 있어 ${revenueDateLabel(selected.record_date)} 데이터만 입력칸에 불러왔습니다.`
+      : '';
+    alert(`엑셀 데이터 ${revenueDateLabel(selected.record_date)} 자료를 입력칸에 불러왔습니다.\n확인 후 저장 버튼을 눌러 반영하세요.${extra}${skipped ? `\n건너뛴 행 ${skipped.toLocaleString()}개` : ''}`);
+  } catch(e){
+    if(body) body.innerHTML = `<p class="muted" style="color:#DC2626;padding:12px;">엑셀 불러오기 실패: ${escapeHtml(e && e.message ? e.message : e)}</p>`;
+    alert('엑셀 불러오기 실패: ' + (e && e.message ? e.message : e));
+  } finally {
+    if(loading) loading.style.display = 'none';
+    if(input) input.value = '';
+  }
+}
+
 function renderRevenueRecords(data){
   const body = document.getElementById('revenue-record-body');
   if(!body) return;
-  const records = data.records || [];
-  const paymentHeaders = REVENUE_PAYMENT_FIELDS.map(field => `
-    <th>
-      <div class="revenue-sign-header">
-        <span>${escapeHtml(field.label)}</span>
-        ${renderRevenueSignControl(field.key)}
-      </div>
-    </th>`).join('');
-  const rows = records.map(rec => {
-    const cashCounts = revenueCashCounts(rec);
-    const paymentCells = REVENUE_PAYMENT_FIELDS.map(field => `
-      <td><input class="revenue-amount-input" data-field="${escapeAttr(field.key)}" inputmode="decimal" value="${escapeAttr(revenueAmountDisplay(rec[field.key]))}" oninput="normalizeRevenueAmount(this)"></td>
-    `).join('');
+  const requestedDate = data?.date_from || revenueRecordDate();
+  const rec = (data?.records || []).find(row => row.record_date === requestedDate)
+    || (data?.records || [])[0]
+    || {record_date: requestedDate, field_memos: {}};
+  const recordDate = rec.record_date || requestedDate;
+  const dateEl = document.getElementById('rev-record-date');
+  if(dateEl) dateEl.value = recordDate;
+  const fieldMemos = revenueRecordFieldMemos(rec);
+  const totals = revenueCalculatedTotals(rec);
+  const legacyNotice = rec.legacy_format
+    ? '<div class="revenue-legacy-notice">⚠ 이 날짜는 총진료비·공단부담총액이 입력되지 않은 기록입니다. 수납액·총지출·현금 계산이 정확하지 않으니, 업데이트 이전에 저장된 날짜라면 일계표를 보고 다시 입력해 주세요.</div>'
+    : '';
+  const rows = revenueOrderedRecordFields().map(field => {
+    const fieldKind = revenueFieldKind(field.key);
+    const rowHandlers = `ondragover="overRevenueFieldDrag(event)" ondragleave="leaveRevenueFieldDrag(event)" ondrop="dropRevenueField(event)"`;
+    if(fieldKind === 'total'){
+      return `
+        <tr class="revenue-total-row" data-revenue-field-row="${escapeAttr(field.key)}" ${rowHandlers}>
+          <th class="revenue-field-cell revenue-total-head">${renderRevenueEditableHeader(field.key)}</th>
+          <td class="revenue-total-cell" data-revenue-date-total="${escapeAttr(recordDate)}" data-revenue-total-field="${escapeAttr(field.key)}">${revenueMoney(totals[field.key])}</td>
+          <td><input class="revenue-field-memo-input" data-date="${escapeAttr(recordDate)}" data-field="${escapeAttr(field.key)}" maxlength="300" value="${escapeAttr(fieldMemos[field.key] || '')}" placeholder="메모"></td>
+        </tr>`;
+    }
     return `
-    <tr class="revenue-record-row" data-date="${escapeAttr(rec.record_date)}" data-cash-counts="${escapeAttr(JSON.stringify(cashCounts))}">
-      <td class="revenue-date-cell">${escapeHtml(revenueDateLabel(rec.record_date))}</td>
-      ${paymentCells}
-      <td data-revenue-row-total>${revenueMoney(rec.total_amount)}</td>
-      <td><input class="revenue-memo-input" value="${escapeAttr(rec.memo || '')}" placeholder="메모"></td>
-    </tr>`;
+      <tr class="revenue-field-row" data-revenue-field-row="${escapeAttr(field.key)}" ${rowHandlers}>
+        <th class="revenue-field-cell">${renderRevenueEditableHeader(field.key)}</th>
+        <td><input class="revenue-amount-input" data-date="${escapeAttr(recordDate)}" data-field="${escapeAttr(field.key)}" inputmode="decimal" value="${escapeAttr(revenueAmountDisplay(rec[field.key]))}" oninput="normalizeRevenueAmount(this)"></td>
+        <td><input class="revenue-field-memo-input" data-date="${escapeAttr(recordDate)}" data-field="${escapeAttr(field.key)}" maxlength="300" value="${escapeAttr(fieldMemos[field.key] || '')}" placeholder="메모"></td>
+      </tr>`;
   }).join('');
-  body.innerHTML = records.length
-    ? `<div style="overflow-x:auto;">
-        <table class="data-table revenue-record-table">
-          <thead><tr><th>날짜</th>${paymentHeaders}<th>합계</th><th>메모</th></tr></thead>
-          <tbody>${rows}</tbody>
-          <tfoot><tr><td colspan="${1 + REVENUE_PAYMENT_FIELDS.length}">기간 합계</td><td id="revenue-record-grand-total">${revenueMoney(0)}</td><td></td></tr></tfoot>
+  body.innerHTML = `${legacyNotice}<div style="overflow-x:auto;">
+        <table class="data-table revenue-record-table revenue-record-table-transposed">
+          <colgroup>
+            <col class="revenue-col-item">
+            <col class="revenue-col-amount">
+            <col class="revenue-col-memo">
+          </colgroup>
+          <thead><tr><th class="revenue-field-axis">항목</th><th class="revenue-date-head" data-revenue-date-col="${escapeAttr(recordDate)}">${escapeHtml(revenueDateLabel(recordDate))}</th><th class="revenue-memo-head">메모</th></tr></thead>
+          <tbody>
+            ${rows}
+          </tbody>
         </table>
-      </div>`
-    : '<p class="muted" style="padding:12px;">조회 기간이 비어 있습니다.</p>';
-  refreshRevenueSignControls();
+      </div>`;
+  refreshRevenueFieldLabels();
   recalcRevenueRecordTotals();
 }
 
 async function saveRevenueRecords(){
+  const dateStr = revenueRecordDate();
+  if(!dateStr){ alert('날짜를 선택하세요.'); return; }
   if(!REVENUE_RECORDS){ await loadRevenueRecords(); if(!REVENUE_RECORDS) return; }
-  const fromStr = document.getElementById('rev-record-from')?.value || '';
-  const toStr = document.getElementById('rev-record-to')?.value || '';
   const categoryId = '';
-  const entries = [...document.querySelectorAll('.revenue-record-row')].map(tr => {
-    const entry = {record_date: tr.dataset.date, category_id: categoryId, memo: tr.querySelector('.revenue-memo-input')?.value || ''};
-    tr.querySelectorAll('.revenue-amount-input').forEach(inp => {
+  const previousRecords = Object.fromEntries((REVENUE_RECORDS?.records || []).map(rec => [rec.record_date, rec]));
+  const entry = {
+    record_date: dateStr,
+    category_id: categoryId,
+    memo: previousRecords[dateStr]?.memo || '',
+    field_memos: {},
+  };
+  REVENUE_PAYMENT_FIELDS.forEach(field => { entry[field.key] = 0; });
+  document.querySelectorAll('.revenue-amount-input').forEach(inp => {
+    if(inp.dataset.date === dateStr){
       entry[inp.dataset.field] = revenueAmountValue(inp.value);
-    });
-    const cashCounts = revenueCashCountsFromRow(tr);
-    if(revenueCashCountsHasValue(cashCounts)){
-      entry.cash_counts = cashCounts;
-      entry.cash_amount = revenueCashCountsTotal(cashCounts);
-    } else {
-      const storedCashCounts = revenueCashCountsFromDataset(tr);
-      if(revenueCashCountsHasValue(storedCashCounts) && entry.cash_amount === revenueCashCountsTotal(storedCashCounts)){
-        entry.cash_counts = storedCashCounts;
-      }
     }
-    return entry;
   });
+  const memoKeys = new Set(revenueAllRecordFields().map(field => field.key));
+  document.querySelectorAll('.revenue-field-memo-input').forEach(inp => {
+    if(inp.dataset.date !== dateStr) return;
+    const key = inp.dataset.field || '';
+    if(!memoKeys.has(key)) return;
+    const text = String(inp.value || '').trim();
+    if(text) entry.field_memos[key] = text;
+  });
+  const storedCashCounts = revenueCashCounts(previousRecords[dateStr]);
+  if(revenueCashCountsHasValue(storedCashCounts) && entry.cash_amount === revenueCashCountsTotal(storedCashCounts)){
+    entry.cash_counts = storedCashCounts;
+  }
   try {
     const r = await adminFetch('/api/revenue/records/grid', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({date_from: fromStr, date_to: toStr, category_id: categoryId, entries}),
+      body: JSON.stringify({date_from: dateStr, date_to: dateStr, category_id: categoryId, entries:[entry]}),
     });
     const data = await r.json().catch(() => ({}));
     if(!r.ok || data.ok === false) throw new Error(data.detail || data.error || r.statusText);
@@ -5962,6 +6398,34 @@ function revenueDeltaText(delta){
   return `${sign}${revenueMoney(delta.amount)} (${sign}${delta.pct}%)`;
 }
 
+function revenueDeltaFromAmounts(current, previous){
+  const amount = Number(current || 0) - Number(previous || 0);
+  const pct = Number(previous || 0) === 0 ? null : Math.round((amount / Number(previous || 0)) * 1000) / 10;
+  return {amount, pct};
+}
+
+function revenueSummaryWithCurrentFormulas(summary){
+  const base = summary || {};
+  const daily = (base.daily || []).map(row => {
+    const amounts = {};
+    REVENUE_PAYMENT_FIELDS.forEach(field => {
+      amounts[field.key] = Number(row[field.key] || 0);
+    });
+    const totals = revenueCalculatedTotals(amounts);
+    return {
+      ...row,
+      ...totals,
+      total_amount: totals.collected_amount || 0,
+    };
+  });
+  const out = {...base, daily};
+  REVENUE_TOTAL_FIELDS.forEach(field => {
+    out[field.key] = daily.reduce((sum, row) => sum + Number(row[field.key] || 0), 0);
+  });
+  out.revenue_total = out.collected_amount || 0;
+  return out;
+}
+
 function revenuePieChart(items, title){
   const filtered = (items || []).filter(x => Number(x.amount || 0) > 0);
   const total = filtered.reduce((s,x) => s + Number(x.amount || 0), 0);
@@ -5991,9 +6455,17 @@ function revenuePieChart(items, title){
 function renderRevenueStats(data){
   const body = document.getElementById('revenue-stat-body');
   if(!body) return;
-  const cur = data.current || {};
-  const prev = data.previous || {};
-  const settlement = data.settlement || {};
+  const cur = revenueSummaryWithCurrentFormulas(data.current || {});
+  const prev = revenueSummaryWithCurrentFormulas(data.previous || {});
+  const settlement = {...(data.settlement || {})};
+  settlement.revenue_minus_settlement_price = Number(cur.revenue_total || 0) - Number(settlement.price_total || 0);
+  settlement.revenue_after_incentive = Number(cur.revenue_total || 0) - Number(settlement.incentive_total || 0);
+  settlement.incentive_rate = Number(cur.revenue_total || 0)
+    ? Math.round((Number(settlement.incentive_total || 0) / Number(cur.revenue_total || 0)) * 1000) / 10
+    : 0;
+  settlement.settlement_price_rate = Number(cur.revenue_total || 0)
+    ? Math.round((Number(settlement.price_total || 0) / Number(cur.revenue_total || 0)) * 1000) / 10
+    : 0;
   const settlementPriceTotal = Math.max(0, Number(settlement.price_total || 0));
   const settlementQuantityTotal = Math.max(0, Number(settlement.quantity_total || 0));
   const settlementAveragePrice = settlementQuantityTotal
@@ -6003,27 +6475,49 @@ function renderRevenueStats(data){
     label: row.treatment_short || row.treatment_name || '-',
     amount: row.price_total || 0,
   }));
+  const medicalRatioPie = [
+    {
+      key: 'nhis_burden_total',
+      label: revenueFieldLabel('nhis_burden_total'),
+      amount: Number(cur.nhis_burden_total || 0),
+    },
+    {
+      key: 'cash_card_amount',
+      label: `${revenueFieldLabel('cash_amount')}+${revenueFieldLabel('card_amount')}`,
+      amount: Number(cur.cash_amount || 0) + Number(cur.card_amount || 0),
+    },
+    {
+      key: 'uninsured_amount',
+      label: revenueFieldLabel('uninsured_amount'),
+      amount: Number(cur.uninsured_amount || 0),
+    },
+  ];
+  const dailyFields = revenueDailyFieldsForStats();
   const dailyRows = (cur.daily || []).map(row => `
     <tr>
       <td>${escapeHtml(revenueDateLabel(row.date))}</td>
-      <td>${revenueMoney(row.total_amount)}</td>
-      <td>${revenueMoney(row.cash_amount)}</td>
-      <td>${revenueMoney(row.card_amount)}</td>
-      <td>${revenueMoney(row.transfer_amount)}</td>
-      <td>${revenueMoney(row.unpaid_amount)}</td>
-      <td>${revenueMoney(row.health_living_fee)}</td>
-      <td>${revenueMoney(row.disability_fund)}</td>
-      <td>${revenueMoney(row.other_amount)}</td>
+      ${dailyFields.map(field => `<td>${revenueMoney(row[field.key])}</td>`).join('')}
     </tr>`).join('');
+  const dailyHeaders = [
+    '<th>날짜</th>',
+    ...dailyFields.map(field => `<th>${escapeHtml(revenueFieldLabel(field.key))}</th>`),
+  ].join('');
+  const legacyCount = Number((data.current || {}).legacy_count || 0);
+  const legacyNotice = legacyCount
+    ? `<div class="revenue-legacy-notice">⚠ 기간 내 ${legacyCount}일은 총진료비가 없는 이전 형식의 기록이라 수납액·총지출·현금 합계가 정확하지 않습니다. 매출 기록 탭에서 해당 날짜를 다시 입력해 주세요.</div>`
+    : '';
   body.innerHTML = `
+    ${legacyNotice}
     <div class="stats-summary-grid">
-      <div class="stat-card"><div class="stat-label">매출 합계</div><div class="stat-value">${revenueMoney(cur.revenue_total)}</div></div>
+      <div class="stat-card"><div class="stat-label">${escapeHtml(revenueFieldLabel('collected_amount'))}</div><div class="stat-value">${revenueMoney(cur.collected_amount)}</div></div>
+      <div class="stat-card"><div class="stat-label">${escapeHtml(revenueFieldLabel('total_expense'))}</div><div class="stat-value">${revenueMoney(cur.total_expense)}</div></div>
+      <div class="stat-card"><div class="stat-label">${escapeHtml(revenueFieldLabel('cash_total'))}</div><div class="stat-value">${revenueMoney(cur.cash_total)}</div></div>
       <div class="stat-card"><div class="stat-label">직전 동일기간</div><div class="stat-value">${revenueMoney(prev.revenue_total)}</div></div>
-      <div class="stat-card"><div class="stat-label">증감</div><div class="stat-value">${escapeHtml(revenueDeltaText((data.delta || {}).revenue_total))}</div></div>
+      <div class="stat-card"><div class="stat-label">증감</div><div class="stat-value">${escapeHtml(revenueDeltaText(revenueDeltaFromAmounts(cur.revenue_total, prev.revenue_total)))}</div></div>
       <div class="stat-card"><div class="stat-label">기록일수</div><div class="stat-value">${revenueQuantity(cur.record_count)}</div></div>
     </div>
     <div class="revenue-chart-grid">
-      ${revenuePieChart(cur.by_payment || [], '결제수단별 매출')}
+      ${revenuePieChart(medicalRatioPie, '진료비 비율')}
       ${revenuePieChart(settlementPie, '치료항목별 정산')}
     </div>
     <div class="settlement-note revenue-settlement-help">
@@ -6034,9 +6528,12 @@ function renderRevenueStats(data){
       <span>건당 평균 수가 ${revenueMoney(settlementAveragePrice)}</span>
     </div>
     <div class="stats-section">
-      <h3 class="stats-section-title">일별 매출</h3>
+      <div class="stats-section-title-row">
+        <h3 class="stats-section-title">일별 매출</h3>
+        <button type="button" class="revenue-section-edit-btn" onclick="openRevenueDailyFieldEditor()" title="일별 매출 항목 선택" aria-label="일별 매출 항목 선택">✎</button>
+      </div>
       ${dailyRows
-        ? `<div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>날짜</th><th>합계</th><th>현금</th><th>카드</th><th>계좌</th><th>미수납</th><th>건강생활유지비</th><th>장애인기금</th><th>기타</th></tr></thead><tbody>${dailyRows}</tbody></table></div>`
+        ? `<div style="overflow-x:auto;"><table class="data-table revenue-stat-daily-table"><thead><tr>${dailyHeaders}</tr></thead><tbody>${dailyRows}</tbody></table></div>`
         : '<p class="muted" style="margin:0;">해당 기간 매출 기록이 없습니다.</p>'}
     </div>`;
 }
