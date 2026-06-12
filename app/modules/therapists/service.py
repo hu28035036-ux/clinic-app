@@ -74,12 +74,23 @@ def employee_treatment_ids(employee: Any) -> list[str]:
     from app.models import models
 
     if bool(getattr(employee, "treatment_override_enabled", False)):
+        query = (
+            session.query(models.Treatment)
+            .join(
+                models.EmployeeTreatment,
+                models.EmployeeTreatment.treatment_id == models.Treatment.id,
+            )
+            .filter(
+                models.EmployeeTreatment.employee_id == employee.id,
+                models.Treatment.active == True,  # noqa: E712
+            )
+        )
+        category_id = getattr(employee, "category_id", None)
+        if category_id:
+            query = query.filter(models.Treatment.category_id == category_id)
         return [
-            row.treatment_id
-            for row in session.query(models.EmployeeTreatment)
-            .filter(models.EmployeeTreatment.employee_id == employee.id)
-            .order_by(models.EmployeeTreatment.treatment_id)
-            .all()
+            row.id
+            for row in query.order_by(models.Treatment.sort_order, models.Treatment.name).all()
         ]
     category_id = getattr(employee, "category_id", None)
     if not category_id:

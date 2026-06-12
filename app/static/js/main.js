@@ -257,6 +257,9 @@ function switchTab(id, btn){
   else if(id==='tab-inventory'){
     loadInventorySheet();
   }
+  else if(id==='tab-records'){
+    loadRecordsSheet();
+  }
   else if(id==='tab-reserve'){
     // 복귀 시 즉시 최신화 — 다른 탭 보는 동안 polling 이 쉬었으므로 stale 데이터 방지.
     // fire-and-forget: 사용자 체감 속도 우선 (await 쓰면 탭 전환이 멈춘 듯 보임).
@@ -265,6 +268,199 @@ function switchTab(id, btn){
     try { if (window._miniCal) reloadMiniCalendar(window._miniCal.getDate()); } catch(e) {}
   }
   else if(id==='tab-admin') loadTreatmentsCard();
+}
+
+let RECORDS_DATA = null;
+let RECORDS_ACTIVE_TAB = 'manual';
+
+function recordActiveSetting(){
+  return (RECORDS_DATA?.tabs || []).find(t => t.tab_key === RECORDS_ACTIVE_TAB)
+    || (RECORDS_DATA?.tabs || [])[0]
+    || {tab_key:'manual', label:'메뉴얼', category_id:''};
+}
+
+function recordEmployeesForCategory(categoryId){
+  return (RECORDS_DATA?.employees || [])
+    .filter(e => e.active !== false)
+    .filter(e => categoryId && e.category_id === categoryId)
+    .sort((a,b) => (a.sort_order||0) - (b.sort_order||0) || (a.name||'').localeCompare(b.name||'', 'ko'));
+}
+
+function recordCategoryOptions(selectedId){
+  const cats = RECORDS_DATA?.categories || [];
+  return '<option value="">과 선택</option>' + cats.map(c =>
+    `<option value="${escapeAttr(c.id)}" ${c.id===selectedId?'selected':''}>${escapeHtml(c.name || '')}</option>`
+  ).join('');
+}
+
+function recordEmployeeOptions(categoryId, selectedId){
+  const employees = recordEmployeesForCategory(categoryId);
+  if(!categoryId) return '<option value="">과를 먼저 선택</option>';
+  if(!employees.length) return '<option value="">해당 과 직원 없음</option>';
+  return '<option value="">직원 선택</option>' + employees.map(e =>
+    `<option value="${escapeAttr(e.id)}" ${e.id===selectedId?'selected':''}>${escapeHtml(e.name || '')}</option>`
+  ).join('');
+}
+
+async function loadRecordsSheet(){
+  const subtabs = document.getElementById('record-subtabs');
+  const list = document.getElementById('record-list');
+  if(subtabs) subtabs.innerHTML = '<span class="muted">불러오는 중...</span>';
+  if(list) list.innerHTML = '';
+  try {
+    const r = await fetch('/api/records');
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(data.detail || r.statusText);
+    RECORDS_DATA = data;
+    if(!(data.tabs || []).some(t => t.tab_key === RECORDS_ACTIVE_TAB)){
+      RECORDS_ACTIVE_TAB = (data.tabs || [])[0]?.tab_key || 'manual';
+    }
+    renderRecordsSheet();
+  } catch(e) {
+    if(subtabs) subtabs.innerHTML = '';
+    if(list) list.innerHTML = `<p class="muted" style="padding:12px;color:#DC2626;">기록 조회 실패: ${escapeHtml(e.message || e)}</p>`;
+  }
+}
+
+function renderRecordsSheet(){
+  const data = RECORDS_DATA || {tabs:[], categories:[], employees:[], entries:[], counts:{}};
+  const setting = recordActiveSetting();
+  const categoryId = setting.category_id || '';
+  const tabEntries = (data.entries || []).filter(e => e.tab_key === setting.tab_key);
+  const employees = recordEmployeesForCategory(categoryId);
+  const countMap = (data.counts || {})[setting.tab_key] || {};
+
+  const title = document.getElementById('record-title');
+  if(title) title.textContent = `▥ ${setting.label || '기록'}`;
+
+  const subtabs = document.getElementById('record-subtabs');
+  if(subtabs){
+    subtabs.innerHTML = (data.tabs || []).map(t => `
+      <div class="record-subtab-wrap ${t.tab_key===setting.tab_key?'active':''}">
+        <button type="button" class="record-subtab" onclick="selectRecordTab('${t.tab_key}')">${escapeHtml(t.label || '')}</button>
+        <button type="button" class="record-tab-edit-btn" onclick="editRecordTabName('${t.tab_key}')" title="이름 수정" aria-label="이름 수정">✎</button>
+      </div>
+    `).join('');
+  }
+
+  const catEl = document.getElementById('record-category');
+  if(catEl) catEl.innerHTML = recordCategoryOptions(categoryId);
+  const empEl = document.getElementById('record-employee');
+  if(empEl) empEl.innerHTML = recordEmployeeOptions(categoryId, empEl.value || '');
+
+  const list = document.getElementById('record-list');
+  if(list){
+    const rows = tabEntries.map(entry => `
+      <tr>
+        <td>${escapeHtml(entry.chart_no || '-')}</td>
+        <td><b>${escapeHtml(entry.patient_name || '-')}</b></td>
+        <td>${escapeHtml(entry.employee_name || '-')}</td>
+        <td class="record-actions">
+          <button class="mini danger" onclick="deleteRecordEntry('${entry.id}')">삭제</button>
+        </td>
+      </tr>
+    `).join('');
+    list.innerHTML = rows ? `
+      <table class="data-table record-table">
+        <thead><tr><th>차트번호</th><th>성함</th><th>직원</th><th>관리</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    ` : '<div class="muted" style="padding:12px">기록 없음</div>';
+  }
+
+  const counts = document.getElementById('record-counts');
+  if(counts){
+    const chips = employees.map(e => `
+      <div class="record-count-chip">
+        <span><span class="color-dot" style="background:${escapeAttr(e.color || '#9CA3AF')}"></span>${escapeHtml(e.name || '')}</span>
+        <b>${Number(countMap[e.id] || 0).toLocaleString()}</b>
+      </div>
+    `).join('');
+    counts.innerHTML = `
+      <div class="record-count-title">직원별 개수</div>
+      <div class="record-count-grid">${chips || '<span class="muted">표시할 직원 없음</span>'}</div>
+    `;
+  }
+}
+
+function selectRecordTab(tabKey){
+  RECORDS_ACTIVE_TAB = tabKey || 'manual';
+  renderRecordsSheet();
+}
+
+function editRecordTabName(tabKey){
+  const tab = (RECORDS_DATA?.tabs || []).find(t => t.tab_key === tabKey);
+  if(!tab) return;
+  showModal(`<h3>기록 탭 이름 수정</h3>
+    <label>이름 <input id="record-tab-name-input" value="${escapeAttr(tab.label || '')}" maxlength="30" autofocus></label>
+    <div class="modal-actions"><button onclick="closeModal()">취소</button>
+      <button class="primary" onclick="saveRecordTabName('${tabKey}')">저장</button></div>`);
+}
+
+async function saveRecordTabName(tabKey){
+  const tab = (RECORDS_DATA?.tabs || []).find(t => t.tab_key === tabKey);
+  if(!tab) return;
+  await saveRecordTabSetting(tabKey, {
+    label: _v('record-tab-name-input') || tab.label,
+    category_id: tab.category_id || '',
+  }, true);
+}
+
+async function saveRecordTabCategory(){
+  const tab = recordActiveSetting();
+  await saveRecordTabSetting(tab.tab_key, {
+    label: tab.label || '',
+    category_id: _v('record-category') || '',
+  }, false);
+}
+
+async function saveRecordTabSetting(tabKey, body, closeAfter){
+  const r = await fetch(`/api/records/tabs/${tabKey}`, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if(!r.ok){ alert('저장 실패\n' + await _apiErrorText(r)); return; }
+  if(closeAfter) closeModal();
+  await loadRecordsSheet();
+}
+
+function recordEntryKeydown(event){
+  if(event.key === 'Enter'){
+    event.preventDefault();
+    saveRecordEntry();
+  }
+}
+
+async function saveRecordEntry(){
+  const tab = recordActiveSetting();
+  const body = {
+    tab_key: tab.tab_key,
+    chart_no: _v('record-chart-no'),
+    patient_name: _v('record-patient-name'),
+    employee_id: _v('record-employee'),
+  };
+  if(!body.chart_no && !body.patient_name){ alert('차트번호 또는 성함을 입력하세요'); return; }
+  if(!body.employee_id){ alert('직원을 선택하세요'); return; }
+  const r = await fetch('/api/records/entries', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if(!r.ok){ alert('저장 실패\n' + await _apiErrorText(r)); return; }
+  const chart = document.getElementById('record-chart-no');
+  const name = document.getElementById('record-patient-name');
+  if(chart) chart.value = '';
+  if(name) name.value = '';
+  await loadRecordsSheet();
+  document.getElementById('record-chart-no')?.focus();
+}
+
+async function deleteRecordEntry(entryId){
+  if(!confirm('삭제하시겠습니까?')) return;
+  const r = await fetch(`/api/records/entries/${entryId}`, {method:'DELETE'});
+  if(!r.ok){ alert('삭제 실패\n' + await _apiErrorText(r)); return; }
+  await loadRecordsSheet();
 }
 
 async function switchCategory(cat, btn){
@@ -3778,14 +3974,13 @@ async function loadEmployeesSheet(){
     EMPLOYEES.sort(sorter);
   }
 
-  const activeCats = [...EMPLOYEE_CATEGORIES]
-    .filter(c => c.active !== false)
+  const sortedCats = [...EMPLOYEE_CATEGORIES]
     .sort((a,b) =>
     (a.sort_order||0) - (b.sort_order||0) || (a.name||'').localeCompare(b.name||'', 'ko')
   );
-  const known = new Set(activeCats.map(c => c.id));
+  const known = new Set(sortedCats.map(c => c.id));
   const uncategorized = EMPLOYEES.filter(e => !known.has(e.category_id));
-  let html = activeCats.map(c => {
+  let html = sortedCats.map(c => {
     const rows = EMPLOYEES.filter(e => e.category_id === c.id);
     return renderEmployeeCategoryCard(c, rows);
   }).join('');
@@ -3810,16 +4005,19 @@ function capChip(label, on, inherited){
 
 function employeeTreatmentSummary(e){
   const treatments = TX_META.all_treatments || [];
+  const categoryTreatmentById = new Map(
+    treatments
+      .filter(t => t && t.active !== false && (!e.category_id || t.category_id === e.category_id))
+      .map(t => [t.id, t])
+  );
   const txNames = (e.treatment_ids || [])
-    .map(id => treatments.find(t => t.id === id))
+    .map(id => categoryTreatmentById.get(id))
     .filter(Boolean)
     .map(t => t.short || t.name)
     .join(' · ');
   if(txNames) return txNames;
   if(e.treatment_override_enabled) return '선택 항목 없음';
-  const categoryTreatments = treatments.filter(t =>
-    t && t.active !== false && t.category_id && t.category_id === e.category_id
-  );
+  const categoryTreatments = Array.from(categoryTreatmentById.values());
   return categoryTreatments.length ? '과 치료항목 전체' : '과 활성 치료항목 없음';
 }
 
@@ -3828,6 +4026,9 @@ function renderEmployeeCategoryCard(category, list){
     capChip('도수치료', category.default_can_manual !== false, true),
     capChip('체외충격파', category.default_can_eswt !== false, true),
   ].join(' ');
+  const categoryStatus = category.id && category.active === false
+    ? '<span class="badge gray">○ 비활성 과</span>'
+    : '';
   const editButtons = category.id ? `
     <button class="mini" onclick='editEmployeeCategory(${JSON.stringify(category).replace(/'/g,"&#39;")})'>과 수정</button>
     <button class="mini" onclick="toggleEmployeeCategory('${category.id}', ${category.active===false?'true':'false'})">${category.active===false?'활성화':'비활성화'}</button>
@@ -3860,7 +4061,7 @@ function renderEmployeeCategoryCard(category, list){
   return `<div class="emp-box">
     <div class="emp-box-head">
       <div>
-        <h3><span class="color-dot" style="background:${category.color||'#9CA3AF'}"></span> ${category.name}</h3>
+        <h3><span class="color-dot" style="background:${category.color||'#9CA3AF'}"></span> ${category.name} ${categoryStatus}</h3>
         <div>${defaults}</div>
       </div>
       <div class="sheet-toolbar">${editButtons}</div>
@@ -4460,9 +4661,11 @@ function editEmployee(e){
 }
 
 async function saveEmployee(eid){
+  const categoryId = _v('e-category') || null;
+  const validTreatmentIds = new Set(categoryTreatments(categoryId).map(t => t.id));
   const body = {
     name: _v('e-name'),
-    category_id: _v('e-category') || null,
+    category_id: categoryId,
     birth_date: _v('e-birth') || null,
     phone: _v('e-phone') || null,
     hire_date: document.getElementById('e-hire')?.value || null,
@@ -4472,7 +4675,9 @@ async function saveEmployee(eid){
     can_manual_override: readBoolSelect('e-manual-cap'),
     can_eswt_override: readBoolSelect('e-eswt-cap'),
     treatment_override_enabled: document.getElementById('e-treatment-override')?.checked || false,
-    treatment_ids: [...document.querySelectorAll('.e-treatment-id:checked')].map(x => x.value),
+    treatment_ids: [...document.querySelectorAll('.e-treatment-id:checked')]
+      .map(x => x.value)
+      .filter(id => validTreatmentIds.has(id)),
   };
   if(!body.name){ alert('이름을 입력하세요'); return; }
   if(!body.category_id){ alert('과를 먼저 추가하고 선택하세요'); return; }

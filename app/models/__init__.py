@@ -4,6 +4,7 @@ from .models import (
     Employee, EmployeeCategory, EmployeeTreatment, EmployeeLeave, Patient, PatientTreatmentCount,
     Treatment, Appointment, TreatmentAssignment, SettlementRecord, RevenueRecord,
     DailyWorkReport, DailyMedicalSummary,
+    RecordTabSetting, RecordEntry,
     InventoryCategoryState, InventoryField, InventoryItem, InventoryValue,
     SystemSetting, AuditLog, SyncOp, SmsSetting, SmsLog, SmsTemplate,
     APPT_STATUSES, uid,

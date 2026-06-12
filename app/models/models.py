@@ -458,6 +458,32 @@ class ManualCount(Base):
     )
 
 
+class RecordTabSetting(Base):
+    """Top-level Record tab subtab settings."""
+    __tablename__ = "record_tab_settings"
+    id = Column(String(32), primary_key=True, default=uid)
+    tab_key = Column(String(20), nullable=False, unique=True, index=True)
+    label = Column(String(30), nullable=False, default="")
+    category_id = Column(String(32), nullable=False, default="")
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class RecordEntry(Base):
+    """Chart/name/employee entry inside one record subtab."""
+    __tablename__ = "record_entries"
+    id = Column(String(32), primary_key=True, default=uid)
+    tab_key = Column(String(20), nullable=False, index=True)
+    chart_no = Column(String(30), nullable=False, default="")
+    patient_name = Column(String(50), nullable=False, default="")
+    employee_id = Column(String(32), nullable=False, index=True)
+    employee_name_snapshot = Column(String(50), nullable=False, default="")
+    employee_category_id_snapshot = Column(String(32), nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class InventoryCategoryState(Base):
     """Per-department inventory metadata such as the last writer."""
     __tablename__ = "inventory_category_states"

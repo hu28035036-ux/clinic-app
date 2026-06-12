@@ -75,14 +75,24 @@ def _serialize_treatment(t: models.Treatment) -> dict:
 
 
 def employee_treatment_ids(db: Session, e: models.Employee) -> list[str]:
-    explicit = [
-        row.treatment_id
-        for row in db.query(models.EmployeeTreatment)
-        .filter(models.EmployeeTreatment.employee_id == e.id)
-        .all()
-    ]
     if getattr(e, "treatment_override_enabled", False):
-        return explicit
+        q = (
+            db.query(models.Treatment)
+            .join(
+                models.EmployeeTreatment,
+                models.EmployeeTreatment.treatment_id == models.Treatment.id,
+            )
+            .filter(
+                models.EmployeeTreatment.employee_id == e.id,
+                models.Treatment.active == True,  # noqa: E712
+            )
+        )
+        if e.category_id:
+            q = q.filter(models.Treatment.category_id == e.category_id)
+        return [
+            t.id
+            for t in q.order_by(models.Treatment.sort_order, models.Treatment.name).all()
+        ]
     if not e.category_id:
         return []
     return [
@@ -230,14 +240,10 @@ def _employees_for_category(
 def employee_can_perform(db: Session, e: models.Employee, t: models.Treatment) -> bool:
     if not e or not t or not getattr(t, "active", False):
         return False
-    explicit = {
-        row.treatment_id
-        for row in db.query(models.EmployeeTreatment)
-        .filter(models.EmployeeTreatment.employee_id == e.id)
-        .all()
-    }
     if getattr(e, "treatment_override_enabled", False):
-        return t.id in explicit
+        if e.category_id and t.category_id != e.category_id:
+            return False
+        return t.id in set(employee_treatment_ids(db, e))
     if e.category_id:
         return t.category_id == e.category_id
     return True

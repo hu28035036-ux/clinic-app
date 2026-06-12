@@ -28,6 +28,8 @@ ENTITY_MAP = {
     "revenue_record": models.RevenueRecord,
     "daily_work_report": models.DailyWorkReport,
     "daily_medical_summary": models.DailyMedicalSummary,
+    "record_tab_setting": models.RecordTabSetting,
+    "record_entry": models.RecordEntry,
     "inventory_category_state": models.InventoryCategoryState,
     "inventory_item": models.InventoryItem,
     "inventory_field": models.InventoryField,

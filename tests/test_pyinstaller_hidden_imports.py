@@ -409,6 +409,11 @@ EXPECTED_19_X_MODULES_MODULES = (
     "app.modules.resources.router",
     "app.modules.resources.service",
     "app.modules.resources.schemas",
+    # v1.3.26 — 기록 상위탭 (메뉴얼 / C-Arm)
+    "app.modules.records",
+    "app.modules.records.router",
+    "app.modules.records.service",
+    "app.modules.records.schemas",
 )
 
 

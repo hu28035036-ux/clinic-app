@@ -77,6 +77,8 @@ def test_existing_tabs_preserved(client):
     ui = html + js_resp.text
     # 기존 탭 보존. 문자나라/예약 문자 화면은 이번 개편에서 UI만 제거한다.
     assert "switchTab('tab-reserve'" in html
+    assert "switchTab('tab-records'" in html
+    assert 'id="tab-records"' in html
     assert "switchTab('tab-patients'" in html
     assert "switchTab('tab-therapists'" in html
     assert "switchTab('tab-sms'" not in ui

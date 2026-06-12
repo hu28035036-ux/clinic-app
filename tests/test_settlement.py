@@ -378,6 +378,42 @@ def test_settlement_rejects_unassigned_treatment(client):
     assert "assigned" in resp.text
 
 
+def test_settlement_rejects_cross_category_employee_treatment_link(client):
+    headers = _admin_headers(client)
+    category = _make_category(client, "settle-employee-cat")
+    other_category = _make_category(client, "settle-treatment-cat")
+    allowed = _make_treatment(client, headers, category["id"], incentive_amount=1000, incentive_pct=None)
+    other_treatment = _make_treatment(client, headers, other_category["id"], incentive_amount=1000, incentive_pct=None)
+    employee = _make_employee(client, category["id"], [allowed["id"]])
+
+    from app.database import SessionLocal
+    from app.models import models
+
+    db = SessionLocal()
+    try:
+        db.add(models.EmployeeTreatment(
+            employee_id=employee["id"],
+            treatment_id=other_treatment["id"],
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.post("/api/settlement/records/grid", json={
+        "date_from": "2099-08-06",
+        "date_to": "2099-08-06",
+        "category_id": other_category["id"],
+        "entries": [{
+            "performed_on": "2099-08-06",
+            "employee_id": employee["id"],
+            "treatment_id": other_treatment["id"],
+            "quantity": 1,
+        }],
+    }, headers=headers)
+    assert resp.status_code == 400
+    assert "assigned" in resp.text
+
+
 def test_settlement_selected_category_without_treatments_is_empty(client):
     headers = _admin_headers(client)
     empty_category = _make_category(client, "settle-empty-cat")

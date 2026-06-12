@@ -227,6 +227,11 @@ hidden += [
     'app.modules.resources.router',
     'app.modules.resources.service',
     'app.modules.resources.schemas',
+    # v1.3.26 — 기록 상위탭 (메뉴얼 / C-Arm) + 직원별 건수 관리
+    'app.modules.records',
+    'app.modules.records.router',
+    'app.modules.records.service',
+    'app.modules.records.schemas',
     # AI 명령 모듈 (Phase 1+) — app/ai/* (예약 도우미 / 휴무 도우미 등)
     # NOTE: 기존 app.services.ai (RAG / SMS draft) 와 분리된 신규 패키지.
     'app.ai',

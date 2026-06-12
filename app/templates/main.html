@@ -55,6 +55,7 @@
 
 <nav class="tabs-nav">
   <button class="tab-btn active" onclick="switchTab('tab-reserve', this)">▦ 예약</button>
+  <button class="tab-btn" onclick="switchTab('tab-records', this)">▥ 기록</button>
   <button class="tab-btn" onclick="switchTab('tab-patients', this)">◎ 환자 <span id="pm-count-badge" class="muted" style="font-weight:400;font-size:12px;">(…)</span></button>
   <button class="tab-btn" onclick="switchTab('tab-therapists', this)">◇ 직원</button>
   <button class="tab-btn" onclick="switchTab('tab-inventory', this)">▧ 재고관리</button>
@@ -109,6 +110,30 @@
     </main>
   </div>
   {% include "_ai_appointment_helper.html" %}
+</section>
+
+<section id="tab-records" class="tab-pane">
+  <div class="record-shell">
+    <div class="record-sub-tabs" id="record-subtabs"></div>
+    <div class="sheet record-sheet">
+      <div class="sheet-head record-head">
+        <h2 id="record-title">▥ 기록</h2>
+        <div class="sheet-toolbar">
+          <label class="record-category-picker">과
+            <select id="record-category" onchange="saveRecordTabCategory()"></select>
+          </label>
+        </div>
+      </div>
+      <div class="record-entry-form">
+        <input id="record-chart-no" type="text" maxlength="30" placeholder="차트번호" onkeydown="recordEntryKeydown(event)">
+        <input id="record-patient-name" type="text" maxlength="50" placeholder="성함" onkeydown="recordEntryKeydown(event)">
+        <select id="record-employee"></select>
+        <button class="primary" onclick="saveRecordEntry()">추가</button>
+      </div>
+      <div id="record-list"></div>
+      <div id="record-counts" class="record-counts"></div>
+    </div>
+  </div>
 </section>
 
 <section id="tab-patients" class="tab-pane">

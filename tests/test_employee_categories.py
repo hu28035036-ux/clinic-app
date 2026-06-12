@@ -315,3 +315,39 @@ def test_direct_aggregate_selected_category_does_not_use_other_category_fallback
     assert data["treatments"] == []
     assert data["employees"] == []
     assert data["items"] == [{"date": "2099-07-02", "employee_data": {}}]
+
+
+def test_employee_treatment_ids_are_limited_to_employee_category(client):
+    headers = _admin_headers(client)
+    category = _create_category(client, "pytest-category-filter")
+    other_category = _create_category(client, "pytest-other-category-filter")
+    selected_treatment = _create_treatment(client, headers, category["id"])
+    other_treatment = _create_treatment(client, headers, other_category["id"])
+
+    employee = client.post("/api/employees", json={
+        "name": _unique("pytest-category-filter-employee"),
+        "category_id": category["id"],
+        "color": "#3B82F6",
+        "active": True,
+        "treatment_override_enabled": True,
+        "treatment_ids": [selected_treatment["id"]],
+    })
+    assert employee.status_code == 200, employee.text
+    employee_id = employee.json()["id"]
+
+    from app.database import SessionLocal
+    from app.models import models
+
+    db = SessionLocal()
+    try:
+        db.add(models.EmployeeTreatment(
+            employee_id=employee_id,
+            treatment_id=other_treatment["id"],
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    employees = client.get("/api/employees").json()
+    body = next(row for row in employees if row["id"] == employee_id)
+    assert body["treatment_ids"] == [selected_treatment["id"]]

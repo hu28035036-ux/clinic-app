@@ -6335,3 +6335,155 @@ label, .label, .form-label {
   flex-wrap: wrap;
   gap: 6px 12px;
 }
+
+/* ===== 기록 탭 ===== */
+.record-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.record-sub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.record-subtab-wrap {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.record-subtab-wrap.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, .18);
+}
+
+.record-subtab,
+.record-tab-edit-btn {
+  height: 34px;
+  border: 0;
+  background: #fff;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.record-subtab {
+  min-width: 88px;
+  padding: 0 14px;
+  font-weight: 700;
+}
+
+.record-tab-edit-btn {
+  width: 34px;
+  border-left: 1px solid var(--line-soft);
+  color: var(--text-sub);
+  font-weight: 700;
+}
+
+.record-subtab-wrap.active .record-subtab {
+  background: var(--primary);
+  color: #fff;
+}
+
+.record-tab-edit-btn:hover {
+  background: var(--sky-50);
+  color: var(--primary);
+}
+
+.record-sheet {
+  margin-top: 0;
+}
+
+.record-head .sheet-toolbar {
+  align-items: center;
+}
+
+.record-category-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.record-category-picker select {
+  min-width: 150px;
+}
+
+.record-entry-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(160px, 1fr) minmax(150px, 220px) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.record-entry-form input,
+.record-entry-form select {
+  width: 100%;
+}
+
+.record-table th,
+.record-table td {
+  vertical-align: middle;
+}
+
+.record-actions {
+  width: 80px;
+  text-align: right;
+}
+
+.record-counts {
+  border-top: 1px solid var(--line-soft);
+  padding: 12px;
+}
+
+.record-count-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.record-count-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.record-count-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #F8FAFC;
+}
+
+.record-count-chip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.record-count-chip b {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .record-entry-form {
+    grid-template-columns: 1fr;
+  }
+}

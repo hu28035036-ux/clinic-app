@@ -174,14 +174,24 @@ def _manual_category_ids(db) -> set[str]:
 
 
 def _employee_treatment_ids(db: Session, e: models.Employee) -> list[str]:
-    explicit = [
-        row.treatment_id
-        for row in db.query(models.EmployeeTreatment)
-        .filter(models.EmployeeTreatment.employee_id == e.id)
-        .all()
-    ]
     if getattr(e, "treatment_override_enabled", False):
-        return explicit
+        q = (
+            db.query(models.Treatment)
+            .join(
+                models.EmployeeTreatment,
+                models.EmployeeTreatment.treatment_id == models.Treatment.id,
+            )
+            .filter(
+                models.EmployeeTreatment.employee_id == e.id,
+                models.Treatment.active == True,  # noqa: E712
+            )
+        )
+        if e.category_id:
+            q = q.filter(models.Treatment.category_id == e.category_id)
+        return [
+            t.id
+            for t in q.order_by(models.Treatment.sort_order, models.Treatment.name).all()
+        ]
     if not e.category_id:
         return []
     return [
