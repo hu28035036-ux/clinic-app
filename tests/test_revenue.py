@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import io
+import json
 import uuid
 
 import openpyxl
+
+from app.database import SessionLocal
+from app.models import models
 
 
 def _unique(prefix: str) -> str:
@@ -442,6 +446,63 @@ def test_revenue_writes_require_admin(client):
         "entries": [],
     })
     assert resp.status_code == 401
+
+
+def test_revenue_ui_settings_save_to_synced_system_setting(client):
+    headers = _admin_headers(client)
+    payload = {
+        "settings": {
+            "field_labels": {
+                "cash_amount": "현금",
+                "collected_amount": "수납",
+            },
+            "field_order": ["cash_amount", "card_amount", "collected_amount"],
+            "total_formulas": {
+                "collected_amount": [
+                    {"type": "field", "key": "total_medical_fee", "sign": 1},
+                    {"type": "field", "key": "nhis_burden_total", "sign": -1},
+                ],
+            },
+            "daily_fields": ["collected_amount", "cash_amount"],
+        }
+    }
+
+    saved = client.post("/api/revenue/ui-settings", json=payload, headers=headers)
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["ok"] is True
+    assert body["settings"]["field_labels"]["cash_amount"] == "현금"
+    assert body["settings"]["field_order"][:3] == [
+        "cash_amount",
+        "card_amount",
+        "collected_amount",
+    ]
+
+    fetched = client.get("/api/revenue/ui-settings", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["settings"]["daily_fields"] == ["collected_amount", "cash_amount"]
+
+    db = SessionLocal()
+    try:
+        setting = db.query(models.SystemSetting).first()
+        assert setting is not None
+        stored = json.loads(setting.revenue_ui_settings_json)
+        assert stored["field_labels"]["cash_amount"] == "현금"
+        op = (
+            db.query(models.SyncOp)
+            .filter(models.SyncOp.entity == "system_setting")
+            .order_by(models.SyncOp.ts.desc())
+            .first()
+        )
+        assert op is not None
+        op_payload = json.loads(op.payload)
+        assert "revenue_ui_settings_json" in op_payload
+        assert json.loads(op_payload["revenue_ui_settings_json"])["daily_fields"] == [
+            "collected_amount",
+            "cash_amount",
+        ]
+    finally:
+        db.close()
 
 
 def test_daily_work_report_save_get_auto_summary_and_delete(client):

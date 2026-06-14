@@ -152,3 +152,82 @@ def test_post_employee_leaves_upserts_existing_row(client):
         assert third.json()["leave_kind"] == "annual"
     finally:
         client.delete(f"/api/employee-leaves/{leave_id}")
+
+
+def test_bulk_add_registers_multiple_dates_for_one_employee(client):
+    """'휴무일 추가' — 한 직원에게 여러 날짜를 날짜별 type/kind 로 한 번에 등록.
+
+    bulk-add 는 bulk-set 과 달리 기존 휴무를 삭제하지 않으므로, 같은 날짜의
+    다른 직원 휴무가 그대로 남아 있어야 한다 (회귀 방지).
+    """
+    eid = get_test_therapist_id("김테스트치료사")
+    other = get_test_therapist_id("이테스트치료사")
+    d1, d2, d3 = "2099-08-01", "2099-08-02", "2099-08-03"
+
+    # 다른 직원이 d1 에 먼저 휴무 등록 — bulk-add 가 이걸 지우면 안 됨
+    pre = client.post("/api/employee-leaves", json={
+        "employee_id": other, "leave_date": d1, "leave_type": "full",
+    })
+    assert pre.status_code == 200, pre.text
+
+    payload = {
+        "items": [
+            {"employee_id": eid, "leave_date": d1, "leave_type": "full", "leave_kind": "annual"},
+            {"employee_id": eid, "leave_date": d2, "leave_type": "am",   "leave_kind": "monthly"},
+            {"employee_id": eid, "leave_date": d3, "leave_type": "pm",   "leave_kind": "annual"},
+        ],
+        "memo": "여름휴가",
+    }
+    r = client.post("/api/employee-leaves/bulk-add", json=payload)
+    assert r.status_code == 200, r.text
+    assert r.json()["count"] == 3
+
+    try:
+        rows = {
+            d: next(x for x in client.get(f"/api/employee-leaves?date={d}").json()
+                    if x["employee_id"] == eid)
+            for d in (d1, d2, d3)
+        }
+        assert rows[d1]["leave_type"] == "full" and rows[d1]["leave_kind"] == "annual"
+        assert rows[d2]["leave_type"] == "am" and rows[d2]["leave_kind"] == "monthly"
+        assert rows[d3]["leave_type"] == "pm" and rows[d3]["leave_kind"] == "annual"
+        assert rows[d1]["memo"] == "여름휴가"
+
+        # 같은 날짜의 다른 직원 휴무가 유지됨 (bulk-set 이었다면 사라졌을 것)
+        d1_all = client.get(f"/api/employee-leaves?date={d1}").json()
+        assert any(x["employee_id"] == other for x in d1_all), "다른 직원 휴무가 삭제됨"
+    finally:
+        for d in (d1, d2, d3):
+            for x in client.get(f"/api/employee-leaves?date={d}").json():
+                client.delete(f"/api/employee-leaves/{x['id']}")
+
+
+def test_bulk_add_upserts_existing_and_skips_invalid(client):
+    """bulk-add 가 기존 (employee, date) 는 갱신, employee_id/leave_date 누락 항목은 건너뜀."""
+    eid = get_test_therapist_id("박테스트치료사")
+    d = "2099-08-10"
+
+    first = client.post("/api/employee-leaves", json={
+        "employee_id": eid, "leave_date": d, "leave_type": "full", "leave_kind": "annual",
+    })
+    assert first.status_code == 200
+    lid = first.json()["id"]
+
+    try:
+        r = client.post("/api/employee-leaves/bulk-add", json={"items": [
+            {"employee_id": eid, "leave_date": d, "leave_type": "pm", "leave_kind": "monthly"},
+            {"leave_date": d},          # employee_id 누락 → skip
+            {"employee_id": eid},       # leave_date 누락 → skip
+        ]})
+        assert r.status_code == 200, r.text
+        assert r.json()["count"] == 1  # 유효 1건만
+
+        listed = client.get(f"/api/employee-leaves?date={d}").json()
+        same = [x for x in listed if x["employee_id"] == eid]
+        assert len(same) == 1                 # 새 row 생성 안 함 (upsert)
+        assert same[0]["id"] == lid
+        assert same[0]["leave_type"] == "pm"
+        assert same[0]["leave_kind"] == "monthly"
+    finally:
+        for x in client.get(f"/api/employee-leaves?date={d}").json():
+            client.delete(f"/api/employee-leaves/{x['id']}")

@@ -8,7 +8,7 @@
 - TreatmentAssignment 그대로 (체외충격파/주사/연골주사 담당 추적)
 """
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from sqlalchemy import (Column, String, Integer, Float, DateTime, ForeignKey, Text,
                         Boolean, LargeBinary, UniqueConstraint)
 from sqlalchemy.orm import relationship
@@ -323,6 +323,7 @@ class SystemSetting(Base):
     auto_backup_enabled = Column(Boolean, default=True)
     auto_backup_interval_min = Column(Integer, default=60)
     auto_backup_keep_count = Column(Integer, default=30)
+    revenue_ui_settings_json = Column(Text, nullable=False, default="{}")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -475,6 +476,9 @@ class RecordEntry(Base):
     __tablename__ = "record_entries"
     id = Column(String(32), primary_key=True, default=uid)
     tab_key = Column(String(20), nullable=False, index=True)
+    record_date = Column(
+        String(10), nullable=False, default=lambda: date.today().isoformat(), index=True
+    )
     chart_no = Column(String(30), nullable=False, default="")
     patient_name = Column(String(50), nullable=False, default="")
     employee_id = Column(String(32), nullable=False, index=True)

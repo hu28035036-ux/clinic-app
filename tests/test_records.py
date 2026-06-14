@@ -56,6 +56,7 @@ def test_records_tabs_settings_entries_and_counts(client):
     labels = {tab["tab_key"]: tab["label"] for tab in initial.json()["tabs"]}
     assert labels["manual"] == "메뉴얼"
     assert labels["carm"] == "C-Arm"
+    assert labels["review_event"] == "리뷰이벤트"
 
     renamed = client.put("/api/records/tabs/manual", json={
         "label": "도수기록",
@@ -67,14 +68,45 @@ def test_records_tabs_settings_entries_and_counts(client):
 
     created = client.post("/api/records/entries", json={
         "tab_key": "manual",
+        "record_date": "2026-06-12",
         "chart_no": "1001",
         "patient_name": "홍길동",
         "employee_id": employee["id"],
     })
     assert created.status_code == 200, created.text
+    created_id = created.json()["id"]
+
+    updated = client.put(f"/api/records/entries/{created_id}", json={
+        "record_date": "2026-06-12",
+        "chart_no": "1001-수정",
+        "patient_name": "홍길동수정",
+        "employee_id": employee["id"],
+    })
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["chart_no"] == "1001-수정"
+    assert updated.json()["patient_name"] == "홍길동수정"
+
+    rejected_update = client.put(f"/api/records/entries/{created_id}", json={
+        "record_date": "2026-06-12",
+        "chart_no": "1001-수정",
+        "patient_name": "홍길동수정",
+        "employee_id": other_employee["id"],
+    })
+    assert rejected_update.status_code == 400
+    assert "선택한 과의 직원만" in rejected_update.text
+
+    review_created = client.post("/api/records/entries", json={
+        "tab_key": "review_event",
+        "record_date": "2026-06-12",
+        "chart_no": "R1001",
+        "patient_name": "리뷰환자",
+        "employee_id": employee["id"],
+    })
+    assert review_created.status_code == 200, review_created.text
 
     rejected = client.post("/api/records/entries", json={
         "tab_key": "manual",
+        "record_date": "2026-06-12",
         "chart_no": "1002",
         "patient_name": "김길동",
         "employee_id": other_employee["id"],
@@ -82,11 +114,28 @@ def test_records_tabs_settings_entries_and_counts(client):
     assert rejected.status_code == 400
     assert "선택한 과의 직원만" in rejected.text
 
-    data = client.get("/api/records").json()
+    data = client.get("/api/records?record_date=2026-06-12").json()
+    assert data["record_date"] == "2026-06-12"
+    assert data["week_start"] == "2026-06-08"
+    assert data["week_end"] == "2026-06-14"
+    assert data["week_dates"] == [
+        "2026-06-08", "2026-06-09", "2026-06-10", "2026-06-11",
+        "2026-06-12", "2026-06-13", "2026-06-14",
+    ]
     entries = [row for row in data["entries"] if row["tab_key"] == "manual"]
-    assert any(row["chart_no"] == "1001" and row["patient_name"] == "홍길동" for row in entries)
+    assert any(row["chart_no"] == "1001-수정" and row["patient_name"] == "홍길동수정" for row in entries)
+    review_entries = [row for row in data["entries"] if row["tab_key"] == "review_event"]
+    assert any(row["chart_no"] == "R1001" and row["patient_name"] == "리뷰환자" for row in review_entries)
     assert data["counts"]["manual"][employee["id"]] == 1
+    assert data["counts"]["review_event"][employee["id"]] == 1
+    assert data["week_counts"]["manual"]["2026-06-12"] == 1
+    assert data["week_counts"]["review_event"]["2026-06-12"] == 1
     assert other_employee["id"] not in data["counts"]["manual"]
+
+    other_day = client.get("/api/records?record_date=2026-06-13").json()
+    assert not [row for row in other_day["entries"] if row["tab_key"] == "manual"]
+    assert employee["id"] not in other_day["counts"].get("manual", {})
+    assert other_day["week_counts"]["manual"]["2026-06-12"] == 1
 
 
 def test_main_html_has_records_subtab_shell(client):
@@ -94,6 +143,8 @@ def test_main_html_has_records_subtab_shell(client):
     assert resp.status_code == 200
     html = resp.text
     assert "record-subtabs" in html
+    assert "record-weekdays" in html
+    assert "record-date" in html
     assert "record-chart-no" in html
     assert "record-patient-name" in html
     assert "record-employee" in html

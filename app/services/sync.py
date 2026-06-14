@@ -101,6 +101,39 @@ def _existing_is_newer(existing, op_ts: datetime) -> bool:
     return bool(current_ts and current_ts > op_ts)
 
 
+def _natural_existing(db: Session, Model, payload: dict):
+    """Find rows whose stable business key may differ from the peer primary key."""
+    if Model is models.RevenueRecord:
+        record_date = str(payload.get("record_date") or "").strip()
+        category_id = str(payload.get("category_id") or "").strip()
+        if record_date:
+            return (
+                db.query(models.RevenueRecord)
+                .filter(
+                    models.RevenueRecord.record_date == record_date,
+                    models.RevenueRecord.category_id == category_id,
+                )
+                .first()
+            )
+    if Model is models.DailyWorkReport:
+        report_date = str(payload.get("report_date") or "").strip()
+        if report_date:
+            return (
+                db.query(models.DailyWorkReport)
+                .filter(models.DailyWorkReport.report_date == report_date)
+                .first()
+            )
+    if Model is models.DailyMedicalSummary:
+        summary_date = str(payload.get("summary_date") or "").strip()
+        if summary_date:
+            return (
+                db.query(models.DailyMedicalSummary)
+                .filter(models.DailyMedicalSummary.summary_date == summary_date)
+                .first()
+            )
+    return None
+
+
 def apply_op(db: Session, op_dict: dict) -> bool:
     """Apply one operation from a peer. Duplicate op ids are ignored.
 
@@ -136,7 +169,7 @@ def apply_op(db: Session, op_dict: dict) -> bool:
         )
         return True
 
-    existing = db.get(Model, eid)
+    existing = db.get(Model, eid) or _natural_existing(db, Model, payload)
     if op_dict["op"] == "delete":
         if existing and not _existing_is_newer(existing, op_ts):
             db.delete(existing)

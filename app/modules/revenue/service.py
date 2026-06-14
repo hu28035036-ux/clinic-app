@@ -492,10 +492,10 @@ def upsert_grid(
         if not _entry_has_value(entry):
             if rec:
                 rec_id = rec.id
+                if log_callback:
+                    log_callback(db, "revenue_record", rec_id, "delete", rec)
                 db.delete(rec)
                 db.flush()
-                if log_callback:
-                    log_callback(db, "revenue_record", rec_id, "delete", None)
                 changed["deleted"] += 1
             continue
         if not rec:
@@ -1284,10 +1284,10 @@ def save_daily_report(
     if not selected and not fields:
         if report:
             report_id = report.id
+            if log_callback:
+                log_callback(db, "daily_work_report", report_id, "delete", report)
             db.delete(report)
             db.flush()
-            if log_callback:
-                log_callback(db, "daily_work_report", report_id, "delete", None)
             changed["deleted"] = 1
         if audit_callback:
             audit_callback(db, "revenue.daily_report.delete", "", day)

@@ -279,6 +279,14 @@ main { padding:0; }
   border-color: var(--sky-500);
   box-shadow: 0 0 0 3px rgba(14,165,233,.15);
 }
+/* 휴무일 추가 — 선택한 날짜별 행 (날짜 | 종일/반차 | 연차/월차 | 제외) */
+.leave-bulk-list { display:flex; flex-direction:column; gap:6px;
+  max-height:170px; overflow-y:auto; margin:0 0 12px; }
+.leave-bulk-row { display:flex; align-items:center; gap:8px;
+  padding:6px 8px; border:1px solid var(--sky-100); border-radius:8px; background:#fff; }
+.leave-bulk-date { flex:1; font-size:13px; font-weight:600; white-space:nowrap; }
+.leave-bulk-row select { flex:0 0 auto; }
+
 .modal-actions { margin-top:18px; padding-top:14px;
   border-top:1px solid var(--sky-100);
   display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;
@@ -3496,6 +3504,11 @@ button.mini.danger {
   color: var(--text-sub);  /* Phase L: hardcoded → token */
   text-decoration: line-through;
 }
+.emp-cap-empty {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--text-sub);
+}
 
 @media (max-width: 640px) {
   .emp-table th:nth-child(2),
@@ -6403,6 +6416,90 @@ label, .label, .form-label {
   align-items: center;
 }
 
+.record-weekdays {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #F8FAFC;
+}
+
+.record-week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.record-weekday-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(64px, 1fr));
+  gap: 6px;
+}
+
+.record-weekday {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 6px;
+  min-height: 48px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+}
+
+.record-weekday:hover {
+  border-color: var(--primary);
+  background: var(--sky-50);
+}
+
+.record-weekday.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.record-weekday span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.record-weekday strong {
+  grid-column: 1;
+  font-size: 13px;
+}
+
+.record-weekday em {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #E5E7EB;
+  color: var(--text-main);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  text-align: center;
+}
+
+.record-weekday em:empty {
+  display: none;
+}
+
+.record-weekday.active em {
+  background: rgba(255, 255, 255, .22);
+  color: #fff;
+}
+
+.record-date-picker,
 .record-category-picker {
   display: inline-flex;
   align-items: center;
@@ -6411,6 +6508,10 @@ label, .label, .form-label {
   color: var(--text-sub);
   font-size: 13px;
   font-weight: 600;
+}
+
+.record-date-picker input {
+  width: 150px;
 }
 
 .record-category-picker select {
@@ -6483,6 +6584,10 @@ label, .label, .form-label {
 }
 
 @media (max-width: 760px) {
+  .record-weekday-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .record-entry-form {
     grid-template-columns: 1fr;
   }

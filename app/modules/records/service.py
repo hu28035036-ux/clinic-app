@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Callable
 
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from app.models import models
 RECORD_TABS = (
     {"id": "record_tab_manual", "tab_key": "manual", "label": "메뉴얼", "sort_order": 1},
     {"id": "record_tab_carm", "tab_key": "carm", "label": "C-Arm", "sort_order": 2},
+    {"id": "record_tab_review_event", "tab_key": "review_event", "label": "리뷰이벤트", "sort_order": 3},
 )
 
 
@@ -35,9 +36,13 @@ def _serialize_employee(e: models.Employee) -> dict:
 
 
 def serialize_entry(entry: models.RecordEntry) -> dict:
+    record_date = entry.record_date
+    if not record_date and entry.created_at:
+        record_date = entry.created_at.date().isoformat()
     return {
         "id": entry.id,
         "tab_key": entry.tab_key,
+        "record_date": record_date or "",
         "chart_no": entry.chart_no or "",
         "patient_name": entry.patient_name or "",
         "employee_id": entry.employee_id,
@@ -82,7 +87,26 @@ def ensure_default_settings(db: Session) -> list[models.RecordTabSetting]:
     return sorted(rows.values(), key=lambda x: (x.sort_order or 0, x.tab_key))
 
 
-def list_records(db: Session) -> dict:
+def normalize_record_date(value: str | None = None) -> str:
+    text = (value or "").strip()
+    if not text:
+        return date.today().isoformat()
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date().isoformat()
+    except ValueError as exc:
+        raise ValueError("날짜 형식은 YYYY-MM-DD 이어야 합니다.") from exc
+
+
+def _week_bounds(record_date_str: str) -> tuple[str, str, list[str]]:
+    base = datetime.strptime(record_date_str, "%Y-%m-%d").date()
+    start = base - timedelta(days=base.weekday())
+    dates = [(start + timedelta(days=i)).isoformat() for i in range(7)]
+    return dates[0], dates[-1], dates
+
+
+def list_records(db: Session, record_date: str | None = None) -> dict:
+    record_date_str = normalize_record_date(record_date)
+    week_start, week_end, week_dates = _week_bounds(record_date_str)
     settings = ensure_default_settings(db)
     categories = (
         db.query(models.EmployeeCategory)
@@ -98,7 +122,14 @@ def list_records(db: Session) -> dict:
     )
     entries = (
         db.query(models.RecordEntry)
+        .filter(models.RecordEntry.record_date == record_date_str)
         .order_by(models.RecordEntry.created_at, models.RecordEntry.patient_name)
+        .all()
+    )
+    weekly_entries = (
+        db.query(models.RecordEntry)
+        .filter(models.RecordEntry.record_date >= week_start,
+                models.RecordEntry.record_date <= week_end)
         .all()
     )
     employee_names = {e.id: e.name for e in employees}
@@ -110,12 +141,23 @@ def list_records(db: Session) -> dict:
         )
         if not entry.employee_name_snapshot and entry.employee_id in employee_names:
             entry.employee_name_snapshot = employee_names[entry.employee_id]
+    week_counts: dict[str, dict[str, int]] = {}
+    for entry in weekly_entries:
+        week_counts.setdefault(entry.tab_key, {})
+        week_counts[entry.tab_key][entry.record_date] = (
+            week_counts[entry.tab_key].get(entry.record_date, 0) + 1
+        )
     return {
         "tabs": [serialize_setting(s) for s in settings],
         "categories": [_serialize_category(c) for c in categories],
         "employees": [_serialize_employee(e) for e in employees],
         "entries": [serialize_entry(e) for e in entries],
         "counts": counts,
+        "record_date": record_date_str,
+        "week_start": week_start,
+        "week_end": week_end,
+        "week_dates": week_dates,
+        "week_counts": week_counts,
     }
 
 
@@ -145,18 +187,22 @@ def update_tab_setting(
     return setting
 
 
-def create_entry(
-    db: Session,
-    *,
-    tab_key: str,
-    chart_no: str,
-    patient_name: str,
-    employee_id: str,
-    log_callback: Callable | None = None,
-) -> models.RecordEntry:
+def _setting_for_tab(db: Session, tab_key: str) -> models.RecordTabSetting:
     setting = next((s for s in ensure_default_settings(db) if s.tab_key == tab_key), None)
     if setting is None:
         raise ValueError("기록 탭을 찾을 수 없습니다.")
+    return setting
+
+
+def _validated_entry_values(
+    db: Session,
+    setting: models.RecordTabSetting,
+    *,
+    record_date: str,
+    chart_no: str,
+    patient_name: str,
+    employee_id: str,
+) -> tuple[str, str, str, models.Employee]:
     employee = db.get(models.Employee, employee_id)
     if not employee or not employee.active:
         raise ValueError("직원을 선택하세요.")
@@ -166,8 +212,31 @@ def create_entry(
     patient_name = (patient_name or "").strip()[:50]
     if not chart_no and not patient_name:
         raise ValueError("차트번호 또는 성함을 입력하세요.")
+    return normalize_record_date(record_date), chart_no, patient_name, employee
+
+
+def create_entry(
+    db: Session,
+    *,
+    tab_key: str,
+    record_date: str,
+    chart_no: str,
+    patient_name: str,
+    employee_id: str,
+    log_callback: Callable | None = None,
+) -> models.RecordEntry:
+    setting = _setting_for_tab(db, tab_key)
+    record_date_str, chart_no, patient_name, employee = _validated_entry_values(
+        db,
+        setting,
+        record_date=record_date,
+        chart_no=chart_no,
+        patient_name=patient_name,
+        employee_id=employee_id,
+    )
     entry = models.RecordEntry(
         tab_key=tab_key,
+        record_date=record_date_str,
         chart_no=chart_no,
         patient_name=patient_name,
         employee_id=employee.id,
@@ -175,6 +244,41 @@ def create_entry(
         employee_category_id_snapshot=employee.category_id or "",
     )
     db.add(entry)
+    db.flush()
+    if log_callback:
+        log_callback(db, "record_entry", entry.id, "upsert", entry)
+    return entry
+
+
+def update_entry(
+    db: Session,
+    entry_id: str,
+    *,
+    record_date: str,
+    chart_no: str,
+    patient_name: str,
+    employee_id: str,
+    log_callback: Callable | None = None,
+) -> models.RecordEntry:
+    entry = db.get(models.RecordEntry, entry_id)
+    if not entry:
+        raise ValueError("기록을 찾을 수 없습니다.")
+    setting = _setting_for_tab(db, entry.tab_key)
+    record_date_str, chart_no, patient_name, employee = _validated_entry_values(
+        db,
+        setting,
+        record_date=record_date,
+        chart_no=chart_no,
+        patient_name=patient_name,
+        employee_id=employee_id,
+    )
+    entry.record_date = record_date_str
+    entry.chart_no = chart_no
+    entry.patient_name = patient_name
+    entry.employee_id = employee.id
+    entry.employee_name_snapshot = employee.name
+    entry.employee_category_id_snapshot = employee.category_id or ""
+    entry.updated_at = datetime.utcnow()
     db.flush()
     if log_callback:
         log_callback(db, "record_entry", entry.id, "upsert", entry)

@@ -272,6 +272,56 @@ function switchTab(id, btn){
 
 let RECORDS_DATA = null;
 let RECORDS_ACTIVE_TAB = 'manual';
+let RECORDS_SELECTED_DATE = '';
+const RECORD_WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일'];
+
+function recordDateStr(d){
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function recordDateFromStr(value){
+  const parts = (value || recordDateStr(new Date())).split('-').map(Number);
+  return new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
+}
+
+function recordAddDays(d, amount){
+  const next = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function recordWeekDates(selectedDate){
+  const apiDates = RECORDS_DATA?.week_dates || [];
+  if(apiDates.length === 7) return apiDates;
+  const selected = recordDateFromStr(selectedDate);
+  const mondayOffset = (selected.getDay() + 6) % 7;
+  const monday = recordAddDays(selected, -mondayOffset);
+  return Array.from({length: 7}, (_, idx) => recordDateStr(recordAddDays(monday, idx)));
+}
+
+function recordShortDateLabel(dateStr){
+  const parts = (dateStr || '').split('-');
+  if(parts.length !== 3) return dateStr || '';
+  return `${Number(parts[1])}/${Number(parts[2])}`;
+}
+
+function recordWeekRangeLabel(dates){
+  if(!dates.length) return '';
+  const first = dates[0].replace(/-/g, '.');
+  const last = dates[dates.length - 1].slice(5).replace(/-/g, '.');
+  return `${first} - ${last}`;
+}
+
+function recordSelectedDate(){
+  const el = document.getElementById('record-date');
+  const current = (el?.value || RECORDS_SELECTED_DATE || '').trim();
+  RECORDS_SELECTED_DATE = current || recordDateStr(new Date());
+  if(el && !el.value) el.value = RECORDS_SELECTED_DATE;
+  return RECORDS_SELECTED_DATE;
+}
 
 function recordActiveSetting(){
   return (RECORDS_DATA?.tabs || []).find(t => t.tab_key === RECORDS_ACTIVE_TAB)
@@ -308,10 +358,13 @@ async function loadRecordsSheet(){
   if(subtabs) subtabs.innerHTML = '<span class="muted">불러오는 중...</span>';
   if(list) list.innerHTML = '';
   try {
-    const r = await fetch('/api/records');
+    const recordDate = recordSelectedDate();
+    const params = new URLSearchParams({record_date: recordDate});
+    const r = await fetch(`/api/records?${params.toString()}`);
     const data = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(data.detail || r.statusText);
     RECORDS_DATA = data;
+    RECORDS_SELECTED_DATE = data.record_date || recordDate;
     if(!(data.tabs || []).some(t => t.tab_key === RECORDS_ACTIVE_TAB)){
       RECORDS_ACTIVE_TAB = (data.tabs || [])[0]?.tab_key || 'manual';
     }
@@ -326,12 +379,18 @@ function renderRecordsSheet(){
   const data = RECORDS_DATA || {tabs:[], categories:[], employees:[], entries:[], counts:{}};
   const setting = recordActiveSetting();
   const categoryId = setting.category_id || '';
+  const selectedDate = data.record_date || recordSelectedDate();
   const tabEntries = (data.entries || []).filter(e => e.tab_key === setting.tab_key);
   const employees = recordEmployeesForCategory(categoryId);
   const countMap = (data.counts || {})[setting.tab_key] || {};
 
   const title = document.getElementById('record-title');
   if(title) title.textContent = `▥ ${setting.label || '기록'}`;
+
+  const dateEl = document.getElementById('record-date');
+  if(dateEl) dateEl.value = selectedDate;
+
+  renderRecordsWeekdays(selectedDate, setting);
 
   const subtabs = document.getElementById('record-subtabs');
   if(subtabs){
@@ -356,6 +415,7 @@ function renderRecordsSheet(){
         <td><b>${escapeHtml(entry.patient_name || '-')}</b></td>
         <td>${escapeHtml(entry.employee_name || '-')}</td>
         <td class="record-actions">
+          <button class="mini" onclick="editRecordEntry('${entry.id}')">수정</button>
           <button class="mini danger" onclick="deleteRecordEntry('${entry.id}')">삭제</button>
         </td>
       </tr>
@@ -365,7 +425,7 @@ function renderRecordsSheet(){
         <thead><tr><th>차트번호</th><th>성함</th><th>직원</th><th>관리</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-    ` : '<div class="muted" style="padding:12px">기록 없음</div>';
+    ` : '<div class="muted" style="padding:12px">선택한 날짜의 기록 없음</div>';
   }
 
   const counts = document.getElementById('record-counts');
@@ -377,10 +437,58 @@ function renderRecordsSheet(){
       </div>
     `).join('');
     counts.innerHTML = `
-      <div class="record-count-title">직원별 개수</div>
+      <div class="record-count-title">직원별 개수 <span class="muted">(${escapeHtml(selectedDate)})</span></div>
       <div class="record-count-grid">${chips || '<span class="muted">표시할 직원 없음</span>'}</div>
     `;
   }
+}
+
+function renderRecordsWeekdays(selectedDate, setting){
+  const box = document.getElementById('record-weekdays');
+  if(!box) return;
+  const dates = recordWeekDates(selectedDate);
+  const weekCounts = (RECORDS_DATA?.week_counts || {})[setting.tab_key] || {};
+  const dayButtons = dates.map((dateStr, idx) => {
+    const active = dateStr === selectedDate ? 'active' : '';
+    const count = Number(weekCounts[dateStr] || 0);
+    return `<button type="button" class="record-weekday ${active}" onclick="selectRecordsDate('${dateStr}')">
+      <span>${RECORD_WEEKDAY_LABELS[idx]}</span>
+      <strong>${recordShortDateLabel(dateStr)}</strong>
+      ${count ? `<em>${count}</em>` : '<em></em>'}
+    </button>`;
+  }).join('');
+  box.innerHTML = `
+    <div class="record-week-nav">
+      <button type="button" class="mini" onclick="moveRecordsWeek(-1)" title="지난 주">‹</button>
+      <b>${escapeHtml(recordWeekRangeLabel(dates))}</b>
+      <button type="button" class="mini" onclick="moveRecordsWeek(1)" title="다음 주">›</button>
+    </div>
+    <div class="record-weekday-grid">${dayButtons}</div>
+  `;
+}
+
+function changeRecordsDate(){
+  RECORDS_SELECTED_DATE = _v('record-date') || recordDateStr(new Date());
+  loadRecordsSheet();
+}
+
+function setRecordsToday(){
+  RECORDS_SELECTED_DATE = recordDateStr(new Date());
+  const el = document.getElementById('record-date');
+  if(el) el.value = RECORDS_SELECTED_DATE;
+  loadRecordsSheet();
+}
+
+function selectRecordsDate(dateStr){
+  RECORDS_SELECTED_DATE = dateStr || recordDateStr(new Date());
+  const el = document.getElementById('record-date');
+  if(el) el.value = RECORDS_SELECTED_DATE;
+  loadRecordsSheet();
+}
+
+function moveRecordsWeek(delta){
+  const next = recordAddDays(recordDateFromStr(recordSelectedDate()), Number(delta || 0) * 7);
+  selectRecordsDate(recordDateStr(next));
 }
 
 function selectRecordTab(tabKey){
@@ -436,6 +544,7 @@ async function saveRecordEntry(){
   const tab = recordActiveSetting();
   const body = {
     tab_key: tab.tab_key,
+    record_date: recordSelectedDate(),
     chart_no: _v('record-chart-no'),
     patient_name: _v('record-patient-name'),
     employee_id: _v('record-employee'),
@@ -454,6 +563,43 @@ async function saveRecordEntry(){
   if(name) name.value = '';
   await loadRecordsSheet();
   document.getElementById('record-chart-no')?.focus();
+}
+
+function editRecordEntry(entryId){
+  const entry = (RECORDS_DATA?.entries || []).find(row => row.id === entryId);
+  if(!entry) return;
+  const tab = (RECORDS_DATA?.tabs || []).find(t => t.tab_key === entry.tab_key) || recordActiveSetting();
+  const categoryId = tab.category_id || '';
+  showModal(`<h3>기록 수정</h3>
+    <label>날짜 <input id="record-edit-date" type="date" value="${escapeAttr(entry.record_date || recordSelectedDate())}"></label>
+    <label>차트번호 <input id="record-edit-chart-no" type="text" maxlength="30" value="${escapeAttr(entry.chart_no || '')}"></label>
+    <label>성함 <input id="record-edit-patient-name" type="text" maxlength="50" value="${escapeAttr(entry.patient_name || '')}"></label>
+    <label>직원
+      <select id="record-edit-employee">${recordEmployeeOptions(categoryId, entry.employee_id || '')}</select>
+    </label>
+    <div class="modal-actions"><button onclick="closeModal()">취소</button>
+      <button class="primary" onclick="updateRecordEntry('${entry.id}')">저장</button></div>`);
+}
+
+async function updateRecordEntry(entryId){
+  const body = {
+    record_date: _v('record-edit-date') || recordSelectedDate(),
+    chart_no: _v('record-edit-chart-no'),
+    patient_name: _v('record-edit-patient-name'),
+    employee_id: _v('record-edit-employee'),
+  };
+  if(!body.chart_no && !body.patient_name){ alert('차트번호 또는 성함을 입력하세요'); return; }
+  if(!body.employee_id){ alert('직원을 선택하세요'); return; }
+  const r = await fetch(`/api/records/entries/${entryId}`, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if(!r.ok){ alert('수정 실패\n' + await _apiErrorText(r)); return; }
+  const saved = await r.json().catch(() => ({}));
+  RECORDS_SELECTED_DATE = saved.record_date || body.record_date || RECORDS_SELECTED_DATE;
+  closeModal();
+  await loadRecordsSheet();
 }
 
 async function deleteRecordEntry(entryId){
@@ -588,6 +734,138 @@ async function saveLeaveDay(dateStr){
   await reloadMiniCalendar(window._miniCal ? window._miniCal.getDate() : new Date());
   await renderDayBoard();
   await loadTodayList();
+}
+
+// ──────────────── 휴무일 추가 (직원 1명 · 여러 날짜 동시 등록) ────────────────
+// 직원은 /api/employees(EMPLOYEES_ALL), 날짜는 미니달력 다중선택 — 모두 동적 데이터.
+// 선택한 날짜별로 종일/오전·오후반차 + 연차/월차 를 각각 지정 후 한 번에 등록.
+let _leaveBulkSel = new Map();   // dateStr → { type, kind }
+
+function _leaveBulkDateLabel(d){
+  const dt = new Date(d + 'T00:00:00');
+  return `${dt.getMonth()+1}월 ${dt.getDate()}일 (${'일월화수목금토'[dt.getDay()]})`;
+}
+
+async function openLeaveBulkAddModal(){
+  await loadMasters();                 // EMPLOYEES_ALL 최신화 (신규 직원 반영)
+  _leaveBulkSel = new Map();
+  if(window._leaveBulkCal){ try { window._leaveBulkCal.destroy(); } catch(e){} window._leaveBulkCal = null; }
+
+  const empOpts = EMPLOYEES_ALL
+    .filter(e => e.active !== false)
+    .map(e => `<option value="${e.id}">${e.name}${e.category_name ? ' (' + e.category_name + ')' : ''}</option>`)
+    .join('');
+
+  showModal(`
+    <h3>➕ 휴무일 추가</h3>
+    <label>직원
+      <select id="leave-bulk-emp">
+        <option value="">직원 선택…</option>
+        ${empOpts}
+      </select>
+    </label>
+    <p class="muted" style="margin:10px 0 4px">달력에서 휴무 날짜를 클릭해 여러 날짜를 선택하세요.</p>
+    <div id="leave-bulk-cal" style="margin-bottom:12px"></div>
+    <div id="leave-bulk-list" class="leave-bulk-list"></div>
+    <label>메모
+      <input id="leave-bulk-memo" placeholder="(선택) 전체 날짜 공통 메모">
+    </label>
+    <div class="modal-actions">
+      <button onclick="closeModal()">닫기</button>
+      <button class="primary" onclick="saveLeaveBulkAdd()">등록</button>
+    </div>
+  `);
+
+  const el = document.getElementById('leave-bulk-cal');
+  window._leaveBulkCal = new FullCalendar.Calendar(el, {
+    initialView: 'dayGridMonth',
+    locale: 'ko',
+    height: 340,
+    headerToolbar: { left: 'prev', center: 'title', right: 'next' },
+    fixedWeekCount: false,
+    selectable: false,
+    dateClick: (info) => _leaveBulkToggleDate(info.dateStr),
+  });
+  window._leaveBulkCal.render();
+  _leaveBulkRenderList();
+}
+
+function _leaveBulkToggleDate(d){
+  if(_leaveBulkSel.has(d)) _leaveBulkSel.delete(d);
+  else _leaveBulkSel.set(d, { type: 'full', kind: 'annual' });
+  _leaveBulkRefreshCal();
+  _leaveBulkRenderList();
+}
+
+function _leaveBulkRefreshCal(){
+  const cal = window._leaveBulkCal;
+  if(!cal) return;
+  cal.removeAllEvents();
+  for(const d of _leaveBulkSel.keys()){
+    cal.addEvent({ start: d, allDay: true, display: 'background', backgroundColor: '#38bdf8' });
+  }
+}
+
+function _leaveBulkSetType(d, v){ const o = _leaveBulkSel.get(d); if(o){ o.type = v; } }
+function _leaveBulkSetKind(d, v){ const o = _leaveBulkSel.get(d); if(o){ o.kind = v; } }
+
+function _leaveBulkRenderList(){
+  const box = document.getElementById('leave-bulk-list');
+  if(!box) return;
+  const dates = Array.from(_leaveBulkSel.keys()).sort();
+  if(dates.length === 0){
+    box.innerHTML = '<p class="muted">선택된 날짜가 없습니다.</p>';
+    return;
+  }
+  box.innerHTML = dates.map(d => {
+    const v = _leaveBulkSel.get(d);
+    return `
+      <div class="leave-bulk-row" data-date="${d}">
+        <span class="leave-bulk-date">${_leaveBulkDateLabel(d)}</span>
+        <select class="leave-type-sel" onchange="_leaveBulkSetType('${d}', this.value)">
+          <option value="full" ${v.type === 'full' ? 'selected' : ''}>종일</option>
+          <option value="am" ${v.type === 'am' ? 'selected' : ''}>오전반차</option>
+          <option value="pm" ${v.type === 'pm' ? 'selected' : ''}>오후반차</option>
+        </select>
+        <select class="leave-kind-sel" onchange="_leaveBulkSetKind('${d}', this.value)">
+          <option value="annual" ${v.kind === 'monthly' ? '' : 'selected'}>연차</option>
+          <option value="monthly" ${v.kind === 'monthly' ? 'selected' : ''}>월차</option>
+        </select>
+        <button class="mini" title="제외" onclick="_leaveBulkToggleDate('${d}')">✕</button>
+      </div>`;
+  }).join('');
+}
+
+async function saveLeaveBulkAdd(){
+  const empSel = document.getElementById('leave-bulk-emp');
+  const empId = empSel ? empSel.value : '';
+  if(!empId){ alert('직원을 선택하세요.'); return; }
+  if(_leaveBulkSel.size === 0){ alert('휴무 날짜를 1개 이상 선택하세요.'); return; }
+
+  const items = Array.from(_leaveBulkSel.entries()).map(([d, v]) => ({
+    employee_id: empId,
+    leave_date: d,
+    leave_type: v.type || 'full',
+    leave_kind: v.kind || 'annual',
+  }));
+
+  const r = await fetch('/api/employee-leaves/bulk-add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items, memo: _v('leave-bulk-memo') || '' }),
+  });
+
+  if(!r.ok){
+    const text = await r.text();
+    alert('휴무 등록 실패\n' + text);
+    return;
+  }
+  const res = await r.json().catch(() => ({}));
+
+  closeModal();
+  await loadLeaveCalendar();
+  if(window._miniCal){ await reloadMiniCalendar(window._miniCal.getDate()); }
+  alert(`✓ 휴무 ${res.count || items.length}건이 등록되었습니다.`);
 }
 
 // 서버 에러 응답에서 사용자에게 보여줄 짧은 텍스트 추출.
@@ -1084,7 +1362,9 @@ async function loadLeaveCalendar(){
   const grouped = {};
   allLeaves.forEach(x => {
     if(!grouped[x.leave_date]) grouped[x.leave_date] = [];
-    const t = THERAPISTS.find(tt => tt.id === x.therapist_id);
+    // 휴무 등록은 전 직원(EMPLOYEES_ALL) 대상이므로 표시도 전 직원에서 찾는다.
+    // (치료사만 담는 THERAPISTS 로 찾으면 간호과/원무과 등 비치료사 휴무가 누락됨)
+    const t = EMPLOYEES_ALL.find(tt => tt.id === x.therapist_id);
     if(t){
       const typeLabel =
         x.leave_type === 'am' ? '오전' :
@@ -1151,7 +1431,8 @@ async function loadMiniCalendarData(baseDate = null){
   leaveData.forEach(x => {
     if (!MINI_LEAVE_MAP[x.leave_date]) MINI_LEAVE_MAP[x.leave_date] = [];
 
-    const t = THERAPISTS.find(tt => tt.id === x.therapist_id);
+    // 비치료사(간호과/원무과 등) 휴무도 미니달력에 표시되도록 전 직원에서 찾는다.
+    const t = EMPLOYEES_ALL.find(tt => tt.id === x.therapist_id);
     if (!t) return;
 
     const typeLabel =
@@ -4000,32 +4281,53 @@ async function loadEmployeesSheet(){
 function capChip(label, on, inherited){
   const cls = on ? 'on' : 'off';
   const suffix = inherited ? ' 기본' : '';
-  return `<span class="emp-cap-chip ${cls}">${label}${suffix}</span>`;
+  return `<span class="emp-cap-chip ${cls}">${escapeHtml(label)}${suffix}</span>`;
+}
+
+function empCapEmptyText(text){
+  return `<span class="emp-cap-empty">${escapeHtml(text)}</span>`;
+}
+
+function treatmentChipLabel(t){
+  return t.short || t.name || t.code || '치료항목';
+}
+
+function treatmentChipList(items, inherited){
+  return items.map(t => capChip(treatmentChipLabel(t), true, inherited)).join(' ');
+}
+
+function categoryTreatmentChips(category){
+  if(!category.id) return empCapEmptyText('과 미지정');
+  const items = categoryTreatments(category.id);
+  return items.length ? treatmentChipList(items, true) : empCapEmptyText('과 활성 치료항목 없음');
+}
+
+function employeeTreatmentItems(e){
+  const categoryItems = e.category_id ? categoryTreatments(e.category_id) : [];
+  if(e.treatment_override_enabled === true){
+    const byId = new Map(categoryItems.map(t => [t.id, t]));
+    return (e.treatment_ids || []).map(id => byId.get(id)).filter(Boolean);
+  }
+  return categoryItems;
+}
+
+function employeeTreatmentChips(e){
+  const items = employeeTreatmentItems(e);
+  const inherited = e.treatment_override_enabled !== true;
+  if(!items.length){
+    return empCapEmptyText(e.treatment_override_enabled ? '선택 항목 없음' : '과 활성 치료항목 없음');
+  }
+  return treatmentChipList(items, inherited);
 }
 
 function employeeTreatmentSummary(e){
-  const treatments = TX_META.all_treatments || [];
-  const categoryTreatmentById = new Map(
-    treatments
-      .filter(t => t && t.active !== false && (!e.category_id || t.category_id === e.category_id))
-      .map(t => [t.id, t])
-  );
-  const txNames = (e.treatment_ids || [])
-    .map(id => categoryTreatmentById.get(id))
-    .filter(Boolean)
-    .map(t => t.short || t.name)
-    .join(' · ');
-  if(txNames) return txNames;
-  if(e.treatment_override_enabled) return '선택 항목 없음';
-  const categoryTreatments = Array.from(categoryTreatmentById.values());
-  return categoryTreatments.length ? '과 치료항목 전체' : '과 활성 치료항목 없음';
+  const items = employeeTreatmentItems(e);
+  if(!items.length) return '';
+  return e.treatment_override_enabled ? `직접 지정 ${items.length}개` : `과 기본 ${items.length}개`;
 }
 
 function renderEmployeeCategoryCard(category, list){
-  const defaults = [
-    capChip('도수치료', category.default_can_manual !== false, true),
-    capChip('체외충격파', category.default_can_eswt !== false, true),
-  ].join(' ');
+  const defaults = categoryTreatmentChips(category);
   const categoryStatus = category.id && category.active === false
     ? '<span class="badge gray">○ 비활성 과</span>'
     : '';
@@ -4036,11 +4338,11 @@ function renderEmployeeCategoryCard(category, list){
     <button class="primary" onclick="editEmployee({category_id:'${category.id}', color:'${category.color||'#9CA3AF'}', active:true})">+ 직원 추가</button>
   ` : '';
   const rows = list.map(e => {
-    const caps = [
-      capChip('도수치료', e.can_manual === true, e.can_manual_override == null),
-      capChip('체외충격파', e.can_eswt === true, e.can_eswt_override == null),
-    ].join(' ');
+    const caps = employeeTreatmentChips(e);
     const txNames = employeeTreatmentSummary(e);
+    const txSummary = txNames
+      ? `<div class="muted" style="font-size:11px;margin-top:3px">${escapeHtml(txNames)}</div>`
+      : '';
     const statusBadge = e.active
       ? '<span class="badge green">● 활성</span>'
       : '<span class="badge gray">○ 비활성</span>';
@@ -4050,7 +4352,7 @@ function renderEmployeeCategoryCard(category, list){
       <td>${e.birth_date||'-'}</td>
       <td>${e.phone||'-'}</td>
       <td>${e.hire_date||'-'}</td>
-      <td>${caps}<div class="muted" style="font-size:11px;margin-top:3px">${escapeHtml(txNames)}</div></td>
+      <td>${caps}${txSummary}</td>
       <td>${statusBadge}</td>
       <td>
         <button class="mini" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>수정</button>
@@ -4768,7 +5070,7 @@ function applyRevenuePreset(target, preset){
   else loadRevenueStats();
 }
 
-function initStats(){
+async function initStats(){
   const [fromStr, toStr] = revenueDefaultRange();
   if(!_revenueInitialized){
     revenueSetRange('rev-record', revenueDateStr(new Date()), revenueDateStr(new Date()));
@@ -4779,15 +5081,17 @@ function initStats(){
     if(cashLedgerDateEl) cashLedgerDateEl.value = revenueDateStr(new Date());
     _revenueInitialized = true;
   }
+  await loadRevenueUiSettings();
   loadRevenueRecords();
 }
 
-function switchRevenueTab(name, btn){
+async function switchRevenueTab(name, btn){
   document.querySelectorAll('#admin-stats .revenue-sub-tab').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('#admin-stats .revenue-pane').forEach(p => p.classList.remove('active'));
   if(btn) btn.classList.add('active');
   const pane = document.getElementById('revenue-pane-' + name);
   if(pane) pane.classList.add('active');
+  await loadRevenueUiSettings();
   if(name === 'records') loadRevenueRecords();
   if(name === 'cash-ledger') loadDailyCashLedger();
   if(name === 'stats') loadRevenueStats();
@@ -5150,6 +5454,88 @@ let REVENUE_FIELD_ORDER = loadRevenueFieldOrder();
 let REVENUE_TOTAL_FORMULAS_CUSTOM = loadRevenueTotalFormulas();
 let REVENUE_DRAG_FIELD = '';
 let REVENUE_DAILY_FIELD_KEYS = loadRevenueDailyFieldKeys();
+let REVENUE_UI_SETTINGS_LOADED = false;
+let REVENUE_UI_SETTINGS_LOADING = null;
+let REVENUE_UI_SETTINGS_SAVE_TIMER = null;
+
+function revenueUiSettingsPayload(){
+  return {
+    field_labels: REVENUE_FIELD_LABELS,
+    field_order: revenueNormalizeFieldOrder(REVENUE_FIELD_ORDER),
+    total_formulas: REVENUE_TOTAL_FORMULAS_CUSTOM,
+    daily_fields: revenueNormalizeDailyFieldKeys(REVENUE_DAILY_FIELD_KEYS, true),
+  };
+}
+
+function saveRevenueUiSettingsLocal(){
+  try {
+    localStorage.setItem(REVENUE_FIELD_LABEL_STORAGE_KEY, JSON.stringify(REVENUE_FIELD_LABELS));
+    localStorage.setItem(REVENUE_FIELD_ORDER_STORAGE_KEY, JSON.stringify(REVENUE_FIELD_ORDER));
+    localStorage.setItem(REVENUE_TOTAL_FORMULA_STORAGE_KEY, JSON.stringify(REVENUE_TOTAL_FORMULAS_CUSTOM));
+    localStorage.setItem(REVENUE_DAILY_FIELDS_STORAGE_KEY, JSON.stringify(REVENUE_DAILY_FIELD_KEYS));
+  } catch(e){}
+}
+
+function applyRevenueUiSettings(settings){
+  if(!settings || typeof settings !== 'object') return;
+  if(settings.field_labels && typeof settings.field_labels === 'object'){
+    REVENUE_FIELD_LABELS = {...REVENUE_FIELD_DEFAULT_LABELS};
+    Object.entries(settings.field_labels).forEach(([key, label]) => {
+      if(REVENUE_FIELD_DEFAULT_LABELS[key] && String(label || '').trim()){
+        REVENUE_FIELD_LABELS[key] = String(label || '').trim().slice(0, 30);
+      }
+    });
+  }
+  if(Array.isArray(settings.field_order) && settings.field_order.length){
+    REVENUE_FIELD_ORDER = revenueNormalizeFieldOrder(settings.field_order);
+  }
+  if(settings.total_formulas && typeof settings.total_formulas === 'object'){
+    const next = {};
+    Object.entries(settings.total_formulas).forEach(([key, terms]) => {
+      if(REVENUE_TOTAL_FIELDS.some(field => field.key === key)){
+        const normalized = revenueNormalizeFormulaTerms(key, terms);
+        if(normalized.length) next[key] = normalized;
+      }
+    });
+    REVENUE_TOTAL_FORMULAS_CUSTOM = next;
+  }
+  if(Array.isArray(settings.daily_fields) && settings.daily_fields.length){
+    REVENUE_DAILY_FIELD_KEYS = revenueNormalizeDailyFieldKeys(settings.daily_fields, true);
+  }
+  saveRevenueUiSettingsLocal();
+}
+
+async function loadRevenueUiSettings(){
+  if(REVENUE_UI_SETTINGS_LOADED) return;
+  if(REVENUE_UI_SETTINGS_LOADING) return REVENUE_UI_SETTINGS_LOADING;
+  REVENUE_UI_SETTINGS_LOADING = (async () => {
+    try {
+      const r = await adminFetch('/api/revenue/ui-settings?_=' + Date.now());
+      const data = await r.json().catch(() => ({}));
+      if(r.ok) applyRevenueUiSettings(data.settings || {});
+    } catch(e){
+      // 서버 설정을 못 읽으면 기존 PC별 localStorage fallback 을 그대로 사용한다.
+    } finally {
+      REVENUE_UI_SETTINGS_LOADED = true;
+      REVENUE_UI_SETTINGS_LOADING = null;
+    }
+  })();
+  return REVENUE_UI_SETTINGS_LOADING;
+}
+
+function persistRevenueUiSettings(){
+  saveRevenueUiSettingsLocal();
+  clearTimeout(REVENUE_UI_SETTINGS_SAVE_TIMER);
+  REVENUE_UI_SETTINGS_SAVE_TIMER = setTimeout(async () => {
+    try {
+      await adminFetch('/api/revenue/ui-settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({settings: revenueUiSettingsPayload()}),
+      });
+    } catch(e){}
+  }, 250);
+}
 
 function revenueMoney(v){
   const n = Math.round(Number(v || 0));
@@ -5172,9 +5558,7 @@ function loadRevenueFieldLabels(){
 }
 
 function saveRevenueFieldLabels(){
-  try {
-    localStorage.setItem(REVENUE_FIELD_LABEL_STORAGE_KEY, JSON.stringify(REVENUE_FIELD_LABELS));
-  } catch(e){}
+  persistRevenueUiSettings();
 }
 
 function revenueFieldLabel(field){
@@ -5246,9 +5630,7 @@ function loadRevenueFieldOrder(){
 }
 
 function saveRevenueFieldOrder(){
-  try {
-    localStorage.setItem(REVENUE_FIELD_ORDER_STORAGE_KEY, JSON.stringify(REVENUE_FIELD_ORDER));
-  } catch(e){}
+  persistRevenueUiSettings();
 }
 
 function revenueOrderedRecordFields(){
@@ -5278,9 +5660,7 @@ function loadRevenueDailyFieldKeys(){
 }
 
 function saveRevenueDailyFieldKeys(){
-  try {
-    localStorage.setItem(REVENUE_DAILY_FIELDS_STORAGE_KEY, JSON.stringify(REVENUE_DAILY_FIELD_KEYS));
-  } catch(e){}
+  persistRevenueUiSettings();
 }
 
 function revenueDailyFieldsForStats(){
@@ -5392,9 +5772,7 @@ function loadRevenueTotalFormulas(){
 }
 
 function saveRevenueTotalFormulas(){
-  try {
-    localStorage.setItem(REVENUE_TOTAL_FORMULA_STORAGE_KEY, JSON.stringify(REVENUE_TOTAL_FORMULAS_CUSTOM));
-  } catch(e){}
+  persistRevenueUiSettings();
 }
 
 function revenueFormulaForTotal(totalKey){

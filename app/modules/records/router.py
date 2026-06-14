@@ -7,7 +7,7 @@ from app.database import get_db
 from app.routers.api import _log, audit
 
 from . import service
-from .schemas import RecordEntryIn, RecordTabSettingIn
+from .schemas import RecordEntryIn, RecordEntryUpdateIn, RecordTabSettingIn
 
 router = APIRouter(prefix="/api/records", tags=["records"])
 
@@ -17,8 +17,11 @@ def _bad_request(exc: Exception) -> HTTPException:
 
 
 @router.get("")
-def get_records(db: Session = Depends(get_db)):
-    return service.list_records(db)
+def get_records(record_date: str = "", db: Session = Depends(get_db)):
+    try:
+        return service.list_records(db, record_date=record_date)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
 
 
 @router.put("/tabs/{tab_key}")
@@ -52,12 +55,38 @@ def create_record_entry(
         entry = service.create_entry(
             db,
             tab_key=payload.tab_key,
+            record_date=payload.record_date,
             chart_no=payload.chart_no,
             patient_name=payload.patient_name,
             employee_id=payload.employee_id,
             log_callback=_log,
         )
         audit(db, "records.entry.create", entry.id, f"tab={entry.tab_key} employee={entry.employee_name_snapshot}")
+        db.commit()
+        db.refresh(entry)
+        return service.serialize_entry(entry)
+    except ValueError as exc:
+        db.rollback()
+        raise _bad_request(exc) from exc
+
+
+@router.put("/entries/{entry_id}")
+def update_record_entry(
+    entry_id: str,
+    payload: RecordEntryUpdateIn,
+    db: Session = Depends(get_db),
+):
+    try:
+        entry = service.update_entry(
+            db,
+            entry_id,
+            record_date=payload.record_date,
+            chart_no=payload.chart_no,
+            patient_name=payload.patient_name,
+            employee_id=payload.employee_id,
+            log_callback=_log,
+        )
+        audit(db, "records.entry.update", entry.id, f"tab={entry.tab_key} employee={entry.employee_name_snapshot}")
         db.commit()
         db.refresh(entry)
         return service.serialize_entry(entry)

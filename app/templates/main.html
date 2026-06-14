@@ -119,11 +119,16 @@
       <div class="sheet-head record-head">
         <h2 id="record-title">▥ 기록</h2>
         <div class="sheet-toolbar">
+          <label class="record-date-picker">날짜
+            <input id="record-date" type="date" onchange="changeRecordsDate()">
+          </label>
+          <button class="small" onclick="setRecordsToday()">오늘</button>
           <label class="record-category-picker">과
             <select id="record-category" onchange="saveRecordTabCategory()"></select>
           </label>
         </div>
       </div>
+      <div id="record-weekdays" class="record-weekdays"></div>
       <div class="record-entry-form">
         <input id="record-chart-no" type="text" maxlength="30" placeholder="차트번호" onkeydown="recordEntryKeydown(event)">
         <input id="record-patient-name" type="text" maxlength="50" placeholder="성함" onkeydown="recordEntryKeydown(event)">
@@ -187,6 +192,7 @@
         <h2>▤ 휴무일 관리</h2>
         <div class="sheet-toolbar">
           <span class="muted">날짜를 클릭해서 휴무 치료사를 설정하세요</span>
+          <button class="primary" onclick="openLeaveBulkAddModal()">➕ 휴무일 추가</button>
         </div>
       </div>
       <div id="leave-calendar"></div>

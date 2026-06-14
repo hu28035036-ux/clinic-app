@@ -1666,6 +1666,35 @@ def bulk_set_employee_leaves(payload: dict, db: Session = Depends(get_db)):
     return {"ok": True, "count": count}
 
 
+@router.post("/employee-leaves/bulk-add")
+def bulk_add_employee_leaves(payload: dict, db: Session = Depends(get_db)):
+    """여러 (employee_id, leave_date) 휴무를 한 번에 upsert.
+
+    bulk-set 과 달리 *기존 휴무를 삭제하지 않는다* — 같은 날짜의 다른 직원 휴무를
+    건드리지 않으므로 '휴무일 추가' (한 직원 · 여러 날짜) 등록 흐름에 사용한다.
+    동일 (employee_id, leave_date) 가 이미 있으면 type/kind/memo 만 갱신.
+    """
+    items = (payload or {}).get("items", [])
+    default_memo = (payload or {}).get("memo", "")
+    count = 0
+    for item in items:
+        emp_id = item.get("employee_id") or item.get("therapist_id")  # 호환
+        leave_date = item.get("leave_date", "")
+        if not emp_id or not leave_date:
+            continue
+        p = schemas.EmployeeLeaveIn(
+            employee_id=emp_id,
+            leave_date=leave_date,
+            leave_type=item.get("leave_type", "full"),
+            leave_kind=item.get("leave_kind", "annual"),
+            memo=item.get("memo", default_memo) or "",
+        )
+        _upsert_employee_leave_core(db, p)
+        count += 1
+    db.commit()
+    return {"ok": True, "count": count}
+
+
 # ──────────────── 호환 alias: /api/therapists, /api/therapist-leaves ────────────────
 # 프론트가 단계별로 migrate되는 동안 안 깨지게.
 

@@ -52,7 +52,8 @@ def up(conn):
             (id, tab_key, label, category_id, sort_order)
         VALUES
             ('record_tab_manual', 'manual', '메뉴얼', '', 1),
-            ('record_tab_carm', 'carm', 'C-Arm', '', 2)
+            ('record_tab_carm', 'carm', 'C-Arm', '', 2),
+            ('record_tab_review_event', 'review_event', '리뷰이벤트', '', 3)
         """
     )
     conn.commit()

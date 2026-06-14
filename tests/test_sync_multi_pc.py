@@ -168,6 +168,123 @@ def test_apply_op_does_not_delete_newer_local_row(tmp_path):
         db.close()
 
 
+def test_apply_op_merges_revenue_rows_by_date_when_peer_ids_differ(tmp_path):
+    Session = _session_factory(tmp_path / "revenue-sync.db")
+    local_ts = datetime(2026, 6, 8, 9, 0, 0)
+    remote_ts = datetime(2026, 6, 8, 9, 10, 0)
+
+    db = Session()
+    try:
+        db.add(models.RevenueRecord(
+            id="local-revenue-id",
+            record_date="2099-12-01",
+            category_id="",
+            total_medical_fee=1000,
+            updated_at=local_ts,
+        ))
+        db.add(models.DailyWorkReport(
+            id="local-report-id",
+            report_date="2099-12-01",
+            selected_treatment_codes_json='["old"]',
+            custom_fields_json='[{"id":"a","sort_order":0}]',
+            updated_at=local_ts,
+        ))
+        db.commit()
+
+        assert sync_mod.apply_op(db, {
+            "id": "remote-node:revenue-upsert",
+            "node_id": "remote-node",
+            "entity": "revenue_record",
+            "entity_id": "remote-revenue-id",
+            "op": "upsert",
+            "payload": {
+                "id": "remote-revenue-id",
+                "record_date": "2099-12-01",
+                "category_id": "",
+                "total_medical_fee": 9000,
+                "nhis_burden_total": 3000,
+                "cash_amount": 6000,
+                "cash_counts_json": "{}",
+                "updated_at": remote_ts.isoformat(),
+            },
+            "ts": remote_ts.isoformat(),
+        })
+        assert sync_mod.apply_op(db, {
+            "id": "remote-node:report-upsert",
+            "node_id": "remote-node",
+            "entity": "daily_work_report",
+            "entity_id": "remote-report-id",
+            "op": "upsert",
+            "payload": {
+                "id": "remote-report-id",
+                "report_date": "2099-12-01",
+                "selected_treatment_codes_json": '["new"]',
+                "custom_fields_json": '[{"id":"b","sort_order":0},{"id":"a","sort_order":1}]',
+                "updated_at": remote_ts.isoformat(),
+            },
+            "ts": remote_ts.isoformat(),
+        })
+        db.commit()
+
+        rows = db.query(models.RevenueRecord).filter(
+            models.RevenueRecord.record_date == "2099-12-01",
+            models.RevenueRecord.category_id == "",
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].id == "local-revenue-id"
+        assert rows[0].total_medical_fee == 9000
+        assert rows[0].cash_amount == 6000
+
+        report = db.query(models.DailyWorkReport).filter(
+            models.DailyWorkReport.report_date == "2099-12-01",
+        ).one()
+        assert report.id == "local-report-id"
+        assert report.selected_treatment_codes_json == '["new"]'
+        assert json.loads(report.custom_fields_json)[0]["id"] == "b"
+    finally:
+        db.close()
+
+
+def test_apply_op_deletes_revenue_row_by_natural_key_payload(tmp_path):
+    Session = _session_factory(tmp_path / "revenue-delete-sync.db")
+    local_ts = datetime(2026, 6, 8, 9, 0, 0)
+    remote_ts = datetime(2026, 6, 8, 9, 10, 0)
+
+    db = Session()
+    try:
+        db.add(models.RevenueRecord(
+            id="local-revenue-delete-id",
+            record_date="2099-12-02",
+            category_id="",
+            total_medical_fee=1000,
+            updated_at=local_ts,
+        ))
+        db.commit()
+
+        assert sync_mod.apply_op(db, {
+            "id": "remote-node:revenue-delete",
+            "node_id": "remote-node",
+            "entity": "revenue_record",
+            "entity_id": "remote-revenue-delete-id",
+            "op": "delete",
+            "payload": {
+                "id": "remote-revenue-delete-id",
+                "record_date": "2099-12-02",
+                "category_id": "",
+                "updated_at": remote_ts.isoformat(),
+            },
+            "ts": remote_ts.isoformat(),
+        })
+        db.commit()
+
+        assert db.query(models.RevenueRecord).filter(
+            models.RevenueRecord.record_date == "2099-12-02",
+            models.RevenueRecord.category_id == "",
+        ).count() == 0
+    finally:
+        db.close()
+
+
 def test_sync_push_commits_successful_ops_even_if_later_op_fails(client):
     token = load_config()["sync_secret"]
     now = datetime(2026, 6, 8, 11, 0, 0)
