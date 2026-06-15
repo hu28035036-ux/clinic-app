@@ -1474,7 +1474,11 @@ function paintMiniCalendarCells(){
       wrap.className = 'leave-name-list';
       wrap.title = leaveNames.map(n => n.label).join('\n');
 
-      leaveNames.forEach(n => {
+      // 좁은 미니캘린더 셀에 휴무명이 많으면 셀이 과도하게 길어져 깨져 보임.
+      //   최대 MAX_MINI_LEAVE 개만 칩으로 노출, 나머지는 "+N" 으로 축약 (전체는 title 툴팁).
+      const MAX_MINI_LEAVE = 3;
+      const shown = leaveNames.slice(0, MAX_MINI_LEAVE);
+      shown.forEach(n => {
         const row = document.createElement('div');
         row.className = 'leave-name-item';
         row.textContent = n.label;
@@ -1484,6 +1488,12 @@ function paintMiniCalendarCells(){
         row.style.borderLeft = `3px solid ${n.color}`;
         wrap.appendChild(row);
       });
+      if (leaveNames.length > MAX_MINI_LEAVE) {
+        const more = document.createElement('div');
+        more.className = 'leave-name-item leave-name-more';
+        more.textContent = `+${leaveNames.length - MAX_MINI_LEAVE}`;
+        wrap.appendChild(more);
+      }
 
       frame.appendChild(wrap);
     }
@@ -1537,7 +1547,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   window._miniCal = new FullCalendar.Calendar(document.getElementById('month-cal'), {
     initialView: 'dayGridMonth',
     locale: 'ko',
-    height: 320,
+    // height: 'auto' → 달력이 내용(주 수·휴무명 배지)에 맞춰 늘어남.
+    //   고정 320px 이면 휴무명/환자수 배지가 많은 달에 내부 스크롤바가 생기며
+    //   셀이 잘려 "깨진" 것처럼 보였다 (셀 콘텐츠 301px > 가시영역 262px).
+    height: 'auto',
     headerToolbar: { left: 'prev', center: 'title', right: 'next' },
     fixedWeekCount: false,
     dayMaxEvents: 0,
@@ -2387,12 +2400,27 @@ async function loadTodayList(){
   }
 }
 
+// 예약 응답(extendedProps)에서 환자 표시정보 추출.
+//   PATIENTS_BY_ID 캐시를 1순위로, 서버가 응답에 embed 한 patient_name/chart 를 2순위로 사용.
+//   예약에서 신규 환자를 막 등록해 마스터 캐시 동기화 전이어도 '?' 대신 실제 이름이 나오도록.
+//   (예약표 day-board 는 이미 같은 폴백을 사용 — 금일목록/상세모달도 동일하게 맞춤)
+function apptPatientInfo(ep){
+  return PATIENTS_BY_ID.get(ep.patient_id) || {
+    id: ep.patient_id,
+    name: ep.patient_name || '',
+    chart_no: ep.patient_chart_no || '',
+    phone: ep.patient_phone || '',
+    birth_date: ep.patient_birth_date || '',
+    memo: ep.patient_memo || '',
+  };
+}
+
 function buildSimpleTodayHtml(items, isC){
   return items
     .sort((a,b) => new Date(a.start) - new Date(b.start))
     .map(a => {
       const ep = a.extendedProps;
-      const patient = PATIENTS_BY_ID.get(ep.patient_id);
+      const patient = apptPatientInfo(ep);
       const t = new Date(a.start);
       const time = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
       const stMark = {reserved:'📅', treated:'✓', approved:'✅', canceled:'❌'}[ep.status];
@@ -2470,7 +2498,7 @@ function buildGroupedHtml(items, isC){
 // 한 줄 형식: 09:00 박환자 1234 (도수6·충)
 function rowHtmlV2(a, isC){
   const ep = a.extendedProps;
-  const patient = PATIENTS_BY_ID.get(ep.patient_id);
+  const patient = apptPatientInfo(ep);
   const t = new Date(a.start);
   const time = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
   const stMark = {reserved:'📅', approved:'✅', canceled:'❌'}[ep.status] || '';
@@ -3162,7 +3190,7 @@ async function openAppt(aid){
   window._currentApptVersion = (typeof ep.version === 'number') ? ep.version : null;
   window._currentApptId = aid;
   const status = ep.status;
-  const patient = PATIENTS_BY_ID.get(ep.patient_id);
+  const patient = apptPatientInfo(ep);
 
   const codes = apptTreatmentCodes(ep);
   const assignMap = {};
