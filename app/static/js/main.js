@@ -908,7 +908,19 @@ function promptAdminLogin(){return new Promise(resolve=>{
 async function doAdminLogin(){
   const pw=document.getElementById('adm-pw').value;
   const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
-  if(!r.ok){document.getElementById('adm-err').textContent='비밀번호 오류';return;}
+  if(!r.ok){
+    // 서버가 주는 실제 사유를 그대로 노출.
+    //   특히 429(5회 실패 후 5분 잠금)를 "비밀번호 오류" 로 뭉뚱그리면,
+    //   올바른 비밀번호인데도 "틀렸다" 고 오인하게 됨 (잠금은 전 PC 공용).
+    let msg = '비밀번호가 올바르지 않습니다.';
+    try { const e = await r.json(); if(e && e.detail) msg = e.detail; } catch(_){}
+    if(r.status === 429 && !/잠[겼금]/.test(msg)){
+      msg = '로그인이 일시적으로 잠겼습니다. 잠시 후 다시 시도하세요.';
+    }
+    const el = document.getElementById('adm-err');
+    if(el) el.textContent = msg;
+    return;
+  }
   const d=await r.json(); setToken(d.token); closeModal();
   applyAdminUiState(true);
   if(d.is_default_password) alert('⚠️ 기본 비밀번호 사용 중');
