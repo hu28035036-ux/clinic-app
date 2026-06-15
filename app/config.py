@@ -1,14 +1,18 @@
 """애플리케이션 경로 및 설정 관리"""
-import os, sys, json, uuid, secrets
+import os, sys, json, uuid, secrets, re, threading, time
 from pathlib import Path
+
+# config.json 쓰기 직렬화용 락 (동시 save_config 가 서로의 임시파일을 덮어써
+# config.json 이 깨지는 것을 방지). 같은 프로세스 내 스레드 보호용.
+_CONFIG_WRITE_LOCK = threading.Lock()
 
 APP_NAME = "도수치료예약"
 
 # ─── 앱 버전 (배포 시 업데이트) ───
 # 이 값은 프로그램 폴더에 포함되어 교체됨. %APPDATA%\도수치료예약\ 은 유지.
 # 빌드 규칙: MAJOR.MINOR.PATCH (예: 1.2.3)
-APP_VERSION = "1.3.30"
-APP_BUILD_DATE = "2026-06-15"
+APP_VERSION = "1.3.31"
+APP_BUILD_DATE = "2026-06-16"
 
 def get_appdata_dir() -> Path:
     if sys.platform == "win32":
@@ -57,6 +61,28 @@ DEFAULT_CONFIG = {
     "sync_secret": "",
 }
 
+def _salvage_secrets(p: Path) -> dict:
+    """손상된 config.json 에서 보존할 핵심 값만 정규식으로 건져낸다.
+
+    JSON 파싱이 깨져도 관리자 비밀번호 해시 등은 평문 패턴으로 추출 가능.
+    기본값 재생성 시 이 값들을 덮어써 비번이 admin1234 로 초기화되는 사고를 막는다.
+    """
+    out: dict = {}
+    try:
+        raw = p.read_text(encoding="utf-8-sig", errors="ignore")
+    except Exception:
+        return out
+    for key in ("admin_password_hash", "node_id", "sync_secret",
+                "update_manifest_url", "update_last_seen_version"):
+        m = re.search(rf'"{key}"\s*:\s*"([^"\\]*)"', raw)
+        if m and m.group(1):
+            out[key] = m.group(1)
+    if "admin_password_hash" in out:
+        mb = re.search(r'"admin_password_changed"\s*:\s*(true|false)', raw)
+        out["admin_password_changed"] = (mb.group(1) == "true") if mb else True
+    return out
+
+
 def load_config() -> dict:
     p = get_config_path()
     if not p.exists():
@@ -70,7 +96,10 @@ def load_config() -> dict:
             raise ValueError("config.json 최상위가 객체가 아님")
     except Exception:
         # 손상된 config — 앱 시작 불가보다 기본값 재생성이 낫다.
-        # 원본은 .broken_<ts> 로 보존해 수동 복구(비번 해시 등) 여지를 남김.
+        # 원본은 .broken_<ts> 로 보존하고, 비번 해시 등 핵심 비밀값은 건져서 보존
+        #   (corrupted config → 기본값 재생성 시 비밀번호가 admin1234 로 초기화되어
+        #    변경한 관리자 비밀번호가 거부되던 문제 방지).
+        salvaged = _salvage_secrets(p)
         try:
             import time as _time
             p.rename(p.with_name(f"config.json.broken_{int(_time.time())}"))
@@ -79,6 +108,11 @@ def load_config() -> dict:
         cfg = dict(DEFAULT_CONFIG)
         cfg["node_id"] = uuid.uuid4().hex[:12]
         cfg["sync_secret"] = secrets.token_urlsafe(32)
+        cfg.update(salvaged)
+        if not cfg.get("node_id"):
+            cfg["node_id"] = uuid.uuid4().hex[:12]
+        if not cfg.get("sync_secret"):
+            cfg["sync_secret"] = secrets.token_urlsafe(32)
         save_config(cfg); return cfg
     for k, v in DEFAULT_CONFIG.items(): cfg.setdefault(k, v)
     # node_id / sync_secret 자동 채움 — 둘 중 하나라도 비어있으면 생성 후 저장.
@@ -94,13 +128,42 @@ def load_config() -> dict:
 def save_config(cfg: dict) -> None:
     # 원자적 저장: 임시 파일에 전부 쓴 뒤 os.replace 로 교체.
     # 직접 쓰다 정전되면 config.json 이 깨져 앱이 시작 불가가 됨 (비번 해시·node_id 소실).
+    #
+    # ⚠ 동시성: 요청 처리 스레드풀 + sync/backup 백그라운드 스레드가 동시에
+    #   save_config 를 호출할 수 있다. 과거엔 고정 tmp 이름("config.json.tmp")을
+    #   공유해 동시 쓰기가 서로를 덮어쓰며 config.json 이 깨졌고, 다음 load_config()
+    #   가 이를 손상으로 보고 기본값(비번 admin1234)으로 재생성 → 변경한 관리자
+    #   비밀번호가 "틀렸다"고 거부되는 간헐적 문제가 있었음.
+    #   → ① 프로세스/호출별 고유 tmp 이름  ② 쓰기 구간 Lock 으로 직렬화.
     p = get_config_path()
-    tmp = p.with_name(p.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, p)
+    tmp = p.with_name(f"{p.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+    with _CONFIG_WRITE_LOCK:
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            # Windows: 다른 스레드가 config.json 을 읽는 중(load_config open)이면
+            #   os.replace 가 PermissionError(WinError 5)로 실패할 수 있다.
+            #   읽기 핸들은 매우 짧으므로 잠깐 재시도하면 성공 — 실패 시 쓰기가
+            #   유실되면 비번 변경 등이 조용히 사라지므로 재시도로 보장.
+            last_err = None
+            for _ in range(20):
+                try:
+                    os.replace(tmp, p)
+                    last_err = None
+                    break
+                except PermissionError as e:
+                    last_err = e
+                    time.sleep(0.02)
+            if last_err is not None:
+                raise last_err
+        finally:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except Exception:
+                pass
 
 def resource_path(relative: str) -> Path:
     if hasattr(sys, "_MEIPASS"): return Path(sys._MEIPASS) / relative
