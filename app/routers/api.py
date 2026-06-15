@@ -362,16 +362,18 @@ def admin_status(x_admin_token: str = Header(default="")):
 
 
 @router.post("/admin/login")
-def admin_login(payload: dict):
+def admin_login(payload: dict, request: Request):
     pw = (payload or {}).get("password", "")
-    rem = auth.get_lock_remaining()
+    # 잠금은 PC(IP)별로 추적 — 한 PC 의 실패가 다른 PC 로그인을 막지 않음.
+    ck = request.client.host if (request and request.client) else None
+    rem = auth.get_lock_remaining(ck)
     if rem > 0:
         raise HTTPException(429, f"로그인이 잠겼습니다. {rem}초 후 다시 시도하세요.")
-    token = auth.login(pw)
+    token = auth.login(pw, ck)
     if not token:
-        rem2 = auth.get_lock_remaining()
+        rem2 = auth.get_lock_remaining(ck)
         if rem2 > 0:
-            raise HTTPException(429, f"5회 연속 실패. {rem2}초 동안 잠금됩니다.")
+            raise HTTPException(429, f"{auth.MAX_FAILURES}회 연속 실패. {rem2}초 동안 잠금됩니다.")
         raise HTTPException(401, "비밀번호가 올바르지 않습니다.")
     return {"token": token, "is_default_password": auth.is_default_password()}
 

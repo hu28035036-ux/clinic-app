@@ -10,9 +10,10 @@ is_default_password / login / get_lock_remaining / is_valid / logout) 를
 #         ``from app.core.security import ...`` 신규 경로도 동시 지원.
 #         실제 본체 이동은 19-x 후속 (TODO(19-x): wrapper 제거 + 본체 이동).
 
-# SAFETY: PBKDF2-SHA256 (200,000 iterations) + 인메모리 세션 토큰 + 5회 실패
-#         시 5분 잠금 정책 보존. ``set_admin_password`` 는 기존 세션 모두 무효화
-#         정책 보존. 비밀번호 원문 / 토큰은 로그/응답에 노출 ⊥.
+# SAFETY: PBKDF2-SHA256 (200,000 iterations) + 인메모리 세션 토큰 + 10회 실패
+#         시 1분 잠금 정책 (PC=IP 별 추적 — 한 PC 실패가 타 PC 미차단).
+#         ``set_admin_password`` 는 기존 세션 모두 무효화 정책 보존.
+#         비밀번호 원문 / 토큰은 로그/응답에 노출 ⊥.
 """
 from app.services.auth import (  # noqa: F401 — re-export
     DEFAULT_PASSWORD,

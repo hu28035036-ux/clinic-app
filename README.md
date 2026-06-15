@@ -5,7 +5,7 @@
 >
 > | 항목 | 값 |
 > |------|-----|
-> | 현재 버전 | **v1.3.32** |
+> | 현재 버전 | **v1.3.33** |
 > | 빌드일 | **2026-06-16** |
 > | 저장소 역할 | **소스 코드 (제품 본체)** |
 > | 배포 채널 | [`hu28035036-ux/clinic-updates`](https://github.com/hu28035036-ux/clinic-updates) (별도 저장소) |
@@ -148,6 +148,10 @@ node --check app\static\js\main.js
 - 절대 금지: 운영 DB를 테스트에 사용, DB 컬럼/API 경로 임의 변경, 요청 없는 대규모 리팩토링.
 
 ## 10. 현재 릴리스 상태
+
+### v1.3.33 · 2026-06-16
+- **로그인 잠금 PC별 분리 + 완화**: 잠금이 전역 스칼라(전 PC 공용)라 한 PC 실수로 전 직원이 잠기던 문제 → [auth.py](app/services/auth.py)의 `_failed_count`/`_lock_until`을 `client_key`(IP)별 dict 로 전환. 임계 `MAX_FAILURES 5→10`, `LOCK_DURATION_SEC 300→60`. API는 `request.client.host`를 키로 전달.
+- **검증**: PC별 분리·완화 회귀 4건, 전체 회귀 **2,248 passed**.
 
 ### v1.3.32 · 2026-06-16
 - **비밀번호 맞는데 "비밀번호 오류" 거부 수정 (핵심)**: 5회 실패 시 5분 잠금(전 PC 공용 in-memory) 동안 올바른 비밀번호도 [main.js `doAdminLogin`](app/static/js/main.js)이 모든 `!r.ok` 를 "비밀번호 오류"로 뭉뚱그려 표시 → 틀린 것으로 오인.
