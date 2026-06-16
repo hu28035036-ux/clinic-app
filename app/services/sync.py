@@ -349,8 +349,33 @@ _worker_thread = None
 _last_prune_at = 0.0  # SyncOp 정리 마지막 실행 시각 (epoch)
 
 
+def _run_pragma_optimize():
+    """쿼리 플래너 통계(sqlite_stat1) 갱신 — 데이터가 커질수록 인덱스 선택 정확도 유지.
+
+    PRAGMA optimize 는 통계가 오래된 테이블만 골라 ANALYZE 를 돌리므로 비용이
+    작다. 장기 운영 시 신규/기존 인덱스를 옵티마이저가 계속 활용하게 해준다.
+    데이터 자체는 변경하지 않는다.
+    """
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        db.execute(text("PRAGMA optimize"))
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 def run_daily_maintenance():
-    """일일 DB 유지보수 — SyncOp 보존 기간 정리 + audit_log 5년 보존 정리.
+    """일일 DB 유지보수 — 무한 누적 방지(보존 정책) + 통계 갱신.
+
+    작업:
+      1. SyncOp 보존 기간(기본 180일) 정리.
+      2. audit_log 5년 보존 정리 (사용자 §4-A).
+      3. AI 사용 로그 6개월 보존 정리 (사용자 §4-A).
+      4. PRAGMA optimize — 쿼리 플래너 통계 갱신.
 
     각 작업은 독립 세션/예외 격리 — 한쪽이 실패해도 다른 쪽은 진행.
     """
@@ -372,6 +397,20 @@ def run_daily_maintenance():
         db.rollback()
     finally:
         db.close()
+
+    # AI 사용 로그 6개월 보존 정책 (modules/privacy/retention.py, 사용자 §4-A 결정).
+    # audit_log 와 마찬가지로 헬퍼만 있고 호출처가 없어 무한 누적되던 것을 자동화.
+    db = SessionLocal()
+    try:
+        from ..modules.privacy.retention import delete_old_ai_logs
+        delete_old_ai_logs(db)
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+    # 보존 정리로 행이 삭제된 뒤 통계를 갱신해 옵티마이저가 최신 분포를 따르게 함.
+    _run_pragma_optimize()
 
 
 def _prune_if_due():

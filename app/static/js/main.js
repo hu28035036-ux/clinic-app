@@ -3870,9 +3870,7 @@ async function pmSearch(force=false){
   if(stale){
     _pmState = { q, type, hits: [], total: 0, offset: 0 };
   }
-  if(!Object.keys(LAST_APPTS).length){
-    try { LAST_APPTS = await (await fetch('/api/patients/last-appointments')).json(); } catch(e){}
-  }
+  // 마지막 예약은 이제 검색/최근목록 응답에 담겨 오므로 전체 맵을 미리 받지 않는다.
   if(!q){
     // 검색 전: 비어있는 안내 화면 (목록을 미리 그리지 않음)
     _pmRenderEmpty();
@@ -3908,11 +3906,15 @@ async function _pmFetchPage(){
   }
 }
 
-function _pmRenderEmpty(){
+function _pmRenderEmpty(skipValidate){
   const recent = _pmLoadRecentPatients();
   if(recent.length){
+    // 최근목록은 브라우저 localStorage 기반이라 다른 PC/동기화로 삭제된 환자가
+    // 남아 있을 수 있다 → 서버에 존재 여부를 확인해 삭제된 환자를 정리한다.
+    // (skipValidate: 검증 후 재렌더 시 무한 반복 방지)
+    if(!skipValidate) _pmValidateRecent(recent.map(p => p.id));
     const rowsHtml = recent.map(p => {
-      const last = LAST_APPTS[p.id];
+      const last = p.last_visit;
       const lastStr = last ? fmtDate24(new Date(last)) : '-';
       const isOpen = (PM_OPEN_PID === p.id);
       const gtag = (p.gender === 'M') ? '<span class="gender-tag m">M</span>'
@@ -3961,6 +3963,34 @@ function _pmRenderEmpty(){
     </div>`;
 }
 
+// 최근목록의 환자가 서버에 아직 존재하는지 확인하고, 삭제된 환자는 정리한다.
+// (다른 PC/동기화로 삭제된 환자가 localStorage 최근목록에 남는 버그 방지)
+async function _pmValidateRecent(ids){
+  if(!ids || !ids.length) return;
+  let d;
+  try {
+    const r = await fetch('/api/patients/by-ids', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    if(!r.ok) return;
+    d = await r.json();
+  } catch(e){ return; }
+  const items = d.items || [];
+  const alive = new Set(items.map(p => p.id));
+  items.forEach(_upsertPatientCache);   // last_visit 등 최신값 반영
+  ids.forEach(id => {
+    if(!alive.has(id)){                  // 서버에 없음 = 삭제된 환자
+      if(PM_OPEN_PID === id) PM_OPEN_PID = null;
+      _removePatientFromClientState(id); // 캐시·최근목록·검색상태에서 제거
+    }
+  });
+  // 여전히 '검색 전 빈 화면'이면 정리된 목록 + 최신 마지막예약으로 다시 그림.
+  // skipValidate=true 로 재검증 루프를 막는다.
+  if(!_pmState.q) _pmRenderEmpty(true);
+}
+
 function _pmRender(){
   const st = _pmState;
   if(!st.q){ _pmRenderEmpty(); return; }
@@ -3968,7 +3998,7 @@ function _pmRender(){
   const totalHits = st.total;
 
   const rowsHtml = list.map(p => {
-    const last = LAST_APPTS[p.id];
+    const last = p.last_visit;
     const lastStr = last ? fmtDate24(new Date(last)) : '-';
     const isOpen = (PM_OPEN_PID === p.id);
     const gtag = (p.gender === 'M') ? '<span class="gender-tag m">M</span>'

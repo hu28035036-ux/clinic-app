@@ -1246,8 +1246,13 @@ def treatment_references(tid: str, db: Session = Depends(get_db),
     t = db.query(models.Treatment).filter_by(id=tid).first()
     if not t:
         raise HTTPException(404, "치료항목 없음")
-    # treatment_codes JSON에 t.code 가 들어있는 모든 예약
-    appts = db.query(models.Appointment).all()
+    # treatment_codes JSON에 t.code 가 들어있는 모든 예약.
+    # 전체 예약을 Python 으로 로드하면 수년치(수십만 행)에서 메모리/시간이 폭증하므로
+    # SQL LIKE 로 후보만 좁힌 뒤 JSON 파싱으로 정확히 검증한다 (substring 오탐 방지).
+    like = f'%"{t.code}"%'
+    appts = (db.query(models.Appointment)
+             .filter(models.Appointment.treatment_codes.like(like))
+             .all())
     refs = []
     for a in appts:
         codes = _parse_codes(a.treatment_codes or "[]")
@@ -1269,8 +1274,12 @@ def delete_treatment(tid: str, db: Session = Depends(get_db),
     t = db.query(models.Treatment).filter_by(id=tid).first()
     if not t:
         raise HTTPException(404, "치료항목 없음")
-    # 참조 예약 검증
-    appts = db.query(models.Appointment).all()
+    # 참조 예약 검증 — LIKE 로 후보만 좁힌 뒤 JSON 으로 정확히 카운트
+    # (전체 예약 로드 회피, substring 오탐 방지).
+    like = f'%"{t.code}"%'
+    appts = (db.query(models.Appointment)
+             .filter(models.Appointment.treatment_codes.like(like))
+             .all())
     refs_count = 0
     for a in appts:
         codes = _parse_codes(a.treatment_codes or "[]")
@@ -1826,6 +1835,31 @@ def list_patients(light: int = 0, db: Session = Depends(get_db)):
     return _serialize_patients_bulk(rows, db)
 
 
+def _last_visits_for(db: Session, patient_ids) -> dict:
+    """주어진 환자들의 마지막(취소 제외) 예약 시각(ISO) 맵.
+
+    화면에 보이는 환자(검색 1페이지 / 최근목록)만 대상으로 계산한다 — 전체
+    예약을 GROUP BY 하지 않으므로, appointments(patient_id, start_at) 인덱스를
+    타서 데이터가 수년치 쌓여도 응답 속도가 일정하게 유지된다.
+    """
+    ids = [pid for pid in (patient_ids or []) if pid]
+    if not ids:
+        return {}
+    out: dict = {}
+    # SQLite IN 파라미터 한계(~999) 대비 청크 분할.
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        rows = (db.query(models.Appointment.patient_id,
+                         func.max(models.Appointment.start_at))
+                .filter(models.Appointment.patient_id.in_(chunk),
+                        models.Appointment.status != "canceled")
+                .group_by(models.Appointment.patient_id)
+                .all())
+        for pid, last in rows:
+            out[pid] = last.isoformat() if last else None
+    return out
+
+
 @router.get("/patients/search")
 def search_patients(q: str = "", field: str = "all", limit: int = 20, offset: int = 0,
                     db: Session = Depends(get_db)):
@@ -1859,11 +1893,14 @@ def search_patients(q: str = "", field: str = "all", limit: int = 20, offset: in
             ))
     total_matched = qry.count() if q else db.query(models.Patient).count()
     rows = qry.order_by(models.Patient.name).offset(offset).limit(limit).all()
+    # 마지막 예약은 '이 페이지에 표시되는 환자'만 계산 (전체 환자 GROUP BY 회피).
+    last_visits = _last_visits_for(db, [p.id for p in rows])
     items = [
         {"id": p.id, "name": p.name, "chart_no": p.chart_no,
          "phone": p.phone, "birth_date": p.birth_date,
          "gender": getattr(p, "gender", "") or "",
-         "memo": p.memo or ""}
+         "memo": p.memo or "",
+         "last_visit": last_visits.get(p.id)}
         for p in rows
     ]
     return {
@@ -1871,6 +1908,33 @@ def search_patients(q: str = "", field: str = "all", limit: int = 20, offset: in
         "limit": limit, "offset": offset, "q": q,
         "has_more": (offset + len(items)) < total_matched,
     }
+
+
+@router.post("/patients/by-ids")
+def patients_by_ids(body: dict = Body(default={}), db: Session = Depends(get_db)):
+    """주어진 ID 중 **현재 DB 에 존재하는** 환자만 반환 (각 last_visit 포함).
+
+    용도: 환자관리 '최근 검색 환자' 목록 검증. 최근목록은 브라우저 localStorage
+    에 저장되므로, 다른 PC / 동기화로 이미 삭제된 환자가 그 브라우저에는 계속
+    남아 보이는 버그가 있었다. 프론트는 이 응답에 **없는 ID = 삭제됨**으로 보고
+    최근목록에서 제거한다.
+    """
+    raw = body.get("ids") if isinstance(body, dict) else None
+    # 최근목록은 최대 10개 — 여유를 두고 50개로 cap (오남용 방지).
+    ids = [str(x) for x in (raw or []) if x][:50]
+    if not ids:
+        return {"items": []}
+    rows = db.query(models.Patient).filter(models.Patient.id.in_(ids)).all()
+    last_visits = _last_visits_for(db, [p.id for p in rows])
+    items = [
+        {"id": p.id, "name": p.name, "chart_no": p.chart_no,
+         "phone": p.phone, "birth_date": p.birth_date,
+         "gender": getattr(p, "gender", "") or "",
+         "memo": p.memo or "",
+         "last_visit": last_visits.get(p.id)}
+        for p in rows
+    ]
+    return {"items": items}
 
 
 @router.get("/patients/{pid}")
@@ -2062,8 +2126,13 @@ def patient_history(pid: str, offset: int = 0, limit: int = 30,
     - 하위 호환을 위해 기존 items (평면화된 예약 리스트) 도 함께 반환.
     """
     from collections import OrderedDict
-    # approved 전량을 최신순으로 불러와 날짜별 묶기
+
+    from sqlalchemy.orm import selectinload
+    # approved 전량을 최신순으로 불러와 날짜별 묶기.
+    # assignments 를 selectinload 로 일괄 로드 — 장기 환자(수백 방문)에서
+    # 예약마다 assignments 를 lazy 로 꺼내던 N+1 쿼리를 1회로 줄인다.
     rows_all = (db.query(models.Appointment)
+                .options(selectinload(models.Appointment.assignments))
                 .filter(models.Appointment.patient_id == pid,
                         models.Appointment.status == "approved")
                 .order_by(models.Appointment.start_at.desc())
