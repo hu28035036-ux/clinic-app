@@ -1197,11 +1197,16 @@ function switchTherapistTab(name, btn){
   document.querySelectorAll('#tab-therapists .sub-tab').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('#tab-therapists .admin-pane').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('therapist-' + name).classList.add('active');
+  // 아침당직/야간당직은 같은 패널(therapist-duty)을 유형만 바꿔 공유
+  const paneName = name.startsWith('duty') ? 'duty' : name;
+  document.getElementById('therapist-' + paneName).classList.add('active');
 
   if(name === 'manage') loadTherapistsSheet();
   if(name === 'leave') loadLeaveCalendar();
-  if(name === 'duty') loadDutyCalendar();
+  if(name === 'duty-morning' || name === 'duty-night'){
+    _dutyType = (name === 'duty-morning') ? 'morning' : 'night';
+    loadDutyCalendar();
+  }
 }
 
 async function openLeaveModal(dateStr){
@@ -1429,11 +1434,18 @@ async function saveLeaveBulkAdd(){
 }
 
 // ════════════════ 당직 관리 (EmployeeDuty) ════════════════
-// 휴무일 관리와 같은 캘린더 UX 이나 유형/종류 없이 직원 + 날짜 + 메모만.
+// 휴무일 관리와 같은 캘린더 UX. duty_type 으로 아침당직(morning)/야간당직(night)
+// 분리 — 두 하위탭이 같은 패널(therapist-duty)을 공유하고 _dutyType 만 바꿔 재렌더.
 // 정보성 기능 — 예약 차단/통계/day-board 와 무관 (당직 캘린더만 갱신).
 
-async function loadEmployeeDuties(date=''){
-  const url = date ? `/api/employee-duties?date=${date}` : '/api/employee-duties';
+const DUTY_LABEL = { morning: '아침당직', night: '야간당직' };
+let _dutyType = 'night';   // 현재 하위탭의 당직 유형 (기존 '당직 관리' = 야간)
+
+async function loadEmployeeDuties(date='', dutyType=''){
+  const qs = new URLSearchParams();
+  if(date) qs.set('date', date);
+  if(dutyType) qs.set('duty_type', dutyType);
+  const url = '/api/employee-duties' + (qs.toString() ? `?${qs}` : '');
   return await (await fetch(url)).json();
 }
 
@@ -1447,6 +1459,12 @@ async function loadDutyCalendar(){
   _dutyAll = await loadEmployeeDuties();
   try { _dutyCats = await (await fetch('/api/employee-categories?active=true')).json(); }
   catch(e){ _dutyCats = []; }
+
+  // 하위탭(아침/야간)에 맞춰 패널 제목·추가버튼 라벨 갱신 (패널 공유)
+  const titleEl = document.getElementById('duty-title');
+  if(titleEl) titleEl.textContent = DUTY_LABEL[_dutyType];
+  const addBtn = document.getElementById('duty-add-btn');
+  if(addBtn) addBtn.textContent = `➕ ${DUTY_LABEL[_dutyType]} 추가`;
 
   const el = document.getElementById('duty-calendar');
   if(!window._dutyCal){
@@ -1471,14 +1489,17 @@ async function loadDutyCalendar(){
     window._dutyCal.render();
   }
 
-  // 필터에 없는 과가 선택돼 있으면 (비활성화/삭제 등) 전체로 리셋
-  if(_dutyCatFilter && !_dutyCats.some(c => c.id === _dutyCatFilter)) _dutyCatFilter = '';
+  // '전체' 보기 없음 — 항상 특정 과 하나를 선택. 미선택/삭제·비활성 과면 첫 과로.
+  const activeDutyCats = (_dutyCats || []).filter(c => c.active !== false);
+  if(!_dutyCatFilter || !activeDutyCats.some(c => c.id === _dutyCatFilter)){
+    _dutyCatFilter = activeDutyCats.length ? activeDutyCats[0].id : '';
+  }
 
   renderDutyCategoryFilter();
   renderDutyEvents();
 }
 
-// 캘린더 상단 과 필터 드롭다운 렌더 ('전체' + 활성 과들).
+// 캘린더 상단 과 필터 드롭다운 렌더 (활성 과들만 — '전체' 보기 없음).
 function renderDutyCategoryFilter(){
   const box = document.getElementById('duty-cat-filter');
   if(!box) return;
@@ -1488,7 +1509,7 @@ function renderDutyCategoryFilter(){
   box.innerHTML =
     `<label class="duty-cat-label">과 ` +
     `<select id="duty-cat-select" onchange="onDutyCategoryPick(this.value)">` +
-    opt('', '전체') + cats.map(c => opt(c.id, c.name)).join('') +
+    cats.map(c => opt(c.id, c.name)).join('') +
     `</select></label>`;
 }
 
@@ -1499,11 +1520,13 @@ function onDutyCategoryPick(catId){
 }
 
 // 선택한 과(_dutyCatFilter)에 속한 직원의 당직만 캘린더에 렌더 + 요약 갱신.
+// 현재 하위탭 유형(_dutyType)의 당직만 표시.
 function renderDutyEvents(){
   if(!window._dutyCal) return;
 
   const grouped = {};
   _dutyAll.forEach(x => {
+    if((x.duty_type || 'night') !== _dutyType) return;  // 아침/야간 필터
     const t = EMPLOYEES_ALL.find(tt => tt.id === x.employee_id);
     if(!t) return;
     if(_dutyCatFilter && t.category_id !== _dutyCatFilter) return;  // 과 필터
@@ -1539,7 +1562,7 @@ function renderDutyEvents(){
     ? ((_dutyCats.find(c => c.id === _dutyCatFilter) || {}).name || '')
     : '';
   document.getElementById('duty-summary').innerHTML =
-    '<p class="muted">' + (catName ? catName + ' ' : '') + '당직: ' + shown + '건</p>';
+    '<p class="muted">' + (catName ? catName + ' ' : '') + DUTY_LABEL[_dutyType] + ': ' + shown + '건</p>';
 
   renderDutyMonthlySummary();
 }
@@ -1557,9 +1580,11 @@ function renderDutyMonthlySummary(){
   const ym = cs.getFullYear() + '-' + String(cs.getMonth() + 1).padStart(2, '0');
   const monthLabel = cs.getFullYear() + '년 ' + (cs.getMonth() + 1) + '월';
 
-  // 이번 달 직원별 당직 횟수 (duty_date 는 'YYYY-MM-DD', (직원,날짜) 유니크라 행=일수).
+  // 이번 달 직원별 당직 횟수 — 현재 하위탭 유형(_dutyType)만 집계
+  // (duty_date 는 'YYYY-MM-DD', (직원,날짜,유형) 유니크라 행=일수).
   const countMap = {};
   _dutyAll.forEach(x => {
+    if((x.duty_type || 'night') !== _dutyType) return;
     if((x.duty_date || '').slice(0, 7) !== ym) return;
     countMap[x.employee_id] = (countMap[x.employee_id] || 0) + 1;
   });
@@ -1612,13 +1637,13 @@ function renderDutyMonthlySummary(){
   }
 
   box.innerHTML =
-    '<div class="duty-summary-title">' + escapeHtml(monthLabel) + ' 과별 당직 횟수</div>' +
-    (html || '<p class="muted" style="margin:0">이번 달 당직 기록이 없습니다.</p>');
+    '<div class="duty-summary-title">' + escapeHtml(monthLabel) + ' 과별 ' + DUTY_LABEL[_dutyType] + ' 횟수</div>' +
+    (html || '<p class="muted" style="margin:0">이번 달 ' + DUTY_LABEL[_dutyType] + ' 기록이 없습니다.</p>');
 }
 
 async function openDutyModal(dateStr){
   await loadMasters();
-  const duties = await loadEmployeeDuties(dateStr);
+  const duties = await loadEmployeeDuties(dateStr, _dutyType);
   const memo = duties[0]?.memo || '';
   const onDuty = new Set(duties.map(x => x.employee_id));
 
@@ -1637,7 +1662,7 @@ async function openDutyModal(dateStr){
   `).join('');
 
   showModal(`
-    <h3>🗓️ ${dateStr} 당직 직원 설정</h3>
+    <h3>🗓️ ${dateStr} ${DUTY_LABEL[_dutyType]} 직원 설정</h3>
     <div style="max-height:320px;overflow-y:auto;border:1px solid var(--sky-100);padding:10px;border-radius:8px;background:#fff">
       ${rows || '<p class="muted">직원 없음</p>'}
     </div>
@@ -1657,6 +1682,7 @@ async function saveDutyDay(dateStr){
 
   const body = {
     duty_date: dateStr,
+    duty_type: _dutyType,
     items: items,
     memo: _v('duty-memo') || ''
   };
@@ -1668,7 +1694,7 @@ async function saveDutyDay(dateStr){
   });
 
   if(!r.ok){
-    alert('당직 저장 실패\n' + await _apiErrorText(r));
+    alert(`${DUTY_LABEL[_dutyType]} 저장 실패\n` + await _apiErrorText(r));
     return;
   }
 
@@ -1695,14 +1721,14 @@ async function openDutyBulkAddModal(){
     .join('');
 
   showModal(`
-    <h3>➕ 당직 추가</h3>
+    <h3>➕ ${DUTY_LABEL[_dutyType]} 추가</h3>
     <label>직원
       <select id="duty-bulk-emp">
         <option value="">직원 선택…</option>
         ${empOpts}
       </select>
     </label>
-    <p class="muted" style="margin:10px 0 4px">달력에서 당직 날짜를 클릭해 여러 날짜를 선택하세요.</p>
+    <p class="muted" style="margin:10px 0 4px">달력에서 ${DUTY_LABEL[_dutyType]} 날짜를 클릭해 여러 날짜를 선택하세요.</p>
     <div id="duty-bulk-cal" style="margin-bottom:12px"></div>
     <div id="duty-bulk-list" class="leave-bulk-list"></div>
     <label>메모
@@ -1773,18 +1799,18 @@ async function saveDutyBulkAdd(){
   const r = await fetch('/api/employee-duties/bulk-add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items, memo: _v('duty-bulk-memo') || '' }),
+    body: JSON.stringify({ items, duty_type: _dutyType, memo: _v('duty-bulk-memo') || '' }),
   });
 
   if(!r.ok){
-    alert('당직 등록 실패\n' + await _apiErrorText(r));
+    alert(`${DUTY_LABEL[_dutyType]} 등록 실패\n` + await _apiErrorText(r));
     return;
   }
   const res = await r.json().catch(() => ({}));
 
   closeModal();
   await loadDutyCalendar();
-  alert(`✓ 당직 ${res.count || items.length}건이 등록되었습니다.`);
+  alert(`✓ ${DUTY_LABEL[_dutyType]} ${res.count || items.length}건이 등록되었습니다.`);
 }
 
 // 서버 에러 응답에서 사용자에게 보여줄 짧은 텍스트 추출.

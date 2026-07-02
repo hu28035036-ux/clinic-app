@@ -155,15 +155,20 @@ class EmployeeLeave(Base):
 
 
 class EmployeeDuty(Base):
-    """직원 당직 (on-call duty). 휴무(EmployeeLeave)와 같은 캘린더 관리이나
-    유형/종류 구분 없이 직원 + 날짜 + 메모만. 정보성 — 예약 차단/통계 무관."""
+    """직원 당직 (on-call duty). 휴무(EmployeeLeave)와 같은 캘린더 관리.
+    duty_type 으로 아침당직(morning) / 야간당직(night) 분리 — 같은 직원이
+    같은 날 둘 다 설 수 있음. 정보성 — 예약 차단/통계 무관."""
     __tablename__ = "employee_duties"
     __table_args__ = (
-        UniqueConstraint("employee_id", "duty_date", name="uq_employee_duty_date"),
+        UniqueConstraint(
+            "employee_id", "duty_date", "duty_type",
+            name="uq_employee_duty_date_type",
+        ),
     )
     id = Column(String(32), primary_key=True, default=uid)
     employee_id = Column(String(32), ForeignKey("employees.id"), nullable=False, index=True)
     duty_date = Column(String(10), nullable=False, index=True)
+    duty_type = Column(String(10), nullable=False, default="night", server_default="night")  # morning | night
     memo = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     employee = relationship("Employee")

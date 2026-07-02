@@ -62,7 +62,8 @@
         <div class="nav-accordion">
           <button class="nav-sub" data-target="therapist-subtab-manage" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-manage')">직원 관리</button>
           <button class="nav-sub" data-target="therapist-subtab-leave" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-leave')">휴무일 관리</button>
-          <button class="nav-sub" data-target="therapist-subtab-duty" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-duty')">당직 관리</button>
+          <button class="nav-sub" data-target="therapist-subtab-duty-morning" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-duty-morning')">아침당직</button>
+          <button class="nav-sub" data-target="therapist-subtab-duty-night" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-duty-night')">야간당직</button>
         </div>
       </div>
       <div class="nav-group">
@@ -272,7 +273,8 @@
   <div class="sub-tabs">
     <button id="therapist-subtab-manage" class="sub-tab active" onclick="switchTherapistTab('manage', this)">◇ 직원 관리</button>
     <button id="therapist-subtab-leave" class="sub-tab" onclick="switchTherapistTab('leave', this)">▤ 휴무일 관리</button>
-    <button id="therapist-subtab-duty" class="sub-tab" onclick="switchTherapistTab('duty', this)">★ 당직 관리</button>
+    <button id="therapist-subtab-duty-morning" class="sub-tab" onclick="switchTherapistTab('duty-morning', this)">아침당직</button>
+    <button id="therapist-subtab-duty-night" class="sub-tab" onclick="switchTherapistTab('duty-night', this)">야간당직</button>
   </div>
 
   <div id="therapist-manage" class="admin-pane active">
@@ -357,10 +359,10 @@
   <div id="therapist-duty" class="admin-pane">
     <div class="sheet">
       <div class="sheet-head">
-        <h2>★ 당직 관리</h2>
+        <h2 id="duty-title">야간당직</h2>
         <div class="sheet-toolbar">
           <span class="muted">날짜를 클릭해서 당직 직원을 설정하세요</span>
-          <button class="primary" onclick="openDutyBulkAddModal()">➕ 당직 추가</button>
+          <button id="duty-add-btn" class="primary" onclick="openDutyBulkAddModal()">➕ 당직 추가</button>
         </div>
       </div>
       <div id="duty-cat-filter" class="duty-cat-filter"></div>

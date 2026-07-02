@@ -76,6 +76,7 @@ class EmployeeLeaveOut(EmployeeLeaveIn):
 class EmployeeDutyIn(BaseModel):
     employee_id: str
     duty_date: str
+    duty_type: str = "night"  # morning | night
     memo: str = ""
 
 

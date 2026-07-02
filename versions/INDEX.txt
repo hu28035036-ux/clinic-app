@@ -2,6 +2,24 @@
   도수치료예약 - 배포 버전 기록
 ================================================================
 
+[ v1.3.51 ]  2026-07-03  (당직 관리 아침/야간 분리 — duty_type + m043)
+
+  주요 변경
+  - [신규] 직원 탭 "당직 관리" → "아침당직"/"야간당직" 서브탭 분리 (main.html nav 2버튼,
+    패널 #therapist-duty 공유 — main.js _dutyType 전환 + DUTY_LABEL, 제목/추가버튼/모달/
+    요약 라벨 동적). 기존 데이터는 전부 night 로 이전.
+  - [DB] m043_duty_type: employee_duties.duty_type('morning'|'night', 기본 night) 추가.
+    UNIQUE (employee_id,duty_date) → (employee_id,duty_date,duty_type) — SQLite inline
+    제약이라 copy-rename 재구성(전 행 id 포함 복사·트랜잭션·멱등). m039 의 옛 2컬럼
+    UNIQUE INDEX 는 DROP INDEX 로 제거 (신규 DB 에서 m039 가 재생성하는 경로 대응).
+  - [API] GET /employee-duties?duty_type= 필터, upsert 키에 duty_type, bulk-set 은
+    (날짜,유형) 범위만 교체 — 아침 저장이 야간을 안 건드림, bulk-add payload duty_type,
+    오타 유형 400 (_duty_type_or_400).
+  - [변경] 당직 캘린더 과 필터 '전체' 옵션 제거 → 활성 과만, 열면 첫 과 자동 선택.
+    주의: 과 미배정 직원의 당직은 화면에 안 보이게 됨 (사용자 인지).
+  - 검증: 전체 2,317 passed (test_employee_duties 17건 — 유형 독립/upsert 스코프/
+    bulk-set 스코프/m043 구스키마 이전·멱등 포함) + 격리 브라우저 E2E + ruff + node.
+
 [ v1.3.50 ]  2026-06-29  (화면 정리 — 잔여 파란 chrome→틸 + 직원폼 권한 override 제거 + 메인·원무과/모드/노드 표시 제거)
 
   주요 변경 (화면 = main.html/app.css/main.js 만, 백엔드·DB·마이그 무변경)

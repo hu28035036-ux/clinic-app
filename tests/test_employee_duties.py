@@ -1,6 +1,7 @@
 """당직 관리 (EmployeeDuty) API 계약 + 동작 테스트.
 
-휴무(EmployeeLeave)와 같은 캘린더 관리이나 유형/종류 없이 직원 + 날짜 + 메모만.
+휴무(EmployeeLeave)와 같은 캘린더 관리. duty_type 으로 아침당직(morning) /
+야간당직(night) 분리 — 같은 직원이 같은 날 둘 다 가능, 유형별 독립 관리.
 격리 DB(conftest) + 세션 시드 치료사 사용. 테스트마다 고유 날짜로 상호 간섭 차단.
 """
 from __future__ import annotations
@@ -16,8 +17,11 @@ def _emp(name="김테스트치료사") -> str:
 
 
 def _clear(client, date: str) -> None:
-    """해당 날짜의 모든 당직 제거 (bulk-set 빈 items)."""
-    client.post("/api/employee-duties/bulk-set", json={"duty_date": date, "items": []})
+    """해당 날짜의 모든 당직 제거 (아침/야간 각각 bulk-set 빈 items)."""
+    for t in ("morning", "night"):
+        client.post("/api/employee-duties/bulk-set", json={
+            "duty_date": date, "duty_type": t, "items": [],
+        })
 
 
 def _duties_on(client, date: str) -> list:
@@ -55,7 +59,9 @@ def test_response_keys_contract(client):
     client.post("/api/employee-duties", json={"employee_id": _emp(), "duty_date": date})
     rows = _duties_on(client, date)
     assert rows, "당직 1건 이상이어야 함"
-    assert set(rows[0].keys()) == {"id", "employee_id", "duty_date", "memo"}
+    assert set(rows[0].keys()) == {"id", "employee_id", "duty_date", "duty_type", "memo"}
+    # duty_type 미지정 생성은 야간(night) 기본 — 기존 '당직 관리' 데이터 호환
+    assert rows[0]["duty_type"] == "night"
 
 
 # ──────────────────────── 2. upsert (UNIQUE 1건 유지) ────────────────────────
@@ -180,4 +186,172 @@ def test_model_has_unique_constraint():
     names = {
         c.name for c in models.EmployeeDuty.__table__.constraints if c.name
     }
-    assert "uq_employee_duty_date" in names
+    assert "uq_employee_duty_date_type" in names
+
+
+# ──────────────────────── 7. 아침당직 / 야간당직 분리 (duty_type) ────────────────────────
+
+
+def test_morning_and_night_are_independent(client):
+    """같은 직원이 같은 날 아침당직 + 야간당직 둘 다 가능, 유형별 필터 동작."""
+    date = _BASE + "10"
+    _clear(client, date)
+    emp = _emp()
+
+    r1 = client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "morning", "memo": "아침",
+    })
+    r2 = client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "night", "memo": "야간",
+    })
+    assert r1.status_code == 200 and r1.json()["duty_type"] == "morning"
+    assert r2.status_code == 200 and r2.json()["duty_type"] == "night"
+
+    assert len(_duties_on(client, date)) == 2
+
+    for t, memo in (("morning", "아침"), ("night", "야간")):
+        r = client.get(f"/api/employee-duties?date={date}&duty_type={t}")
+        assert r.status_code == 200
+        rows = r.json()
+        assert len(rows) == 1
+        assert rows[0]["duty_type"] == t
+        assert rows[0]["memo"] == memo
+
+
+def test_upsert_scoped_by_duty_type(client):
+    """upsert 키는 (직원, 날짜, 유형) — 같은 유형만 갱신, 다른 유형은 별도 행."""
+    date = _BASE + "11"
+    _clear(client, date)
+    emp = _emp()
+
+    client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "morning", "memo": "v1",
+    })
+    client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "morning", "memo": "v2",
+    })
+
+    rows = client.get(f"/api/employee-duties?date={date}&duty_type=morning").json()
+    assert len(rows) == 1
+    assert rows[0]["memo"] == "v2"
+
+
+def test_bulk_set_scoped_by_duty_type(client):
+    """아침당직 bulk-set 이 같은 날 야간당직을 삭제하지 않아야 함 (유형별 독립)."""
+    date = _BASE + "12"
+    _clear(client, date)
+    emp_a = _emp("김테스트치료사")
+    emp_b = _emp("이테스트치료사")
+
+    client.post("/api/employee-duties", json={
+        "employee_id": emp_a, "duty_date": date, "duty_type": "night",
+    })
+    r = client.post("/api/employee-duties/bulk-set", json={
+        "duty_date": date, "duty_type": "morning",
+        "items": [{"employee_id": emp_b}],
+    })
+    assert r.status_code == 200
+
+    night = client.get(f"/api/employee-duties?date={date}&duty_type=night").json()
+    morning = client.get(f"/api/employee-duties?date={date}&duty_type=morning").json()
+    assert [x["employee_id"] for x in night] == [emp_a]
+    assert [x["employee_id"] for x in morning] == [emp_b]
+
+    # 아침당직을 빈 목록으로 교체해도 야간은 그대로
+    client.post("/api/employee-duties/bulk-set", json={
+        "duty_date": date, "duty_type": "morning", "items": [],
+    })
+    assert client.get(f"/api/employee-duties?date={date}&duty_type=morning").json() == []
+    assert len(client.get(f"/api/employee-duties?date={date}&duty_type=night").json()) == 1
+
+
+def test_bulk_add_carries_duty_type(client):
+    date = _BASE + "13"
+    _clear(client, date)
+    emp = _emp()
+
+    r = client.post("/api/employee-duties/bulk-add", json={
+        "items": [{"employee_id": emp, "duty_date": date}],
+        "duty_type": "morning",
+    })
+    assert r.status_code == 200
+    rows = _duties_on(client, date)
+    assert len(rows) == 1
+    assert rows[0]["duty_type"] == "morning"
+
+
+def test_invalid_duty_type_rejected(client):
+    date = _BASE + "14"
+    emp = _emp()
+
+    r = client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "afternoon",
+    })
+    assert r.status_code == 400
+
+    r = client.post("/api/employee-duties/bulk-set", json={
+        "duty_date": date, "duty_type": "afternoon", "items": [],
+    })
+    assert r.status_code == 400
+
+    r = client.get(f"/api/employee-duties?date={date}&duty_type=afternoon")
+    assert r.status_code == 400
+
+
+# ──────────────────────── 8. m043 마이그레이션 (구 스키마 → duty_type) ────────────────────────
+
+
+def test_m043_backfills_night_and_relaxes_unique():
+    """구 스키마(2컬럼 UNIQUE) DB 에 m043 적용 시:
+    기존 행 duty_type='night' 이전 + 아침/야간 동시 등록 가능 + 멱등."""
+    import sqlite3
+
+    import pytest
+
+    from app.migrations import m043_duty_type as m043
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE employee_duties ("
+        " id VARCHAR(32) PRIMARY KEY,"
+        " employee_id VARCHAR(32) NOT NULL,"
+        " duty_date VARCHAR(10) NOT NULL,"
+        " memo TEXT DEFAULT '',"
+        " created_at DATETIME,"
+        " CONSTRAINT uq_employee_duty_date UNIQUE (employee_id, duty_date)"
+        ")"
+    )
+    # m039 가 만들던 옛 2컬럼 UNIQUE INDEX 재현 (신규 DB 경로)
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_duty_date "
+        "ON employee_duties (employee_id, duty_date)"
+    )
+    conn.execute(
+        "INSERT INTO employee_duties (id, employee_id, duty_date, memo)"
+        " VALUES ('d1', 'e1', '2099-01-01', '기존당직')"
+    )
+    conn.commit()
+
+    m043.up(conn)
+
+    # 기존 행은 야간으로 이전 (id/메모 보존)
+    rows = conn.execute(
+        "SELECT id, duty_type, memo FROM employee_duties"
+    ).fetchall()
+    assert rows == [("d1", "night", "기존당직")]
+
+    # 같은 직원·같은 날 아침당직 추가 가능 (UNIQUE 완화 확인)
+    conn.execute(
+        "INSERT INTO employee_duties (id, employee_id, duty_date, duty_type)"
+        " VALUES ('d2', 'e1', '2099-01-01', 'morning')"
+    )
+    # 같은 (직원, 날짜, 유형) 중복은 여전히 차단
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO employee_duties (id, employee_id, duty_date, duty_type)"
+            " VALUES ('d3', 'e1', '2099-01-01', 'morning')"
+        )
+
+    # 멱등 — 두 번 실행해도 안전, 데이터 유지
+    m043.up(conn)
+    assert conn.execute("SELECT COUNT(*) FROM employee_duties").fetchone()[0] == 2

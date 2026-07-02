@@ -1729,31 +1729,47 @@ def bulk_add_employee_leaves(payload: dict, db: Session = Depends(get_db)):
 
 
 # ──────────────── 직원 당직 (EmployeeDuty) ────────────────
-# 휴무(EmployeeLeave)와 같은 캘린더 관리이나 유형/종류 없이 직원 + 날짜 + 메모만.
+# 휴무(EmployeeLeave)와 같은 캘린더 관리. duty_type 으로 아침당직(morning) /
+# 야간당직(night) 분리 — 같은 직원이 같은 날 둘 다 가능, 유형별 독립 관리.
 # 정보성 — 예약 차단/통계 로직과 무관.
 
+_DUTY_TYPES = ("morning", "night")
+
+
+def _duty_type_or_400(value: str) -> str:
+    """duty_type 정규화 — 빈 값은 night(기존 당직 관리 호환), 그 외 오타는 400."""
+    v = (value or "night").strip()
+    if v not in _DUTY_TYPES:
+        raise HTTPException(400, "duty_type은 morning 또는 night 여야 합니다.")
+    return v
+
+
 @router.get("/employee-duties")
-def list_employee_duties(date: str = "", db: Session = Depends(get_db)):
+def list_employee_duties(date: str = "", duty_type: str = "", db: Session = Depends(get_db)):
     q = db.query(models.EmployeeDuty)
     if date:
         q = q.filter(models.EmployeeDuty.duty_date == date)
+    if duty_type:
+        q = q.filter(models.EmployeeDuty.duty_type == _duty_type_or_400(duty_type))
     rows = q.order_by(models.EmployeeDuty.duty_date.asc()).all()
     return [{
         "id": r.id,
         "employee_id": r.employee_id,
         "duty_date": r.duty_date,
+        "duty_type": r.duty_type or "night",
         "memo": r.memo or "",
     } for r in rows]
 
 
 def _upsert_employee_duty_core(db: Session, p: schemas.EmployeeDutyIn) -> models.EmployeeDuty:
-    """동일 (employee_id, duty_date) 키면 update, 아니면 insert. commit 안 함.
+    """동일 (employee_id, duty_date, duty_type) 키면 update, 아니면 insert. commit 안 함.
 
     sync 로깅 (_log) 도 여기서 처리 — 호출자는 commit 만 책임.
     """
     exists = db.query(models.EmployeeDuty).filter(
         models.EmployeeDuty.employee_id == p.employee_id,
         models.EmployeeDuty.duty_date == p.duty_date,
+        models.EmployeeDuty.duty_type == p.duty_type,
     ).first()
     if exists:
         exists.memo = p.memo
@@ -1768,11 +1784,13 @@ def _upsert_employee_duty_core(db: Session, p: schemas.EmployeeDutyIn) -> models
 
 @router.post("/employee-duties")
 def create_employee_duty(p: schemas.EmployeeDutyIn, db: Session = Depends(get_db)):
+    p = p.model_copy(update={"duty_type": _duty_type_or_400(p.duty_type)})
     obj = _upsert_employee_duty_core(db, p)
     db.commit(); db.refresh(obj)
     return {
         "id": obj.id, "employee_id": obj.employee_id,
-        "duty_date": obj.duty_date, "memo": obj.memo or "",
+        "duty_date": obj.duty_date, "duty_type": obj.duty_type or "night",
+        "memo": obj.memo or "",
     }
 
 
@@ -1789,18 +1807,21 @@ def delete_employee_duty(did: str, db: Session = Depends(get_db)):
 
 @router.post("/employee-duties/bulk-set")
 def bulk_set_employee_duties(payload: dict, db: Session = Depends(get_db)):
-    """한 날짜의 당직 직원 일괄 설정 — 기존 당직 전부 삭제 후 새로 등록.
+    """한 날짜·한 유형의 당직 직원 일괄 설정 — 그 유형의 기존 당직만 삭제 후 재등록.
 
     날짜 클릭 모달(직원 체크) 흐름에 사용. bulk_set_employee_leaves 미러.
+    duty_type 별 독립 — 아침당직 저장이 같은 날 야간당직을 건드리지 않는다.
     """
     duty_date = (payload or {}).get("duty_date", "")
+    duty_type = _duty_type_or_400((payload or {}).get("duty_type", ""))
     items = (payload or {}).get("items", [])
     memo = (payload or {}).get("memo", "")
     if not duty_date:
         raise HTTPException(400, "duty_date가 필요합니다.")
 
     db.query(models.EmployeeDuty).filter(
-        models.EmployeeDuty.duty_date == duty_date
+        models.EmployeeDuty.duty_date == duty_date,
+        models.EmployeeDuty.duty_type == duty_type,
     ).delete()
 
     count = 0
@@ -1809,7 +1830,7 @@ def bulk_set_employee_duties(payload: dict, db: Session = Depends(get_db)):
         if not emp_id:
             continue
         db.add(models.EmployeeDuty(
-            employee_id=emp_id, duty_date=duty_date, memo=memo,
+            employee_id=emp_id, duty_date=duty_date, duty_type=duty_type, memo=memo,
         ))
         count += 1
     db.commit()
@@ -1822,9 +1843,11 @@ def bulk_add_employee_duties(payload: dict, db: Session = Depends(get_db)):
 
     bulk-set 과 달리 *기존 당직을 삭제하지 않는다* — 같은 날짜의 다른 직원 당직을
     건드리지 않으므로 '당직 추가' (한 직원 · 여러 날짜) 등록 흐름에 사용한다.
+    duty_type 은 payload 공통값(기본 night), item 별 지정 시 그 값 우선.
     """
     items = (payload or {}).get("items", [])
     default_memo = (payload or {}).get("memo", "")
+    default_type = _duty_type_or_400((payload or {}).get("duty_type", ""))
     count = 0
     for item in items:
         emp_id = item.get("employee_id") or item.get("therapist_id")  # 호환
@@ -1834,6 +1857,7 @@ def bulk_add_employee_duties(payload: dict, db: Session = Depends(get_db)):
         p = schemas.EmployeeDutyIn(
             employee_id=emp_id,
             duty_date=duty_date,
+            duty_type=_duty_type_or_400(item.get("duty_type", default_type)),
             memo=item.get("memo", default_memo) or "",
         )
         _upsert_employee_duty_core(db, p)
