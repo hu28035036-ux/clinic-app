@@ -7,7 +7,8 @@ class RecordTabSettingIn(BaseModel):
 
 
 class RecordEntryIn(BaseModel):
-    tab_key: str = Field(pattern="^(manual|carm|review_event)$")
+    # v1.3.37+: tab_key = 기록필요 치료항목 code. 존재/기록필요 여부는 서비스에서 검증.
+    tab_key: str
     record_date: str = Field(default="", pattern=r"^\d{4}-\d{2}-\d{2}$|^$")
     chart_no: str = ""
     patient_name: str = ""

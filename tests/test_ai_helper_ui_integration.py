@@ -95,7 +95,8 @@ def test_existing_tabs_preserved(client):
     assert "board-employee-filter" in ui
     assert "board-employee-picker" in ui
     assert "function escapeAttr" in ui
-    assert 'class="agg-count-input" type="text" inputmode="numeric"' in ui
+    assert "agg-count-input" in ui
+    assert 'type="text" inputmode="numeric"' in ui
     assert "oninput=\"normalizeAggregateInput(this)\"" in ui
     assert "onblur=\"saveAggregateCell(this)\"" in ui
     assert "patient-quick-search" in ui

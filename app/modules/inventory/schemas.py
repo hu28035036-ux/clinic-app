@@ -16,6 +16,7 @@ class InventoryFieldIn(BaseModel):
     category_id: str
     name: str
     field_type: str = Field(default="text", pattern="^(text|number|date)$")
+    admin_only: bool = False
     sort_order: int = 0
     active: bool = True
     author: str = ""

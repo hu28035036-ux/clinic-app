@@ -269,6 +269,7 @@ def test_revenue_cash_counts_calculate_cash_amount(client):
         "1000": 3,
         "500": 4,
         "100": 5,
+        "50": 7,
         "10": 6,
     }
     saved = client.post("/api/revenue/records/grid", json={
@@ -295,7 +296,7 @@ def test_revenue_cash_counts_calculate_cash_amount(client):
     )
     assert listed.status_code == 200, listed.text
     record = listed.json()["records"][0]
-    assert record["cash_amount"] == 80560
+    assert record["cash_amount"] == 80910
     assert record["cash_counts"] == cash_counts
     assert record["total_amount"] == 81500
 

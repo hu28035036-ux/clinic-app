@@ -7,11 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.models import models
 
-RECORD_TABS = (
-    {"id": "record_tab_manual", "tab_key": "manual", "label": "메뉴얼", "sort_order": 1},
-    {"id": "record_tab_carm", "tab_key": "carm", "label": "C-Arm", "sort_order": 2},
-    {"id": "record_tab_review_event", "tab_key": "review_event", "label": "리뷰이벤트", "sort_order": 3},
-)
+# v1.3.37+: 기록 탭이 더 이상 고정(메뉴얼/C-Arm/리뷰이벤트)이 아니라,
+# 치료항목 중 requires_record=True 인 항목으로 동적 구성된다.
+# 호환을 위해 응답의 tab_key 에는 치료항목 code 를 그대로 사용한다.
 
 
 def _serialize_category(c: models.EmployeeCategory) -> dict:
@@ -42,6 +40,7 @@ def serialize_entry(entry: models.RecordEntry) -> dict:
     return {
         "id": entry.id,
         "tab_key": entry.tab_key,
+        "treatment_id": entry.treatment_id or "",
         "record_date": record_date or "",
         "chart_no": entry.chart_no or "",
         "patient_name": entry.patient_name or "",
@@ -53,38 +52,50 @@ def serialize_entry(entry: models.RecordEntry) -> dict:
     }
 
 
-def serialize_setting(setting: models.RecordTabSetting) -> dict:
+def serialize_tab(t: models.Treatment) -> dict:
+    """기록 탭 = 기록필요 치료항목. 기존 프론트 계약(tab_key/label/category_id) 유지.
+    tab_key 는 치료항목 code 를 그대로 사용한다."""
     return {
-        "id": setting.id,
-        "tab_key": setting.tab_key,
-        "label": setting.label,
-        "category_id": setting.category_id or "",
-        "sort_order": setting.sort_order or 0,
+        "id": t.id,
+        "tab_key": t.code,
+        "label": t.name,
+        "category_id": t.category_id or "",
+        "sort_order": t.sort_order or 0,
     }
 
 
-def ensure_default_settings(db: Session) -> list[models.RecordTabSetting]:
-    rows = {
-        row.tab_key: row
-        for row in db.query(models.RecordTabSetting).all()
-    }
-    changed = False
-    for item in RECORD_TABS:
-        if item["tab_key"] in rows:
-            continue
-        setting = models.RecordTabSetting(
-            id=item["id"],
-            tab_key=item["tab_key"],
-            label=item["label"],
-            category_id="",
-            sort_order=item["sort_order"],
-        )
-        db.add(setting)
-        rows[item["tab_key"]] = setting
-        changed = True
-    if changed:
-        db.flush()
-    return sorted(rows.values(), key=lambda x: (x.sort_order or 0, x.tab_key))
+def _record_treatments(db: Session) -> list[models.Treatment]:
+    """기록 탭으로 노출할 치료항목 — requires_record & active, sort_order 순."""
+    return (
+        db.query(models.Treatment)
+        .filter(models.Treatment.active == True,  # noqa: E712
+                models.Treatment.requires_record == True)  # noqa: E712
+        .order_by(models.Treatment.sort_order, models.Treatment.name)
+        .all()
+    )
+
+
+def _treatment_for_tab(db: Session, tab_key: str) -> models.Treatment:
+    """tab_key(=치료항목 code)로 기록필요 활성 치료항목을 찾는다 (신규 입력용)."""
+    code = (tab_key or "").strip()
+    t = db.query(models.Treatment).filter(models.Treatment.code == code).first()
+    if t is None:
+        raise ValueError("기록 탭(치료항목)을 찾을 수 없습니다.")
+    if not t.active or not getattr(t, "requires_record", False):
+        raise ValueError("기록 대상 치료항목이 아닙니다.")
+    return t
+
+
+def _treatment_for_entry(db: Session, entry: models.RecordEntry) -> models.Treatment:
+    """기존 기록 항목이 속한 치료항목 (수정용). requires_record 여부는 따지지 않는다."""
+    t = None
+    if entry.treatment_id:
+        t = db.get(models.Treatment, entry.treatment_id)
+    if t is None:
+        t = db.query(models.Treatment).filter(models.Treatment.code == entry.tab_key).first()
+    if t is None:
+        raise ValueError("기록 탭(치료항목)을 찾을 수 없습니다.")
+    return t
 
 
 def normalize_record_date(value: str | None = None) -> str:
@@ -107,7 +118,7 @@ def _week_bounds(record_date_str: str) -> tuple[str, str, list[str]]:
 def list_records(db: Session, record_date: str | None = None) -> dict:
     record_date_str = normalize_record_date(record_date)
     week_start, week_end, week_dates = _week_bounds(record_date_str)
-    settings = ensure_default_settings(db)
+    tabs = _record_treatments(db)
     categories = (
         db.query(models.EmployeeCategory)
         .filter(models.EmployeeCategory.active == True)  # noqa: E712
@@ -148,7 +159,7 @@ def list_records(db: Session, record_date: str | None = None) -> dict:
             week_counts[entry.tab_key].get(entry.record_date, 0) + 1
         )
     return {
-        "tabs": [serialize_setting(s) for s in settings],
+        "tabs": [serialize_tab(t) for t in tabs],
         "categories": [_serialize_category(c) for c in categories],
         "employees": [_serialize_employee(e) for e in employees],
         "entries": [serialize_entry(e) for e in entries],
@@ -168,35 +179,27 @@ def update_tab_setting(
     label: str,
     category_id: str,
     log_callback: Callable | None = None,
-) -> models.RecordTabSetting:
-    setting = next((s for s in ensure_default_settings(db) if s.tab_key == tab_key), None)
-    if setting is None:
-        raise ValueError("기록 탭을 찾을 수 없습니다.")
-    category_id = (category_id or "").strip()
-    if category_id and not db.get(models.EmployeeCategory, category_id):
-        raise ValueError("과를 찾을 수 없습니다.")
+) -> models.Treatment:
+    """기록 탭(치료항목) 인라인 편집 — 이름/과를 해당 치료항목에 반영한다."""
+    treatment = _treatment_for_tab(db, tab_key)
     label = (label or "").strip()
-    if not label:
-        label = next((x["label"] for x in RECORD_TABS if x["tab_key"] == tab_key), tab_key)
-    setting.label = label[:30]
-    setting.category_id = category_id
-    setting.updated_at = datetime.utcnow()
+    if label:
+        treatment.name = label[:50]
+    category_id = (category_id or "").strip()
+    if category_id:
+        if not db.get(models.EmployeeCategory, category_id):
+            raise ValueError("과를 찾을 수 없습니다.")
+        treatment.category_id = category_id
+    treatment.updated_at = datetime.utcnow()
     db.flush()
     if log_callback:
-        log_callback(db, "record_tab_setting", setting.id, "upsert", setting)
-    return setting
-
-
-def _setting_for_tab(db: Session, tab_key: str) -> models.RecordTabSetting:
-    setting = next((s for s in ensure_default_settings(db) if s.tab_key == tab_key), None)
-    if setting is None:
-        raise ValueError("기록 탭을 찾을 수 없습니다.")
-    return setting
+        log_callback(db, "treatment", treatment.id, "upsert", treatment)
+    return treatment
 
 
 def _validated_entry_values(
     db: Session,
-    setting: models.RecordTabSetting,
+    treatment: models.Treatment,
     *,
     record_date: str,
     chart_no: str,
@@ -206,7 +209,7 @@ def _validated_entry_values(
     employee = db.get(models.Employee, employee_id)
     if not employee or not employee.active:
         raise ValueError("직원을 선택하세요.")
-    if setting.category_id and employee.category_id != setting.category_id:
+    if treatment.category_id and employee.category_id != treatment.category_id:
         raise ValueError("선택한 과의 직원만 입력할 수 있습니다.")
     chart_no = (chart_no or "").strip()[:30]
     patient_name = (patient_name or "").strip()[:50]
@@ -225,17 +228,18 @@ def create_entry(
     employee_id: str,
     log_callback: Callable | None = None,
 ) -> models.RecordEntry:
-    setting = _setting_for_tab(db, tab_key)
+    treatment = _treatment_for_tab(db, tab_key)
     record_date_str, chart_no, patient_name, employee = _validated_entry_values(
         db,
-        setting,
+        treatment,
         record_date=record_date,
         chart_no=chart_no,
         patient_name=patient_name,
         employee_id=employee_id,
     )
     entry = models.RecordEntry(
-        tab_key=tab_key,
+        tab_key=treatment.code,
+        treatment_id=treatment.id,
         record_date=record_date_str,
         chart_no=chart_no,
         patient_name=patient_name,
@@ -263,10 +267,10 @@ def update_entry(
     entry = db.get(models.RecordEntry, entry_id)
     if not entry:
         raise ValueError("기록을 찾을 수 없습니다.")
-    setting = _setting_for_tab(db, entry.tab_key)
+    treatment = _treatment_for_entry(db, entry)
     record_date_str, chart_no, patient_name, employee = _validated_entry_values(
         db,
-        setting,
+        treatment,
         record_date=record_date,
         chart_no=chart_no,
         patient_name=patient_name,

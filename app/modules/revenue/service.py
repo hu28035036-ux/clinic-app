@@ -107,7 +107,7 @@ REVENUE_RECORD_HEADER_ALIASES = {
     "transfer_amount": ("계좌입금", "계좌 입금", "계좌", "입금계좌", "계좌이체"),
     "memo": ("메모", "비고", "참고"),
 }
-CASH_DENOMINATIONS = (50000, 10000, 5000, 1000, 500, 100, 10)
+CASH_DENOMINATIONS = (50000, 10000, 5000, 1000, 500, 100, 50, 10)
 
 MEDICAL_SUMMARY_FIELDS = (
     "total_medical_fee",

@@ -154,6 +154,21 @@ class EmployeeLeave(Base):
     employee = relationship("Employee")
 
 
+class EmployeeDuty(Base):
+    """직원 당직 (on-call duty). 휴무(EmployeeLeave)와 같은 캘린더 관리이나
+    유형/종류 구분 없이 직원 + 날짜 + 메모만. 정보성 — 예약 차단/통계 무관."""
+    __tablename__ = "employee_duties"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "duty_date", name="uq_employee_duty_date"),
+    )
+    id = Column(String(32), primary_key=True, default=uid)
+    employee_id = Column(String(32), ForeignKey("employees.id"), nullable=False, index=True)
+    duty_date = Column(String(10), nullable=False, index=True)
+    memo = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    employee = relationship("Employee")
+
+
 class Treatment(Base):
     """치료항목 — DB 기반 동적 관리.
 
@@ -184,6 +199,10 @@ class Treatment(Base):
     price = Column(Integer, nullable=False, default=0)
     incentive_pct = Column(Float, nullable=True)
     incentive_amount = Column(Integer, nullable=True)
+    # ── 기록 필요 플래그 (v1.3.37+) ──
+    # True 면 '기록' 탭에 노출되고, 집계 수치는 치료완료(예약)가 아니라
+    # record_entries(직원·날짜별 건수)에서 자동 집계된다. (항목별 경로 분리)
+    requires_record = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -295,6 +314,9 @@ class Appointment(Base):
                              foreign_keys=[therapist_id])
     assignments = relationship("TreatmentAssignment", back_populates="appointment",
                                cascade="all, delete-orphan")
+    # 차팅: 예약 삭제 시 차트도 함께 삭제(SQLite FK OFF 라 DB CASCADE 대신 ORM cascade 로 보장).
+    charts = relationship("PatientChart", back_populates="appointment",
+                          cascade="all, delete-orphan")
 
 
 class TreatmentAssignment(Base):
@@ -312,6 +334,37 @@ class TreatmentAssignment(Base):
     __table_args__ = (
         UniqueConstraint("appointment_id", "treatment_code", name="uq_appt_tx"),
     )
+
+
+class PatientChart(Base):
+    """환자 차팅(진료기록) — 치료완료(approved) 예약 1건당 SOAP 기록 1장 (1:1).
+
+    appointment_id 가 UNIQUE 라 한 치료완료(방문)에 차트 1장만. SOAP 는 단일 content 본문(문단 구조).
+    patient_id 는 차팅 탭의 환자별 조회를 빠르게 하기 위한 비정규화
+    (정본은 appointment.patient_id — 저장 시 예약에서 복사).
+    author 는 작성자(담당 치료사) — 직원명 변경 대비 스냅샷 보존.
+    """
+    __tablename__ = "patient_charts"
+    __table_args__ = (
+        UniqueConstraint("appointment_id", name="uq_patient_chart_appt"),
+    )
+    id = Column(String(32), primary_key=True, default=uid)
+    appointment_id = Column(String(32),
+                            ForeignKey("appointments.id", ondelete="CASCADE"),
+                            nullable=False)
+    patient_id = Column(String(32), ForeignKey("patients.id"),
+                        nullable=False, index=True)
+    content = Column(Text, default="")      # SOAP 통합 본문 (S/O/A/P 문단 구조, 단일 입력)
+    treatment_start_date = Column(String(10), default="")  # 치료 시작일 (YYYY-MM-DD, 선택 입력)
+    session_no = Column(Integer, nullable=True)            # 회차 (몇 번째 치료, 선택 입력)
+    author_id = Column(String(32), ForeignKey("employees.id"), nullable=True)
+    author_name_snapshot = Column(String(50), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    appointment = relationship("Appointment", back_populates="charts")
+    patient = relationship("Patient")
+    author = relationship("Employee")
 
 
 class SystemSetting(Base):
@@ -476,6 +529,9 @@ class RecordEntry(Base):
     __tablename__ = "record_entries"
     id = Column(String(32), primary_key=True, default=uid)
     tab_key = Column(String(20), nullable=False, index=True)
+    # v1.3.37+: 기록 탭이 치료항목 기반으로 전환됨. 기록 항목이 속한 치료항목.
+    # 기존 호환을 위해 tab_key 컬럼은 유지하되 신규 기록은 tab_key=treatment.code 로 채운다.
+    treatment_id = Column(String(32), ForeignKey("treatments.id"), nullable=True, index=True)
     record_date = Column(
         String(10), nullable=False, default=lambda: date.today().isoformat(), index=True
     )
@@ -530,6 +586,8 @@ class InventoryField(Base):
     field_type = Column(String(20), nullable=False, default="text")
     sort_order = Column(Integer, default=0)
     active = Column(Boolean, default=True)
+    # 관리자 전용 칸: 일반 직원은 읽기만, 관리자 인증 시에만 값 입력 가능.
+    admin_only = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

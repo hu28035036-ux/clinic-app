@@ -517,9 +517,10 @@ def test_audit_service_normalize_actor(actor, expected):
 
 
 def test_ei_schemas_preview_keys():
-    """COMPAT: ``data-convert/preview`` 응답 key 11개 정합."""
+    """COMPAT: ``data-convert/preview`` 응답 key 13개 정합 (v1.3.51+ 겹침 내역 추가)."""
     assert _ei_schemas.DATA_CONVERT_PREVIEW_RESPONSE_KEYS == frozenset({
-        "total", "new_count", "existing_count", "error_count",
+        "total", "new_count", "existing_count", "existing_patients",
+        "dup_in_file_count", "error_count",
         "header", "new_patients", "review_list", "review_count",
         "errors", "file_name", "parse_info",
     })

@@ -183,6 +183,14 @@ function apptTreatmentCodes(ep){
   return m[1].split(',').map(s => treatmentNameToCode(s)).filter(Boolean);
 }
 
+// 당일메모에서 레거시 [치료항목] 접두어를 떼어 사용자가 적은 실제 메모만 반환.
+// 저장 시엔 현재 치료항목으로 접두어를 다시 붙임(신규 예약과 동일 형식 유지).
+function apptMemoNote(memo){
+  const s = (memo || '').trim();
+  const m = s.match(/^\[[^\]]*\]\s?/);
+  return m ? s.slice(m[0].length) : s;
+}
+
 function txShort(code){ return TX_META.treatment_short[code] || code; }
 function txName(code){ return TX_META.treatment_names[code] || code; }
 function txByCode(code){ return (TX_META.all_treatments || []).find(t => t.code === code) || null; }
@@ -260,14 +268,571 @@ function switchTab(id, btn){
   else if(id==='tab-records'){
     loadRecordsSheet();
   }
+  else if(id==='tab-charting'){
+    loadChartingTab();
+  }
   else if(id==='tab-reserve'){
     // 복귀 시 즉시 최신화 — 다른 탭 보는 동안 polling 이 쉬었으므로 stale 데이터 방지.
     // fire-and-forget: 사용자 체감 속도 우선 (await 쓰면 탭 전환이 멈춘 듯 보임).
     try { renderDayBoard(); } catch(e) {}
     try { loadTodayList();  } catch(e) {}
     try { if (window._miniCal) reloadMiniCalendar(window._miniCal.getDate()); } catch(e) {}
+    // 예약탭이 display:none 이었다가 표시되면 미니달력 폭이 0→실폭 으로 바뀐다.
+    // 레이아웃 적용 후 크기 재계산해 좁게 굳는 깨짐을 막는다 (ResizeObserver 보강).
+    try { if (window._miniCal) requestAnimationFrame(() => window._miniCal.updateSize()); } catch(e) {}
   }
   else if(id==='tab-admin') loadTreatmentsCard();
+}
+
+// ─────────────────────── 차팅 (SOAP 진료기록) 탭 ───────────────────────
+// 환자 검색 → 치료완료(approved) 방문 목록 → 각 방문에 SOAP 차트 작성/조회.
+// 차트는 예약 1건당 1장(서버 UNIQUE appointment_id). /api/charts/* 사용.
+let CH_STATE = { pid: '', pname: '', q: '', type: 'name', hits: [], total: 0, history: null };
+let CH_VISIT_META = {};  // aid → {label, tx}. 치료내역 렌더 시 갱신. onclick 에 사용자데이터(치료항목명)를 넣지 않기 위함(인젝션 회피).
+// 신규 차트의 기본 SOAP 문단 구조 (한 입력칸에서 S/O/A/P 를 문단으로 작성).
+const SOAP_TEMPLATE = `[S] 주관적 호소 (Subjective)
+VAS(통증, 0~10):
+
+
+[O] 객관적 소견 (Objective)
+
+
+[A] 평가 (Assessment)
+Problem list:
+LTG (Long-term goals):
+STG (Short-term goals):
+
+
+[P] 치료 계획 (Plan)
+
+`;
+
+// 스페셜테스트(정형외과 특수검사) 표준 목록 — 평가([A])란에 빠른 삽입용. 영문 고정.
+const SPECIAL_TESTS = [
+  { region: '경추 (Cervical)', tests: ['Spurling', 'Distraction', 'Tinel', 'Adson', 'Sharp-Purser', 'Quadrant', 'Jefferson'] },
+  { region: '어깨 (Shoulder)', tests: ['Neer', 'Hawkins', 'Empty Can', 'Speed', 'Apprehension', 'Drop Arm', 'Apley Scratch', 'Rockwood', 'Crank', 'Norwood', 'Lippman', 'Yergason'] },
+  { region: '팔꿈치 (Elbow)', tests: ['Mills', 'Cozen', 'Maudsley', 'Reverse Cozen', 'Reverse Mills'] },
+  { region: '손목 (Wrist)', tests: ['Phalen', 'Finkelstein', 'Reverse Phalen'] },
+  { region: '요추 (Lumbar)', tests: ['SLR', 'Slump', 'Lasegue', 'Kemp', 'Bragard'] },
+  { region: '고관절/천장관절 (Hip/SIJ)', tests: ['FABER', 'FADIR', 'Thomas', 'Ober', 'Gaenslen', 'Trendelenburg', 'Functional Leg Length', 'Structural Leg Length'] },
+  { region: '무릎 (Knee)', tests: ['Lachman', 'Anterior Drawer', 'Posterior Drawer', 'McMurray', 'Apley', 'Valgus Stress', 'Varus Stress'] },
+  { region: '발목 (Ankle)', tests: ['Anterior Drawer (Ankle)', 'Talar Tilt', 'Thompson'] },
+];
+const CH_FAV_KEY = 'ch_special_test_favorites';  // 스페셜테스트 즐겨찾기 (이 브라우저 localStorage)
+let _chSide = 'Rt';  // 좌/우/양쪽 선택 (스페셜테스트·ROM 삽입에 (Lt)/(Rt) 표기, 양쪽은 두 줄)
+
+// 치료 종류별 차트 템플릿 (원장·치료사 이름은 비움 — ○○).
+// soap: 본문에 SOAP 마커가 있으면 각 항목을 해당 섹션에 자동 분배. (VAS 는 [S]에 이미 있어 생략)
+// text: SOAP 마커가 없는 자유 작성 본문일 때 통째 삽입하는 폴백.
+const TREATMENT_TEMPLATES = {
+  manual: {
+    label: '도수치료',
+    soap: {
+      O: ['Special test:'],
+      P: ['○○ 원장 지시 하에 ○○ 치료사가 해당 통증 부위에 도수치료를 시행함.', '치료과정:'],
+    },
+    text:
+`○○ 원장 지시 하에 ○○ 치료사가 해당 통증 부위에 도수치료를 시행함.
+VAS:
+Special test:
+치료과정:`,
+  },
+  eswt: {
+    label: '체외충격파',
+    soap: {
+      P: ['○○ 원장 지시 하에 ○○ 치료사가 해당 통증 부위에 충격파 치료 시행함.', '타입:', '타수:', '강도:'],
+    },
+    text:
+`○○ 원장 지시 하에 ○○ 치료사가 해당 통증 부위에 충격파 치료 시행함.
+VAS:
+타입:
+타수:
+강도:`,
+  },
+};
+
+// 부위별 정상 ROM (병원 매뉴얼 수치).
+// 정상 ROM — AAOS 표준값 기준(웹 검색 정보수집, 2026-06-25). 단위 °.
+// 매뉴얼에만 있는 동작(견갑 upward rotation, 무릎 회전)은 표준 차트에 없어 매뉴얼 값을 유지.
+const NORMAL_ROM = [
+  { key: 'cervical', label: '경추', text: 'fl 45, ext 45, lateral flexion 45, rotation 60' },
+  { key: 'shoulder', label: '어깨', text: 'fl 180, ext 60, abd 180, add 40, IR 70, ER 90, upward rot 60' },
+  { key: 'elbow', label: '팔꿈치', text: 'fl 150, ext 0' },
+  { key: 'forearm', label: '전완', text: 'pronation 80, supination 80' },
+  { key: 'wrist', label: '손목', text: 'fl 80, ext 70, radial deviation 20, ulnar deviation 30' },
+  { key: 'hip', label: '고관절', text: 'fl 120, ext 30, abd 45, add 25, IR 40, ER 60' },
+  { key: 'knee', label: '무릎', text: 'fl 135, ext 0, IR 15, ER 30' },
+  { key: 'ankle', label: '발목', text: 'dorsi fl 20, plantar fl 50, inversion 35, eversion 15' },
+];
+let _chTimer = null;
+
+function switchChartingTab(name, btn){
+  document.querySelectorAll('#tab-charting .sub-tab').forEach(b=>b.classList.remove('active'));
+  const tabBtn = btn || document.getElementById('charting-subtab-' + name);
+  if(tabBtn) tabBtn.classList.add('active');
+  document.querySelectorAll('#tab-charting .admin-pane').forEach(p=>p.classList.remove('active'));
+  const pane = document.getElementById('charting-' + name);
+  if(pane) pane.classList.add('active');
+}
+
+function loadChartingTab(){
+  switchChartingTab('list');  // 탭 재진입 시 항상 치료내역부터 (직원탭 패턴)
+  const inp = document.getElementById('ch-search');
+  const typeSel = document.getElementById('ch-type');
+  if(typeSel) typeSel.value = CH_STATE.type || 'name';
+  if(inp){ inp.value = CH_STATE.q || ''; setTimeout(()=>inp.focus(), 50); }
+  if(CH_STATE.q){ chSearch(true); }
+  else { document.getElementById('ch-results').innerHTML = '<div class="muted ch-hint">환자를 검색하세요.</div>'; }
+  if(CH_STATE.pid){ chLoadHistory(CH_STATE.pid); }
+}
+
+function chSearchDebounced(){
+  clearTimeout(_chTimer);
+  _chTimer = setTimeout(()=>chSearch(), 200);
+}
+
+async function chSearch(force){
+  const type = document.getElementById('ch-type').value;
+  const q = document.getElementById('ch-search').value.trim();
+  CH_STATE.q = q; CH_STATE.type = type;
+  const box = document.getElementById('ch-results');
+  if(!q){ box.innerHTML = '<div class="muted ch-hint">환자를 검색하세요.</div>'; return; }
+  try {
+    const url = `/api/patients/search?q=${encodeURIComponent(q)}&field=${encodeURIComponent(type)}&limit=30&offset=0&_=${Date.now()}`;
+    const r = await fetch(url);
+    if(!r.ok) throw new Error(r.statusText);
+    const d = await r.json();
+    CH_STATE.hits = d.items || []; CH_STATE.total = d.total || 0;
+    chRenderResults();
+  } catch(e){
+    box.innerHTML = `<div class="muted" style="padding:12px;color:#B74841;">검색 실패: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function chRenderResults(){
+  const box = document.getElementById('ch-results');
+  const hits = CH_STATE.hits || [];
+  if(!hits.length){ box.innerHTML = '<div class="muted ch-hint">검색 결과 없음</div>'; return; }
+  const rows = hits.map(p => {
+    const active = (p.id === CH_STATE.pid) ? ' active' : '';
+    const sub = [p.chart_no, p.birth_date, p.phone].filter(Boolean).map(escapeHtml).join(' · ');
+    return `<button type="button" class="ch-pt-item${active}" onclick="chSelectPatient('${p.id}')">
+      <b>${escapeHtml(p.name||'-')}</b><span class="muted">${sub || '-'}</span>
+    </button>`;
+  }).join('');
+  box.innerHTML = `<div class="ch-pt-list">${rows}</div>` +
+    (CH_STATE.total > hits.length ? `<div class="muted ch-hint">상위 ${hits.length} / ${CH_STATE.total}명 — 검색어를 좁히세요.</div>` : '');
+}
+
+async function chSelectPatient(pid){
+  CH_STATE.pid = pid;
+  const p = (CH_STATE.hits||[]).find(x=>x.id===pid);
+  if(p) CH_STATE.pname = p.name || '';
+  chRenderResults();
+  await chLoadHistory(pid);
+}
+
+async function chLoadHistory(pid){
+  const box = document.getElementById('ch-detail');
+  box.innerHTML = '<div class="muted ch-empty">치료내역 불러오는 중...</div>';
+  try {
+    const r = await fetch(`/api/charts/patient/${pid}?_=${Date.now()}`);
+    if(!r.ok) throw new Error(r.statusText);
+    const d = await r.json();
+    CH_STATE.history = d;
+    chRenderHistory(d);
+  } catch(e){
+    box.innerHTML = `<div class="muted" style="color:#B74841;">불러오기 실패: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function chRenderHistory(d){
+  const box = document.getElementById('ch-detail');
+  if(d && d.patient_name) CH_STATE.pname = d.patient_name;
+  const days = d.days || [];
+  const head = `<div class="ch-detail-head"><b>${escapeHtml(CH_STATE.pname||'환자')}</b>
+    <span class="muted">치료완료 방문 ${d.total||0}일</span></div>`;
+  if(!days.length){
+    box.innerHTML = head + '<div class="muted ch-empty">치료완료된 방문이 없습니다.<br>예약을 치료완료 처리하면 차트를 작성할 수 있습니다.</div>';
+    return;
+  }
+  const dayHtml = days.map(day => {
+    const items = (day.appointments||[]).map(a => {
+      const codes = (a.treatment_codes||[]).map(c => TX_META.treatment_names[c] || c).join(', ') || '-';
+      const t = new Date(a.start_at);
+      const hm = String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+      const ther = a.therapist_name ? escapeHtml(a.therapist_name) : '<span class="muted">미배정</span>';
+      const ch = a.chart;
+      const written = !!(ch && ch.has_content);
+      const badge = written ? '<span class="ch-badge done">✓ 작성됨</span>' : '<span class="ch-badge none">미작성</span>';
+      const sessTag = (ch && ch.session_no) ? `<span class="ch-badge sess">${ch.session_no}회차</span>` : '';
+      const sub = written
+        ? `<span class="muted ch-visit-author">${escapeHtml(ch.author_name||'')}${ch.updated_at ? ' · '+fmtDate24(new Date(ch.updated_at)) : ''}</span>` : '';
+      const label = written ? '차트 보기/수정' : '차트 작성';
+      CH_VISIT_META[a.appointment_id] = { label: `${day.date} ${hm}`, tx: codes, therapist_name: a.therapist_name || '' };
+      return `<div class="ch-visit">
+        <div class="ch-visit-main">
+          <span class="ch-visit-time">${hm}</span>
+          <span class="ch-visit-tx">${escapeHtml(codes)}</span>
+          <span class="ch-visit-ther">${ther}</span>
+        </div>
+        <div class="ch-visit-side">
+          ${sessTag}${badge}${sub}
+          <button class="mini primary" onclick="openChartEditor('${a.appointment_id}','${a.therapist_id||''}')">${label}</button>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="ch-day"><div class="ch-day-date">${escapeHtml(day.date)}</div>${items}</div>`;
+  }).join('');
+  box.innerHTML = head + `<div class="ch-days">${dayHtml}</div>`;
+}
+
+// 회차 추정 도우미: 현재 방문보다 이전의, 회차(session_no)가 기록된 차트 직전 2개 [날짜, 회차].
+function chPrevSessionsHtml(aid){
+  const hist = CH_STATE.history;
+  if(!hist || !hist.days) return '';
+  const all = [];
+  hist.days.forEach(day => (day.appointments||[]).forEach(a => all.push(Object.assign({ _date: day.date }, a))));
+  const cur = all.find(a => a.appointment_id === aid);
+  const curTime = cur ? new Date(cur.start_at).getTime() : Infinity;  // 현재 방문 미발견 시 모든 과거 방문을 후보로
+  const prev = all
+    .filter(a => a.appointment_id !== aid && a.chart && a.chart.session_no)
+    .filter(a => new Date(a.start_at).getTime() < curTime)
+    .sort((x, y) => new Date(y.start_at) - new Date(x.start_at))
+    .slice(0, 2);
+  if(!prev.length) return '<p class="ch-prev-sessions muted">직전 회차 기록이 없습니다. (회차를 입력해 두면 다음 작성 시 참고됩니다)</p>';
+  const items = prev.map(a =>
+    `<span class="ch-prev-item">${escapeHtml(a._date)} <b>${a.chart.session_no}회차</b></span>`
+  ).join('<span class="ch-prev-sep">·</span>');
+  return `<p class="ch-prev-sessions"><span class="muted">직전 회차:</span> ${items}</p>`;
+}
+
+// 스페셜테스트 즐겨찾기 (localStorage). 표준 목록 위에 얹는 개인화 레이어.
+function chGetFavorites(){
+  try { const v = JSON.parse(localStorage.getItem(CH_FAV_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+  catch(e){ return []; }
+}
+function chToggleFavorite(name){
+  name = (name || '').trim(); if(!name) return;
+  let favs = chGetFavorites();
+  favs = favs.includes(name) ? favs.filter(x => x !== name) : favs.concat([name]);
+  try { localStorage.setItem(CH_FAV_KEY, JSON.stringify(favs)); } catch(e){}
+  chRenderSpecialTests();  // 별 상태 + 즐겨찾기 섹션 갱신
+}
+function chRenderSpecialTests(){
+  const el = document.getElementById('special-test-area');
+  if(el) el.innerHTML = chSpecialTestHtml();
+}
+// 스페셜테스트 카드(오른쪽 패널) 토글. show 생략 시 현재 상태 반전.
+function chToggleSpecialCard(show){
+  const card = document.getElementById('ch-special-card');
+  if(!card) return;
+  const willShow = (show === undefined) ? card.hidden : show;
+  if(willShow) chRenderSpecialTests();  // 열 때 최신 즐겨찾기/별 반영
+  card.hidden = !willShow;
+}
+
+// 좌/우/양쪽 토글 UI (스페셜테스트·템플릿 카드 상단 공통). 선택 시 삽입에 (Lt)/(Rt) 표기.
+function chSideToggleHtml(){
+  const btn = (s, lbl) => `<button type="button" class="ch-side-btn${_chSide === s ? ' on' : ''}" onclick="chSetSide('${s}')">${lbl}</button>`;
+  return `<div class="ch-side-toggle">${btn('Lt', '좌 Lt')}${btn('Rt', '우 Rt')}${btn('Both', '양쪽')}</div>`
+    + `<div class="ch-side-hint muted">좌/우/양쪽 선택 — 양쪽은 (Lt)·(Rt) 두 줄로 삽입됩니다.</div>`;
+}
+function chSetSide(side){
+  _chSide = ['Lt', 'Rt', 'Both'].includes(side) ? side : 'Rt';
+  chRenderSpecialTests();   // 스페셜 카드 토글 강조 갱신
+  chRenderTemplate();       // 템플릿 카드 토글 강조 갱신
+}
+// 삽입할 side 목록 — 양쪽이면 좌·우 두 개, 아니면 선택된 하나.
+function _chSides(){ return _chSide === 'Both' ? ['Lt', 'Rt'] : [_chSide]; }
+function chRenderTemplate(){
+  const el = document.getElementById('template-area');
+  if(el) el.innerHTML = chTemplateHtml();
+}
+// 템플릿 카드(오른쪽 패널) 토글.
+function chToggleTemplateCard(show){
+  const card = document.getElementById('ch-template-card');
+  if(!card) return;
+  const willShow = (show === undefined) ? card.hidden : show;
+  if(willShow) chRenderTemplate();
+  card.hidden = !willShow;
+}
+// 템플릿 카드 내용: 좌우 토글 + 치료 템플릿 버튼 + 부위별(ROM+MMT 한번에) + 개별 ROM/MMT 버튼. onclick 은 고정 key 만 전달.
+function chTemplateHtml(){
+  const tpl = Object.keys(TREATMENT_TEMPLATES).map(k =>
+    `<button type="button" class="treatment-tpl-btn" onclick="chInsertTreatmentTemplate('${k}')">${escapeHtml(TREATMENT_TEMPLATES[k].label)}</button>`
+  ).join('');
+  const region = NORMAL_ROM.map(r =>
+    `<button type="button" class="special-test-chip" onclick="chInsertRegion('${r.key}')">${escapeHtml(r.label)}</button>`
+  ).join('');
+  const rom = NORMAL_ROM.map(r =>
+    `<button type="button" class="special-test-chip" onclick="chInsertRom('${r.key}')">${escapeHtml(r.label)}</button>`
+  ).join('');
+  const mmt = NORMAL_ROM.map(r =>
+    `<button type="button" class="special-test-chip" onclick="chInsertMmt('${r.key}')">${escapeHtml(r.label)}</button>`
+  ).join('');
+  return chSideToggleHtml()
+    + `<div class="special-test-group"><span class="special-test-region">치료 템플릿</span><div class="special-test-chips">${tpl}</div></div>`
+    + `<div class="special-test-group"><span class="special-test-region">부위별 (ROM + MMT 한번에)</span><div class="special-test-chips">${region}</div></div>`
+    + `<div class="special-test-group"><span class="special-test-region">정상 ROM (부위)</span><div class="special-test-chips">${rom}</div></div>`
+    + `<div class="special-test-group"><span class="special-test-region">MMT 근력검사 (부위)</span>`
+    + `<div class="special-test-hint muted">등급 0~5 · 5 정상(최대저항) · 4 양호(중등도) · 3 중력대항 · 2 중력제거 · 1 근수축만 · 0 없음</div>`
+    + `<div class="special-test-chips">${mmt}</div></div>`;
+}
+// 예약 담당치료사 이름 — 템플릿의 '○○ 치료사' 치환용 폴백. openChartEditor 에서 설정.
+let _chEditorTherapistName = '';
+// 템플릿 치환용 치료사 이름 — 작성자 select 선택값을 우선 사용, 미선택이면 예약 담당치료사로 폴백.
+function _chCurrentTherapistName(){
+  const sel = document.getElementById('chart-author');
+  if(sel && sel.value){
+    const opt = sel.options[sel.selectedIndex];
+    const name = opt ? (opt.text || '').trim() : '';
+    if(name) return name;
+  }
+  return _chEditorTherapistName || '';
+}
+// 치료 템플릿 삽입: 본문에 SOAP 마커가 있으면 각 항목을 해당 섹션([S]/[O]/[A]/[P])에 자동 분배,
+// 없으면(자유 작성) 커서 위치에 통째 삽입. 기존 내용은 지우지 않음.
+// '○○ 치료사' 는 담당치료사(작성자) 이름으로 자동 치환, '○○ 원장' 은 비워둠.
+function chInsertTreatmentTemplate(key){
+  const ta = document.getElementById('chart-content');
+  const tpl = TREATMENT_TEMPLATES[key];
+  if(!ta || !tpl) return;
+  const therapist = _chCurrentTherapistName();
+  const fill = s => therapist ? s.replace('○○ 치료사', therapist + ' 치료사') : s;
+  let lines = ta.value.split('\n');
+  const hasSoap = ['S', 'O', 'A', 'P'].some(s => lines.some(l => l.startsWith('[' + s + ']')));
+  if(hasSoap && tpl.soap){
+    ['S', 'O', 'A', 'P'].forEach(sec => {
+      const items = tpl.soap[sec];
+      if(items && items.length) lines = _chAppendToSection(lines, sec, items.map(fill));
+    });
+    ta.value = lines.join('\n');
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    return;
+  }
+  const cur = ta.value;
+  const pos = (typeof ta.selectionStart === 'number') ? ta.selectionStart : cur.length;
+  const block = fill(tpl.text || '') + '\n';
+  ta.value = cur.slice(0, pos) + block + cur.slice(pos);
+  ta.focus(); ta.setSelectionRange(pos + block.length, pos + block.length);
+}
+// SOAP 섹션([X]) 의 마지막 내용 줄 다음에 newLines 삽입(스페셜테스트 삽입과 동일 패턴).
+function _chAppendToSection(lines, sec, newLines){
+  const idx = lines.findIndex(l => l.startsWith('[' + sec + ']'));
+  if(idx === -1) return lines.concat(newLines);
+  let endIdx = lines.length;
+  for(let i = idx + 1; i < lines.length; i++){
+    if(/^\[[A-Z]\]/.test(lines[i])){ endIdx = i; break; }
+  }
+  let lastContent = idx;
+  for(let i = idx + 1; i < endIdx; i++){
+    if(lines[i].trim() !== '') lastContent = i;
+  }
+  const out = lines.slice();
+  out.splice(lastContent + 1, 0, ...newLines);
+  return out;
+}
+// SOAP 마커가 있으면 해당 섹션 끝에 줄들을 삽입, 없으면 커서/끝에 삽입. ROM·MMT 의 [O] 자동 분배 공통.
+function _chInsertIntoSectionOrCursor(ta, sec, newLines){
+  const lines = ta.value.split('\n');
+  if(lines.some(l => l.startsWith('[' + sec + ']'))){
+    ta.value = _chAppendToSection(lines, sec, newLines).join('\n');
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    return;
+  }
+  const block = newLines.join('\n') + '\n';
+  const cur = ta.value;
+  const pos = (typeof ta.selectionStart === 'number') ? ta.selectionStart : cur.length;
+  ta.value = cur.slice(0, pos) + block + cur.slice(pos);
+  const caret = pos + block.length;
+  ta.focus(); ta.setSelectionRange(caret, caret);
+}
+// 부위별 ROM 줄 생성: 정상 ROM(참고값, 좌우 무관 1줄) + 검사 ROM(side별 빈칸 틀). _chSides() 만큼 검사줄 반복.
+function _chRomLines(r){
+  // 검사 ROM: 정상값의 동작 라벨만 남기고 "동작: " 빈칸 틀로 (사용자가 측정값 입력).
+  const examTpl = r.text.split(',').map(s => s.trim().replace(/\s*\d+$/, '') + ': ').join(', ');
+  const lines = [`${r.label} 정상 ROM — ${r.text}`];
+  _chSides().forEach(side => lines.push(`${r.label} 검사 ROM (${side}) — ${examTpl}`));
+  return lines;
+}
+// 부위별 MMT 줄 생성: 동작별 근력 등급 빈칸 "동작: /5" 줄을 side별로. 등급 척도는 카드 참고.
+function _chMmtLines(r){
+  const mmtTpl = r.text.split(',').map(s => s.trim().replace(/\s*\d+$/, '') + ': /5').join(', ');
+  return _chSides().map(side => `${r.label} MMT (${side}) — ${mmtTpl}`);
+}
+// 부위별 ROM 삽입: 정상/검사 ROM 줄을 객관적 소견([O])에 자동 분배.
+function chInsertRom(regionKey){
+  const ta = document.getElementById('chart-content');
+  const r = NORMAL_ROM.find(x => x.key === regionKey);
+  if(!ta || !r) return;
+  _chInsertIntoSectionOrCursor(ta, 'O', _chRomLines(r));
+}
+// 부위별 MMT 삽입: 근력 등급 빈칸 줄을 객관적 소견([O])에 자동 분배.
+function chInsertMmt(regionKey){
+  const ta = document.getElementById('chart-content');
+  const r = NORMAL_ROM.find(x => x.key === regionKey);
+  if(!ta || !r) return;
+  _chInsertIntoSectionOrCursor(ta, 'O', _chMmtLines(r));
+}
+// 부위별 ROM+MMT 한 번에 삽입: 정상 ROM → 검사 ROM → MMT 순으로 객관적 소견([O])에 자동 분배.
+function chInsertRegion(regionKey){
+  const ta = document.getElementById('chart-content');
+  const r = NORMAL_ROM.find(x => x.key === regionKey);
+  if(!ta || !r) return;
+  _chInsertIntoSectionOrCursor(ta, 'O', _chRomLines(r).concat(_chMmtLines(r)));
+}
+// 칩 1개 = [검사 삽입 버튼] + [즐겨찾기 별]. onclick 에 검사명을 직접 박지 않고
+// this.textContent / previousElementSibling 로 읽어 인젝션 회피(이전 차팅 교훈).
+function chTestChipHtml(name, isFav){
+  // 별을 칩 왼쪽에 둠 → 별의 nextElementSibling 이 검사명 칩. onclick 에 검사명을 직접 박지 않아 인젝션 회피.
+  return `<span class="special-test-item">`
+    + `<button type="button" class="special-test-star${isFav ? ' on' : ''}" title="즐겨찾기" `
+    + `onclick="chToggleFavorite(this.nextElementSibling.textContent)">${isFav ? '★' : '☆'}</button>`
+    + `<button type="button" class="special-test-chip" onclick="chInsertSpecialTest(this.textContent)">${escapeHtml(name)}</button>`
+    + `</span>`;
+}
+// 스페셜테스트 목록 HTML: ⭐ 즐겨찾기(있을 때) + 부위별 그룹. 오른쪽 카드(#special-test-area)에 렌더.
+function chSpecialTestHtml(){
+  const favList = chGetFavorites();
+  const favSet = new Set(favList);
+  let favHtml = '';
+  if(favList.length){
+    const favChips = favList.map(t => chTestChipHtml(t, true)).join('');
+    favHtml = `<div class="special-test-fav"><span class="special-test-region">⭐ 즐겨찾기</span>`
+      + `<div class="special-test-chips">${favChips}</div></div>`;
+  }
+  const groups = SPECIAL_TESTS.map(g => {
+    const chips = g.tests.map(t => chTestChipHtml(t, favSet.has(t))).join('');
+    return `<div class="special-test-group"><span class="special-test-region">${escapeHtml(g.region)}</span>`
+      + `<div class="special-test-chips">${chips}</div></div>`;
+  }).join('');
+  return chSideToggleHtml()
+    + `<div class="special-test-hint muted">검사를 누르면 객관적 소견([O])란에 삽입됩니다. ☆ 로 즐겨찾기.</div>`
+    + favHtml + groups;
+}
+
+// 객관적 소견([O]) 섹션의 마지막 내용 줄 다음에 "검사명 (side): " 줄을 추가하고 커서를 결과 입력 위치로 이동.
+// 양쪽(Both) 선택 시 (Lt)·(Rt) 두 줄을 삽입하고 커서는 첫 줄(Lt) 콜론 뒤로.
+function chInsertSpecialTest(name){
+  const ta = document.getElementById('chart-content');
+  if(!ta) return;
+  name = (name || '').trim();
+  if(!name) return;
+  const newLines = _chSides().map(side => `${name} (${side}): `);
+  const lines = ta.value.split('\n');
+  const oIdx = lines.findIndex(l => /^\[O\]/.test(l));
+  if(oIdx === -1){
+    // [O] 마커 없음(템플릿 삭제) → 커서 위치, 없으면 끝에 삽입
+    const text = ta.value;
+    const pos = (typeof ta.selectionStart === 'number') ? ta.selectionStart : text.length;
+    ta.value = text.slice(0, pos) + newLines.join('\n') + '\n' + text.slice(pos);
+    const caret = pos + newLines[0].length;  // 첫 줄(Lt) 콜론 뒤
+    ta.focus(); ta.setSelectionRange(caret, caret);
+    return;
+  }
+  // 객관적 소견 섹션 = [O] 다음 ~ 다음 마커([X]) 직전. 그 안 마지막 내용 줄 다음에 삽입(순서 유지).
+  let endIdx = lines.length;
+  for(let i = oIdx + 1; i < lines.length; i++){
+    if(/^\[[A-Z]\]/.test(lines[i])){ endIdx = i; break; }
+  }
+  let lastContent = oIdx;
+  for(let i = oIdx + 1; i < endIdx; i++){
+    if(lines[i].trim() !== '') lastContent = i;
+  }
+  const insertAt = lastContent + 1;
+  lines.splice(insertAt, 0, ...newLines);
+  let caret = 0;
+  for(let i = 0; i < insertAt; i++) caret += lines[i].length + 1;  // +1 = '\n'
+  caret += newLines[0].length;  // 첫 삽입 줄(Lt) 콜론 뒤
+  ta.value = lines.join('\n');
+  ta.focus();
+  ta.setSelectionRange(caret, caret);
+}
+
+async function openChartEditor(aid, defaultAuthorId){
+  const editor = document.getElementById('ch-editor');
+  editor.innerHTML = '<div class="muted ch-empty">차트 불러오는 중...</div>';
+  switchChartingTab('edit');
+  if(!EMPLOYEES_ALL || !EMPLOYEES_ALL.length){
+    try { EMPLOYEES_ALL = await (await fetch('/api/employees')).json(); } catch(e){ EMPLOYEES_ALL = []; }
+  }
+  let chart = null;
+  try {
+    const r = await fetch(`/api/charts/by-appointment/${aid}?_=${Date.now()}`);
+    if(r.ok) chart = await r.json();  // 없으면 null
+  } catch(e){}
+  const c = chart || {};
+  const initialContent = (c.content && c.content.trim()) ? c.content : SOAP_TEMPLATE;
+  const selAuthor = c.author_id || defaultAuthorId || '';
+  const startDate = c.treatment_start_date || '';
+  const sessionNo = (c.session_no != null) ? c.session_no : '';
+  const empOpts = (EMPLOYEES_ALL||[]).map(e =>
+    `<option value="${e.id}" ${e.id===selAuthor?'selected':''}>${escapeHtml(e.name||'')}</option>`).join('');
+  const vm = CH_VISIT_META[aid] || {};
+  // 도수치료 등 템플릿의 '○○ 치료사' 치환용 — 예약 담당치료사(작성자 미선택 시 폴백).
+  _chEditorTherapistName = vm.therapist_name
+    || ((EMPLOYEES_ALL || []).find(e => e.id === selAuthor) || {}).name || '';
+  const visit = [CH_STATE.pname, vm.label, vm.tx].filter(Boolean).map(escapeHtml).join(' · ');
+  const meta = (chart && chart.updated_at)
+    ? `<p class="muted" style="margin:0 0 8px;">최종 수정: ${fmtDate24(new Date(chart.updated_at))}${chart.author_name ? ' · '+escapeHtml(chart.author_name) : ''}</p>` : '';
+  editor.innerHTML = `
+    <div class="ch-editor-head">
+      <button class="mini" onclick="switchChartingTab('list')">‹ 치료내역으로</button>
+      <h3>✎ 진료기록 (SOAP)</h3>
+    </div>
+    ${visit ? `<p class="ch-editor-visit">${visit}</p>` : ''}
+    ${meta}
+    <label>작성자
+      <select id="chart-author"><option value="">(미선택 시 담당치료사)</option>${empOpts}</select>
+    </label>
+    ${chPrevSessionsHtml(aid)}
+    <div class="ch-editor-row">
+      <label>치료 시작일
+        <input type="date" id="chart-start-date" value="${escapeHtml(startDate)}">
+      </label>
+      <label>회차
+        <input type="number" id="chart-session-no" min="1" step="1" placeholder="예: 3" value="${escapeHtml(String(sessionNo))}">
+      </label>
+    </div>
+    <button type="button" class="mini ch-special-toggle" onclick="chToggleSpecialCard(true)">＋ 스페셜테스트</button>
+    <button type="button" class="mini ch-special-toggle" onclick="chToggleTemplateCard(true)">＋ ROM/MMT</button>
+    <label class="ch-content-label">진료기록 (SOAP — 한 칸에 S/O/A/P 문단으로 작성)
+      <textarea id="chart-content" rows="16" placeholder="S / O / A / P 문단별로 작성">${escapeHtml(initialContent)}</textarea>
+    </label>
+    <div class="section-actions" style="margin-top:10px;">
+      <button class="primary" onclick="saveChart('${aid}')">💾 저장</button>
+      <button onclick="switchChartingTab('list')">취소</button>
+    </div>`;
+}
+
+async function saveChart(aid){
+  const sessRaw = (document.getElementById('chart-session-no').value || '').trim();
+  const sessNum = parseInt(sessRaw, 10);
+  const body = {
+    content: document.getElementById('chart-content').value,
+    treatment_start_date: document.getElementById('chart-start-date').value || '',
+    session_no: (Number.isFinite(sessNum) && sessNum > 0) ? sessNum : null,
+    author_id: document.getElementById('chart-author').value,
+  };
+  try {
+    const r = await fetch(`/api/charts/by-appointment/${aid}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body),
+    });
+    if(!r.ok){ alert('차트 저장 실패\n' + await r.text()); return; }
+    switchChartingTab('list');
+    if(CH_STATE.pid) chLoadHistory(CH_STATE.pid);
+  } catch(e){ alert('차트 저장 오류: ' + e.message); }
+}
+
+// 예약 상세 모달 → 차팅 탭으로 이동 + 해당 예약 차트 에디터 오픈
+async function openChartFromAppt(aid, pid){
+  closeModal();
+  CH_STATE.pid = pid || '';   // switchTab→loadChartingTab 이 올바른 환자로 로드하도록 먼저 설정
+  const btn = document.getElementById('tab-btn-charting');
+  if(btn) switchTab('tab-charting', btn);
+  if(pid) await chLoadHistory(pid);  // 헤더 환자명·visit meta 확보 후 에디터 오픈
+  openChartEditor(aid);
 }
 
 let RECORDS_DATA = null;
@@ -377,6 +942,19 @@ async function loadRecordsSheet(){
 
 function renderRecordsSheet(){
   const data = RECORDS_DATA || {tabs:[], categories:[], employees:[], entries:[], counts:{}};
+  if(!(data.tabs || []).length){
+    const subtabs = document.getElementById('record-subtabs');
+    if(subtabs) subtabs.innerHTML = '';
+    const title = document.getElementById('record-title');
+    if(title) title.textContent = '▥ 기록';
+    ['record-counts', 'record-weekdays'].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.innerHTML = '';
+    });
+    const list = document.getElementById('record-list');
+    if(list) list.innerHTML = '<div class="muted" style="padding:16px">기록 탭이 없습니다. <b>관리 → 치료항목</b>에서 항목의 <b>"기록 필요"</b>를 켜면 여기에 탭이 생깁니다.</div>';
+    return;
+  }
   const setting = recordActiveSetting();
   const categoryId = setting.category_id || '';
   const selectedDate = data.record_date || recordSelectedDate();
@@ -397,7 +975,6 @@ function renderRecordsSheet(){
     subtabs.innerHTML = (data.tabs || []).map(t => `
       <div class="record-subtab-wrap ${t.tab_key===setting.tab_key?'active':''}">
         <button type="button" class="record-subtab" onclick="selectRecordTab('${t.tab_key}')">${escapeHtml(t.label || '')}</button>
-        <button type="button" class="record-tab-edit-btn" onclick="editRecordTabName('${t.tab_key}')" title="이름 수정" aria-label="이름 수정">✎</button>
       </div>
     `).join('');
   }
@@ -494,24 +1071,6 @@ function moveRecordsWeek(delta){
 function selectRecordTab(tabKey){
   RECORDS_ACTIVE_TAB = tabKey || 'manual';
   renderRecordsSheet();
-}
-
-function editRecordTabName(tabKey){
-  const tab = (RECORDS_DATA?.tabs || []).find(t => t.tab_key === tabKey);
-  if(!tab) return;
-  showModal(`<h3>기록 탭 이름 수정</h3>
-    <label>이름 <input id="record-tab-name-input" value="${escapeAttr(tab.label || '')}" maxlength="30" autofocus></label>
-    <div class="modal-actions"><button onclick="closeModal()">취소</button>
-      <button class="primary" onclick="saveRecordTabName('${tabKey}')">저장</button></div>`);
-}
-
-async function saveRecordTabName(tabKey){
-  const tab = (RECORDS_DATA?.tabs || []).find(t => t.tab_key === tabKey);
-  if(!tab) return;
-  await saveRecordTabSetting(tabKey, {
-    label: _v('record-tab-name-input') || tab.label,
-    category_id: tab.category_id || '',
-  }, true);
 }
 
 async function saveRecordTabCategory(){
@@ -642,6 +1201,7 @@ function switchTherapistTab(name, btn){
 
   if(name === 'manage') loadTherapistsSheet();
   if(name === 'leave') loadLeaveCalendar();
+  if(name === 'duty') loadDutyCalendar();
 }
 
 async function openLeaveModal(dateStr){
@@ -868,6 +1428,365 @@ async function saveLeaveBulkAdd(){
   alert(`✓ 휴무 ${res.count || items.length}건이 등록되었습니다.`);
 }
 
+// ════════════════ 당직 관리 (EmployeeDuty) ════════════════
+// 휴무일 관리와 같은 캘린더 UX 이나 유형/종류 없이 직원 + 날짜 + 메모만.
+// 정보성 기능 — 예약 차단/통계/day-board 와 무관 (당직 캘린더만 갱신).
+
+async function loadEmployeeDuties(date=''){
+  const url = date ? `/api/employee-duties?date=${date}` : '/api/employee-duties';
+  return await (await fetch(url)).json();
+}
+
+// 과(employee category) 필터 상태 + 캐시 — 캘린더를 과별로 볼 수 있게.
+let _dutyCatFilter = '';   // '' = 전체. 그 외엔 category_id.
+let _dutyAll = [];         // 마지막으로 불러온 전체 당직 (필터 변경 시 재fetch 없이 재렌더)
+let _dutyCats = [];        // 활성 과 목록
+
+async function loadDutyCalendar(){
+  await loadMasters();
+  _dutyAll = await loadEmployeeDuties();
+  try { _dutyCats = await (await fetch('/api/employee-categories?active=true')).json(); }
+  catch(e){ _dutyCats = []; }
+
+  const el = document.getElementById('duty-calendar');
+  if(!window._dutyCal){
+    window._dutyCal = new FullCalendar.Calendar(el, {
+      initialView:'dayGridMonth',
+      locale:'ko',
+      height:650,
+      headerToolbar:{left:'prev,next today', center:'title', right:''},
+      // 달 이동(prev/next/today) 시 상단 '과별 당직 횟수' 요약을 그 달 기준으로 갱신.
+      datesSet: () => renderDutyMonthlySummary(),
+      dateClick: async (info) => {
+        await openDutyModal(info.dateStr);
+      },
+      eventClick: async (info) => {
+        const d = info.event.start;
+        const dateStr = d.getFullYear() + '-' +
+          String(d.getMonth()+1).padStart(2,'0') + '-' +
+          String(d.getDate()).padStart(2,'0');
+        await openDutyModal(dateStr);
+      }
+    });
+    window._dutyCal.render();
+  }
+
+  // 필터에 없는 과가 선택돼 있으면 (비활성화/삭제 등) 전체로 리셋
+  if(_dutyCatFilter && !_dutyCats.some(c => c.id === _dutyCatFilter)) _dutyCatFilter = '';
+
+  renderDutyCategoryFilter();
+  renderDutyEvents();
+}
+
+// 캘린더 상단 과 필터 드롭다운 렌더 ('전체' + 활성 과들).
+function renderDutyCategoryFilter(){
+  const box = document.getElementById('duty-cat-filter');
+  if(!box) return;
+  const cats = (_dutyCats || []).filter(c => c.active !== false);
+  const opt = (id, label) =>
+    `<option value="${id}" ${_dutyCatFilter === id ? 'selected' : ''}>${label}</option>`;
+  box.innerHTML =
+    `<label class="duty-cat-label">과 ` +
+    `<select id="duty-cat-select" onchange="onDutyCategoryPick(this.value)">` +
+    opt('', '전체') + cats.map(c => opt(c.id, c.name)).join('') +
+    `</select></label>`;
+}
+
+function onDutyCategoryPick(catId){
+  _dutyCatFilter = catId || '';
+  renderDutyCategoryFilter();
+  renderDutyEvents();
+}
+
+// 선택한 과(_dutyCatFilter)에 속한 직원의 당직만 캘린더에 렌더 + 요약 갱신.
+function renderDutyEvents(){
+  if(!window._dutyCal) return;
+
+  const grouped = {};
+  _dutyAll.forEach(x => {
+    const t = EMPLOYEES_ALL.find(tt => tt.id === x.employee_id);
+    if(!t) return;
+    if(_dutyCatFilter && t.category_id !== _dutyCatFilter) return;  // 과 필터
+    if(!grouped[x.duty_date]) grouped[x.duty_date] = [];
+    grouped[x.duty_date].push({
+      employee_id: t.id,
+      name: t.name,
+      color: t.color || '#9CA3AF',
+    });
+  });
+
+  window._dutyCal.removeAllEvents();
+
+  let shown = 0;
+  Object.entries(grouped).forEach(([date, items]) => {
+    const seen = new Set();
+    items.forEach(it => {
+      if(seen.has(it.employee_id)) return;
+      seen.add(it.employee_id);
+      window._dutyCal.addEvent({
+        start: date,
+        allDay: true,
+        title: it.name,
+        backgroundColor: it.color,
+        borderColor: it.color,
+        textColor: '#fff'
+      });
+      shown++;
+    });
+  });
+
+  const catName = _dutyCatFilter
+    ? ((_dutyCats.find(c => c.id === _dutyCatFilter) || {}).name || '')
+    : '';
+  document.getElementById('duty-summary').innerHTML =
+    '<p class="muted">' + (catName ? catName + ' ' : '') + '당직: ' + shown + '건</p>';
+
+  renderDutyMonthlySummary();
+}
+
+// 상단 '과별 당직 횟수' 요약 — 캘린더에 보이는 달 기준으로 과(category)별 직원의
+// 당직 횟수를 집계. 과 필터(_dutyCatFilter)가 걸려 있으면 그 과만 표시.
+// 0회 직원은 나열하지 않고(당직 있는 직원만), 횟수 많은 순으로 정렬.
+function renderDutyMonthlySummary(){
+  const box = document.getElementById('duty-monthly-summary');
+  if(!box) return;
+  if(!window._dutyCal || !window._dutyCal.view){ box.innerHTML = ''; return; }
+
+  // 캘린더에 표시 중인 달(currentStart = 그 달 1일) 기준 'YYYY-MM'.
+  const cs = window._dutyCal.view.currentStart;
+  const ym = cs.getFullYear() + '-' + String(cs.getMonth() + 1).padStart(2, '0');
+  const monthLabel = cs.getFullYear() + '년 ' + (cs.getMonth() + 1) + '월';
+
+  // 이번 달 직원별 당직 횟수 (duty_date 는 'YYYY-MM-DD', (직원,날짜) 유니크라 행=일수).
+  const countMap = {};
+  _dutyAll.forEach(x => {
+    if((x.duty_date || '').slice(0, 7) !== ym) return;
+    countMap[x.employee_id] = (countMap[x.employee_id] || 0) + 1;
+  });
+
+  const empById = id => EMPLOYEES_ALL.find(t => t.id === id);
+  const activeCats = (_dutyCats || []).filter(c => c.active !== false);
+  const activeCatIds = new Set(activeCats.map(c => c.id));
+  const dutyIds = Object.keys(countMap);
+
+  const chip = (name, color, count) =>
+    '<div class="duty-count-chip">' +
+      '<span><span class="color-dot" style="background:' + escapeAttr(color || '#9CA3AF') + '"></span>' +
+      escapeHtml(name || '') + '</span>' +
+      '<b>' + count + '회</b>' +
+    '</div>';
+
+  const groupHtml = (title, ids) => {
+    const items = ids
+      .map(id => ({ emp: empById(id), count: countMap[id] }))
+      .filter(o => o.count > 0)
+      .map(o => ({
+        name: o.emp ? o.emp.name : '(알 수 없음)',
+        color: o.emp ? o.emp.color : '#9CA3AF',
+        count: o.count,
+      }))
+      .sort((a, b) => b.count - a.count || (a.name || '').localeCompare(b.name || '', 'ko'));
+    if(!items.length) return '';
+    return '<div class="duty-cat-group">' +
+      '<div class="duty-cat-name">' + escapeHtml(title) + '</div>' +
+      '<div class="duty-count-grid">' + items.map(i => chip(i.name, i.color, i.count)).join('') + '</div>' +
+    '</div>';
+  };
+
+  // 표시할 과 (필터 반영). 필터 없으면 전체 과 + '미배정'(과 없음/비활성 과 직원).
+  let cats = activeCats;
+  if(_dutyCatFilter) cats = cats.filter(c => c.id === _dutyCatFilter);
+
+  let html = cats
+    .map(c => groupHtml(c.name, dutyIds.filter(id => {
+      const e = empById(id);
+      return e && e.category_id === c.id;
+    })))
+    .join('');
+
+  if(!_dutyCatFilter){
+    html += groupHtml('미배정', dutyIds.filter(id => {
+      const e = empById(id);
+      return !e || !e.category_id || !activeCatIds.has(e.category_id);
+    }));
+  }
+
+  box.innerHTML =
+    '<div class="duty-summary-title">' + escapeHtml(monthLabel) + ' 과별 당직 횟수</div>' +
+    (html || '<p class="muted" style="margin:0">이번 달 당직 기록이 없습니다.</p>');
+}
+
+async function openDutyModal(dateStr){
+  await loadMasters();
+  const duties = await loadEmployeeDuties(dateStr);
+  const memo = duties[0]?.memo || '';
+  const onDuty = new Set(duties.map(x => x.employee_id));
+
+  const rows = EMPLOYEES_ALL
+  .filter(t => t.active !== false)
+  .map(t => `
+    <div class="leave-row">
+      <label class="chk-item">
+        <input type="checkbox" class="duty-emp-chk" value="${t.id}" ${onDuty.has(t.id) ? 'checked' : ''}>
+        <span>
+          <span class="color-dot" style="background:${t.color}"></span>
+          <span class="leave-name-text">${t.name}</span>
+        </span>
+      </label>
+    </div>
+  `).join('');
+
+  showModal(`
+    <h3>🗓️ ${dateStr} 당직 직원 설정</h3>
+    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--sky-100);padding:10px;border-radius:8px;background:#fff">
+      ${rows || '<p class="muted">직원 없음</p>'}
+    </div>
+    <label>메모
+      <input id="duty-memo" value="${memo.replace(/"/g, '&quot;')}">
+    </label>
+    <div class="modal-actions">
+      <button onclick="closeModal()">닫기</button>
+      <button class="primary" onclick="saveDutyDay('${dateStr}')">저장</button>
+    </div>
+  `);
+}
+
+async function saveDutyDay(dateStr){
+  const items = Array.from(document.querySelectorAll('.duty-emp-chk:checked'))
+    .map(x => ({ employee_id: x.value }));
+
+  const body = {
+    duty_date: dateStr,
+    items: items,
+    memo: _v('duty-memo') || ''
+  };
+
+  const r = await fetch('/api/employee-duties/bulk-set', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+
+  if(!r.ok){
+    alert('당직 저장 실패\n' + await _apiErrorText(r));
+    return;
+  }
+
+  closeModal();
+  await loadDutyCalendar();
+}
+
+// ──────────────── 당직 추가 (직원 1명 · 여러 날짜 동시 등록) ────────────────
+let _dutyBulkSel = new Set();   // 선택된 날짜 문자열 집합 (유형 없음)
+
+function _dutyBulkDateLabel(d){
+  const dt = new Date(d + 'T00:00:00');
+  return `${dt.getMonth()+1}월 ${dt.getDate()}일 (${'일월화수목금토'[dt.getDay()]})`;
+}
+
+async function openDutyBulkAddModal(){
+  await loadMasters();
+  _dutyBulkSel = new Set();
+  if(window._dutyBulkCal){ try { window._dutyBulkCal.destroy(); } catch(e){} window._dutyBulkCal = null; }
+
+  const empOpts = EMPLOYEES_ALL
+    .filter(e => e.active !== false)
+    .map(e => `<option value="${e.id}">${e.name}${e.category_name ? ' (' + e.category_name + ')' : ''}</option>`)
+    .join('');
+
+  showModal(`
+    <h3>➕ 당직 추가</h3>
+    <label>직원
+      <select id="duty-bulk-emp">
+        <option value="">직원 선택…</option>
+        ${empOpts}
+      </select>
+    </label>
+    <p class="muted" style="margin:10px 0 4px">달력에서 당직 날짜를 클릭해 여러 날짜를 선택하세요.</p>
+    <div id="duty-bulk-cal" style="margin-bottom:12px"></div>
+    <div id="duty-bulk-list" class="leave-bulk-list"></div>
+    <label>메모
+      <input id="duty-bulk-memo" placeholder="(선택) 전체 날짜 공통 메모">
+    </label>
+    <div class="modal-actions">
+      <button onclick="closeModal()">닫기</button>
+      <button class="primary" onclick="saveDutyBulkAdd()">등록</button>
+    </div>
+  `);
+
+  const el = document.getElementById('duty-bulk-cal');
+  window._dutyBulkCal = new FullCalendar.Calendar(el, {
+    initialView: 'dayGridMonth',
+    locale: 'ko',
+    height: 340,
+    headerToolbar: { left: 'prev', center: 'title', right: 'next' },
+    fixedWeekCount: false,
+    selectable: false,
+    dateClick: (info) => _dutyBulkToggleDate(info.dateStr),
+  });
+  window._dutyBulkCal.render();
+  _dutyBulkRenderList();
+}
+
+function _dutyBulkToggleDate(d){
+  if(_dutyBulkSel.has(d)) _dutyBulkSel.delete(d);
+  else _dutyBulkSel.add(d);
+  _dutyBulkRefreshCal();
+  _dutyBulkRenderList();
+}
+
+function _dutyBulkRefreshCal(){
+  const cal = window._dutyBulkCal;
+  if(!cal) return;
+  cal.removeAllEvents();
+  for(const d of _dutyBulkSel){
+    cal.addEvent({ start: d, allDay: true, display: 'background', backgroundColor: '#38bdf8' });
+  }
+}
+
+function _dutyBulkRenderList(){
+  const box = document.getElementById('duty-bulk-list');
+  if(!box) return;
+  const dates = Array.from(_dutyBulkSel).sort();
+  if(dates.length === 0){
+    box.innerHTML = '<p class="muted">선택된 날짜가 없습니다.</p>';
+    return;
+  }
+  box.innerHTML = dates.map(d => `
+      <div class="leave-bulk-row" data-date="${d}">
+        <span class="leave-bulk-date">${_dutyBulkDateLabel(d)}</span>
+        <button class="mini" title="제외" onclick="_dutyBulkToggleDate('${d}')">✕</button>
+      </div>`).join('');
+}
+
+async function saveDutyBulkAdd(){
+  const empSel = document.getElementById('duty-bulk-emp');
+  const empId = empSel ? empSel.value : '';
+  if(!empId){ alert('직원을 선택하세요.'); return; }
+  if(_dutyBulkSel.size === 0){ alert('당직 날짜를 1개 이상 선택하세요.'); return; }
+
+  const items = Array.from(_dutyBulkSel).map(d => ({
+    employee_id: empId,
+    duty_date: d,
+  }));
+
+  const r = await fetch('/api/employee-duties/bulk-add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items, memo: _v('duty-bulk-memo') || '' }),
+  });
+
+  if(!r.ok){
+    alert('당직 등록 실패\n' + await _apiErrorText(r));
+    return;
+  }
+  const res = await r.json().catch(() => ({}));
+
+  closeModal();
+  await loadDutyCalendar();
+  alert(`✓ 당직 ${res.count || items.length}건이 등록되었습니다.`);
+}
+
 // 서버 에러 응답에서 사용자에게 보여줄 짧은 텍스트 추출.
 //   FastAPI HTTPException 은 {"detail":"메시지"} 형식 → detail 만 꺼냄.
 //   JSON 이 아니면 raw text. 실패하면 status 라인.
@@ -951,6 +1870,12 @@ function applyAdminUiState(isLoggedIn){
       if(reserveBtn) switchTab('tab-reserve', reserveBtn);
     }
   }
+  // 재고 탭이 열려 있으면 로그인 상태 변화에 맞춰 다시 불러온다
+  // (로그아웃 → 관리자 전용 칸 즉시 가림, 로그인 → 나타남).
+  const invPane = document.getElementById('tab-inventory');
+  if(invPane && invPane.classList.contains('active') && INVENTORY_DATA){
+    loadInventorySheet();
+  }
 }
 
 // 🔒/🔓 버튼 클릭: 로그아웃 상태면 로그인 모달, 로그인 상태면 로그아웃 확인
@@ -1006,12 +1931,28 @@ async function loadMasters(){
 //   - 일부 모달/과거 코드에서 PATIENTS_BY_ID.get(id) 를 사용할 때 있어서 캐시는 유지
 //   - 로드되는 동안 get() 이 undefined 면 appointments embed 값을 대체로 사용
 let _PATIENTS_LOADED = false;
+let _PATIENTS_FULL = false;            // 전체 환자 배열을 실제로 로드했는지(소규모) — 로컬검색/배지 길이 가용 여부
+let _PATIENTS_COUNT = null;            // 서버 COUNT(배지용) — 전체 로드 여부와 무관하게 정확
+const _PATIENTS_PRELOAD_MAX = 20000;  // 이 수를 넘으면 전체 환자 light 로드 생략(예약 embed/서버검색에 의존)
 async function _loadPatientsBackground(){
   if(_PATIENTS_LOADED) return;
   try {
+    // 배지용 경량 카운트 먼저 — 전체 로드 여부와 무관하게 (환자 수) 정확히 표시.
+    try {
+      const c = await (await fetch('/api/patients/count')).json();
+      if(c && typeof c.count === 'number'){ _PATIENTS_COUNT = c.count; _updatePatientCountBadge(); }
+    } catch(e){ /* 무시 */ }
+    // 대량 환경(수만 건)에서는 전체 환자 light 로드를 생략 — 이름은 예약 embed,
+    // 검색은 서버 검색(/api/patients/search), 캐시는 _upsertPatientCache 로 점진 채움.
+    if(_PATIENTS_COUNT != null && _PATIENTS_COUNT > _PATIENTS_PRELOAD_MAX){
+      _PATIENTS_FULL = false;
+      _PATIENTS_LOADED = true;
+      return;
+    }
     const data = await (await fetch('/api/patients?light=1')).json();
     PATIENTS = data || [];
     PATIENTS_BY_ID = new Map(PATIENTS.map(p => [p.id, p]));
+    _PATIENTS_FULL = true;
     _PATIENTS_LOADED = true;
     _updatePatientCountBadge();
   } catch(e){ /* 무시 — appointments embed 로 커버 */ }
@@ -1021,8 +1962,11 @@ async function _loadPatientsBackground(){
 function _updatePatientCountBadge(){
   const el = document.getElementById('pm-count-badge');
   if (!el) return;
-  if (!_PATIENTS_LOADED) { el.textContent = '(…)'; return; }
-  el.textContent = `(${(PATIENTS || []).length.toLocaleString()}명)`;
+  // 전체 배열 로드(소규모)면 길이(즉시 갱신), 생략(대량)이면 서버 COUNT.
+  const n = _PATIENTS_FULL ? (PATIENTS || []).length
+          : (_PATIENTS_COUNT != null ? _PATIENTS_COUNT : null);
+  if (n == null) { el.textContent = '(…)'; return; }
+  el.textContent = `(${n.toLocaleString()}명)`;
 }
 
 // 환자 CRUD 후 캐시 강제 재로드 → 배지도 자동 갱신
@@ -1416,16 +2360,29 @@ async function loadLeaveCalendar(){
 }
 
 async function loadMiniCalendarData(baseDate = null){
-  const d = baseDate || (window._miniCal ? window._miniCal.getDate() : new Date());
+  // 표시 중인 '달'은 FullCalendar 의 view.currentStart(= 표시달 1일)에서 가져온다.
+  //   getDate()/datesSet 의 info.start 는 이전달 셀을 가리킬 수 있어 범위 계산이 틀어진다
+  //   (예: 6월 보기인데 info.start 가 5/31 → 5~6월만 받아 다음달이 빠짐). currentStart 우선.
+  let d;
+  if (window._miniCal && window._miniCal.view && window._miniCal.view.currentStart) {
+    d = window._miniCal.view.currentStart;
+  } else {
+    d = baseDate || new Date();
+  }
 
   const y = d.getFullYear();
   const m = d.getMonth();
+  // 미니달력 그리드는 이번달 외에 앞(이전달 말일들)·뒤(다음달 1~N일) 셀도 함께 보인다.
+  //   범위를 넓혀 한 번에 받는다 — start: 1일에서 7일 앞(그리드 선행 셀 커버), end: 다음달 말일(+1달).
   const first = new Date(y, m, 1);
-  const last = new Date(y, m + 1, 0);
+  first.setDate(first.getDate() - 7);
+  const last = new Date(y, m + 2, 0);
 
   const startStr = `${first.getFullYear()}-${String(first.getMonth()+1).padStart(2,'0')}-${String(first.getDate()).padStart(2,'0')}`;
   const endStr = `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`;
 
+  // 항상 fresh fetch — 이벤트(예약 생성/취소/완료) 후 refresh() 호출이 최신 데이터를 받아야 하므로
+  //   in-flight 캐싱/dedup 을 두지 않는다(진행중 요청 재사용 시 변경 직전 데이터로 갱신되는 경합 방지).
   const apptRes = await fetch(`/api/appointments?start=${startStr}T00:00:00&end=${endStr}T23:59:59`);
   const apptData = await apptRes.json();
 
@@ -1530,6 +2487,33 @@ async function reloadMiniCalendar(baseDate = null){
   paintMiniCalendarCells();
 }
 
+// 셀 마운트(dayCellDidMount)는 42개 셀마다 1번씩 호출된다. 거기서 전체 셀을 다시 그리면
+// O(n²) 가 되어 렌더가 느리고 깜빡임(깨짐)이 생긴다 → rAF 로 1프레임에 1번만 그리게 합침.
+let _miniPaintRaf = 0;
+function schedulePaintMiniCal(){
+  if (_miniPaintRaf) return;
+  _miniPaintRaf = requestAnimationFrame(() => { _miniPaintRaf = 0; paintMiniCalendarCells(); });
+}
+
+// 미니달력 깨짐 방지 — 컨테이너 폭이 바뀌면(탭 전환 display:none→표시, 창 리사이즈,
+// 레이아웃 정착) FullCalendar 가 내부 크기를 다시 계산하지 않아 셀이 좁게 굳는다.
+// .mini-cal-wrap 폭 변화를 관찰해 updateSize() 호출. (높이만 변할 때는 무시 → 루프 방지)
+function _installMiniCalAutoResize(){
+  const host = document.getElementById('month-cal');
+  const box = host && host.closest('.mini-cal-wrap');
+  if (!box || typeof ResizeObserver === 'undefined') return;
+  let lastW = Math.round(box.getBoundingClientRect().width);
+  let raf = 0;
+  const ro = new ResizeObserver(() => {
+    const w = Math.round(box.getBoundingClientRect().width);
+    if (!w || w === lastW) return;
+    lastW = w;
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => { try { if (window._miniCal) window._miniCal.updateSize(); } catch(e){} });
+  });
+  ro.observe(box);
+}
+
 function dateKey(value){
   if(typeof value === 'string') return value.slice(0, 10);
   const d = value ? new Date(value) : new Date();
@@ -1572,8 +2556,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       await reloadMiniCalendar(info.start);
     },
     dayCellDidMount: () => {
-      paintMiniCalendarCells();
-      syncMiniCalendarSelection();
+      // 셀마다 전체 repaint 하지 않고 rAF 로 1프레임 1회만 (paintMiniCalendarCells 가
+      // 내부에서 syncMiniCalendarSelection 도 호출함).
+      schedulePaintMiniCal();
     },
     dateClick: (info) => {
       window._currentDate = new Date(info.dateStr);
@@ -1583,6 +2568,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   window._miniCal.render();
+  _installMiniCalAutoResize();   // 폭 변화 시 자동 updateSize (깨짐 방지)
 
   await reloadMiniCalendar(new Date());
 
@@ -1625,7 +2611,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     try { loadTodayList();  } catch(e) {}
     try { if (window._miniCal) reloadMiniCalendar(window._miniCal.getDate()); } catch(e) {}
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // 새 버전 감지 — 메인 PC 서버가 업데이트되면(APP_VERSION 변경) 서브 PC
+  // 브라우저에 "새로고침" 배너를 띄운다. 어느 탭을 보고 있든 동작하며,
+  // 탭이 보이는 상태에서만 폴링(60초) + 탭 복귀 시 즉시 1회 확인.
+  // ─────────────────────────────────────────────────────────────
+  setInterval(() => { if (!document.hidden) checkForUpdate(); }, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkForUpdate();
+  });
 });
+
+// 페이지 로드 버전(window.APP_LOADED_VERSION) 과 서버 현재 버전(/api/version)을
+// 비교해 다르면 한 번만 배너를 띄운다(중복 방지). 서버 재시작 중 일시적 실패는 무시.
+let _UPDATE_NOTIFIED = false;
+async function checkForUpdate(){
+  if (_UPDATE_NOTIFIED) return;
+  const loaded = window.APP_LOADED_VERSION;
+  if (!loaded || loaded === 'dev') return;  // dev 빌드는 버전 비교 의미 없음
+  try {
+    const r = await fetch('/api/version', { cache: 'no-store' });
+    if (!r.ok) return;
+    const data = await r.json();
+    if (data && data.version && data.version !== loaded){
+      _UPDATE_NOTIFIED = true;
+      showUpdateBanner(data.version);
+    }
+  } catch(e){
+    // 서버 재시작 중 등 일시적 실패 — 다음 주기에 재시도
+  }
+}
+
+function showUpdateBanner(newVersion){
+  if (document.getElementById('update-banner')) return;
+  const el = document.createElement('div');
+  el.id = 'update-banner';
+  el.className = 'update-banner';
+  el.innerHTML = `
+    <span class="update-banner-text">🔄 새 버전(${escapeHtml(newVersion || '')})이 나왔어요. 새로고침하면 적용됩니다.</span>
+    <button type="button" class="update-banner-refresh" onclick="reloadForUpdate()">새로고침</button>
+    <button type="button" class="update-banner-close" onclick="dismissUpdateBanner()" title="닫기" aria-label="닫기">✕</button>
+  `;
+  document.body.appendChild(el);
+}
+
+function reloadForUpdate(){
+  // HTML 은 no-cache 라 일반 reload 로 새 버전 HTML + 자산을 받아온다.
+  window.location.reload();
+}
+
+function dismissUpdateBanner(){
+  const el = document.getElementById('update-banner');
+  if (el) el.remove();
+  // 이 세션에선 다시 띄우지 않음(_UPDATE_NOTIFIED 유지) — 새로고침하면 어차피 최신.
+}
 
 function timeSlots(){
   // 운영 시작 ~ 운영 종료 시각까지 slot_minutes 간격.
@@ -1687,7 +2727,11 @@ async function renderDayBoard(){
   const appts = await r.json();
   const leaves = await (await fetch(`/api/therapist-leaves?date=${dateStr}`)).json();
   const slots = timeSlots();
+  const slotSet = new Set(slots);
   const activeAppts = appts.filter(a => a.extendedProps.status !== 'canceled');
+  // 표(셀)에 실제로 그려진 예약 id 추적 — 어떤 사유로든 표에서 누락된 예약을
+  //   "표시되지 않은 예약" 경고로 모아 보여주기 위함 (예약이 조용히 사라지는 것 방지).
+  const renderedIds = new Set();
 
   let html = `<div class="board-header">
     <button class="mini" onclick="moveDay(-1)">◀ 이전</button>
@@ -1698,7 +2742,9 @@ async function renderDayBoard(){
       <button class="mini" onclick="toggleBoardEmployeePicker(event)">표시 직원 <span class="badge gray">${boardEmployeeFilterLabel()}</span></button>
       ${renderBoardEmployeePicker()}
     </div>
+    <!-- 미완성 기능 — 엑셀 내보내기 버튼 숨김 (완성 시 복구). 함수/엔드포인트는 유지.
     <button class="mini" onclick="downloadManualScheduleXlsx()" title="현재 날짜의 도수치료 예약을 A4 가로 엑셀로 다운로드">📊 도수치료 엑셀</button>
+    -->
   </div>`;
 
   // ─────── 열 구성 ───────
@@ -2011,6 +3057,7 @@ async function renderDayBoard(){
 
       const items = cellsByCol[c.id][m] || [];
       if(items.length){
+        items.forEach(it => renderedIds.add(it.apptId));
         const cellInner = items.map(it => renderApptCellItem(it, c)).join('');
         const extraCls = c.isFixed ? 'fixed-col-cell' : '';
         const span = (aPlan && aPlan.spanMap[rowIdx]) || 1;
@@ -2030,7 +3077,58 @@ async function renderDayBoard(){
   });
   html += `</tbody></table></div>`;
 
-  document.getElementById('day-board').innerHTML = html;
+  // ─────── 표에 표시되지 않은 예약 경고 ───────
+  // 셀에 그려지지 못한 예약(치료항목 없음 / 운영시간·예약간격 격자 밖 / 분류 불가)을
+  //   표 위에 모아 노출. 미니캘린더는 모든 예약을 세므로, 이렇게 해야 표·미니 카운트가
+  //   일치하고 "예약했는데 표에 안 뜨는" 예약을 사용자가 찾아 고칠 수 있다.
+  const unplaced = activeAppts.filter(ap => !renderedIds.has(ap.id));
+  if(unplaced.length){
+    const rows = unplaced
+      .sort((a,b) => new Date(a.start) - new Date(b.start))
+      .map(ap => {
+        const ep = ap.extendedProps;
+        const patient = PATIENTS_BY_ID.get(ep.patient_id) || {
+          name: ep.patient_name || '?', chart_no: ep.patient_chart_no || '-',
+        };
+        const sd = new Date(ap.start);
+        const time = `${String(sd.getHours()).padStart(2,'0')}:${String(sd.getMinutes()).padStart(2,'0')}`;
+        const codes = apptTreatmentCodes(ep);
+        const slot = sd.getHours()*60 + sd.getMinutes();
+        let reason;
+        if(!codes.length)            reason = '치료항목 없음';
+        else if(!slotSet.has(slot))  reason = '운영시간·예약간격 밖';
+        else                         reason = '표시 분류 불가';
+        const shorts = codes.map(c => txShort(c)).join('·');
+        return `<div class="today-row" onclick="openAppt('${ap.id}')">
+          <span class="t-time">⚠️ ${time}</span>
+          <span class="t-name">${patient.name || '?'} ${patient.chart_no || ''}</span>
+          <span class="t-tx">${shorts ? '('+shorts+') · ' : ''}${reason}</span>
+        </div>`;
+      }).join('');
+    const warnHtml = `<div class="board-unplaced">
+      <div class="board-unplaced-head">⚠️ 시간표에 표시되지 않은 예약 ${unplaced.length}건 — 클릭해 시간·치료항목을 확인/수정하세요</div>
+      <div class="board-unplaced-body">${rows}</div>
+    </div>`;
+    const wrapIdx = html.indexOf('<div class="board-wrap">');
+    if(wrapIdx >= 0) html = html.slice(0, wrapIdx) + warnHtml + html.slice(wrapIdx);
+    else html += warnHtml;
+  }
+
+  const boardEl = document.getElementById('day-board');
+  // 폴링/동기화로 board 가 통째로 다시 그려질 때 가로·세로 스크롤 위치를 보존한다.
+  // (innerHTML 교체 시 .board-wrap 이 새 엘리먼트로 교체되며 scrollLeft/Top 이 0 으로 리셋 →
+  //  표가 5초마다 왼쪽 끝으로 되돌아가던 현상 방지)
+  const _prevWrap = boardEl.querySelector('.board-wrap');
+  const _prevLeft = _prevWrap ? _prevWrap.scrollLeft : 0;
+  const _prevTop  = _prevWrap ? _prevWrap.scrollTop  : 0;
+
+  boardEl.innerHTML = html;
+
+  const _newWrap = boardEl.querySelector('.board-wrap');
+  if(_newWrap){
+    _newWrap.scrollLeft = _prevLeft;
+    _newWrap.scrollTop  = _prevTop;
+  }
   attachBoardDnD();
 }
 
@@ -2460,12 +3558,14 @@ function buildGroupedHtml(items, isC){
   items.forEach(a => {
     const ep = a.extendedProps;
     const codes = apptTreatmentCodes(ep);
-    if(!codes.length) return;
     const assignMap = {};
     (ep.assignments||[]).forEach(x => { assignMap[x.treatment_code] = x.handler_id; });
 
-    let groupKey = null;
-    if(codes.some(isManualCode)){
+    let groupKey;
+    if(!codes.length){
+      // 치료항목 없는 예약도 숨기지 않고 노출 (예약이 조용히 사라지는 것 방지)
+      groupKey = '__nocode__';
+    } else if(codes.some(isManualCode)){
       // 도수치료 등 치료사(non-eswt) 항목 → therapist_id 기준
       groupKey = ep.therapist_id || '__manual__';
     } else if(codes.includes(TX_META.eswt_code)){
@@ -2478,22 +3578,26 @@ function buildGroupedHtml(items, isC){
     (gr[groupKey] = gr[groupKey] || []).push(a);
   });
 
-  // 출력 순서: 치료사들 → 치료사 미배정 → 체외충격파 공용 → 의사 그룹
+  // 출력 순서: 치료사들 → 치료사 미배정 → 체외충격파 공용 → 의사 → 치료항목 없음
   const order = [
     ...THERAPISTS.filter(t => t.active !== false).map(t => t.id),
-    '__manual__', '__eswt__', '__doctor__',
+    '__manual__', '__eswt__', '__doctor__', '__nocode__',
   ];
-  return order
+  // order 에 없는 groupKey (예: 비활성/삭제된 담당 치료사 id) 도 끝에 붙여 누락 방지
+  const known = new Set(order);
+  const extraKeys = Object.keys(gr).filter(k => !known.has(k));
+  return [...order, ...extraKeys]
     .filter(k => gr[k] && gr[k].length)
     .map(key => {
       let name, color;
       if(key === '__doctor__'){ name = '🩺 의사'; color = '#3B82F6'; }
       else if(key === '__eswt__'){ name = '⚡ 체외충격파(공용)'; color = '#F97316'; }
       else if(key === '__manual__'){ name = '💆 치료사 미배정'; color = '#8B5CF6'; }
+      else if(key === '__nocode__'){ name = '⚠️ 치료항목 없음'; color = '#EF4444'; }
       else {
-        const t = THERAPISTS.find(x => x.id === key);
-        name = t ? t.name : '미배정';
-        color = t ? t.color : '#9CA3AF';
+        const t = THERAPISTS.find(x => x.id === key) || (EMPLOYEES_ALL||[]).find(x => x.id === key);
+        name = t ? (t.name + (t.active === false ? ' (비활성)' : '')) : '미배정';
+        color = t ? (t.color || '#9CA3AF') : '#9CA3AF';
       }
       const rows = gr[key]
         .sort((a,b) => new Date(a.start) - new Date(b.start))
@@ -2684,6 +3788,57 @@ function renderCreateTreatmentChecks(checkedCodes = []){
       <span>${escapeHtml(name)} <em>(${dur}분)</em></span>
     </label>`;
   }).join('');
+}
+
+// 예약 상세 모달용 치료항목 체크박스 — 신규 폼(f-tx-chk/onTxCheckChange)과 분리.
+// 상세 모달엔 f-dur/f-therapist-box 등이 없어 onTxCheckChange 를 쓰면 안 됨.
+function renderDetailTreatmentChecks(checkedCodes = []){
+  const checkedSet = new Set(checkedCodes || []);
+  const codes = (TX_META.treatment_codes || [])
+    .filter(code => {
+      const tx = txByCode(code);
+      return !tx || tx.active !== false;
+    });
+  // 비활성이지만 현재 예약에 이미 포함된 코드도 노출 (인지 후 해제 가능)
+  (checkedCodes || []).forEach(code => { if(!codes.includes(code)) codes.push(code); });
+  if(!codes.length){
+    return '<div class="muted" style="padding:8px 4px;font-size:12px;">활성 치료항목이 없습니다.</div>';
+  }
+  return codes.map(code => {
+    const name = TX_META.treatment_names[code] || txName(code) || code;
+    const min = Number(TX_MINUTES[code]);   // 치료항목 데이터(default_minutes) 기준 — 하드코딩 폴백 없음
+    const minLabel = Number.isFinite(min) && min > 0 ? ` <em>(${min}분)</em>` : '';
+    return `<label class="chk-item">
+      <input type="checkbox" class="ad-tx-chk" value="${escapeAttr(code)}" ${checkedSet.has(code)?'checked':''} onchange="onDetailTxChange()">
+      <span>${escapeHtml(name)}${minLabel}</span>
+    </label>`;
+  }).join('');
+}
+
+// 상세 모달에서 체크된 치료항목 시간(분) 합산 — TX_META.treatment_minutes 기준
+function detailTreatmentDurationSum(){
+  let total = 0;
+  document.querySelectorAll('.ad-tx-chk:checked').forEach(c => {
+    const min = Number(TX_MINUTES[c.value]);
+    if(Number.isFinite(min) && min > 0) total += min;
+  });
+  return total;
+}
+
+// 상세 모달 드롭다운 요약 — 선택된 치료항목 이름 나열 (치료항목 데이터 기준)
+function detailTreatmentSummaryText(codes){
+  const list = codes || [...document.querySelectorAll('.ad-tx-chk:checked')].map(c => c.value);
+  const names = list.map(c => txName(c));
+  return names.length ? names.join(', ') : '선택된 치료항목 없음';
+}
+
+// 치료항목 체크 변화 → '예약 시간 수정'의 시간(분) 자동 합산 + 드롭다운 요약 갱신
+function onDetailTxChange(){
+  const total = detailTreatmentDurationSum();
+  const durEl = document.getElementById('a-dur');
+  if(durEl && total > 0) durEl.value = total;
+  const sumEl = document.getElementById('ad-tx-summary');
+  if(sumEl) sumEl.textContent = detailTreatmentSummaryText();
 }
 
 function openCreate(startStr, endStr){
@@ -3189,12 +4344,11 @@ async function refresh(){
 }
 
 async function openAppt(aid){
-  // 단건 조회: 이 날짜만 조회하는 게 가벼움. 연간은 비효율.
-  const d = window._currentDate || new Date();
-  const y = d.getFullYear();
-  const r = await fetch(`/api/appointments?start=${y}-01-01T00:00:00&end=${y+1}-01-01T00:00:00`);
-  const ap = (await r.json()).find(a => a.id === aid);
-  if(!ap){ alert('예약 없음'); return; }
+  // 단건 조회 — 예전엔 연간 전체 예약을 받아 JS find(대량 데이터에서 수만 건 다운로드)했으나
+  // PK 단건 조회(GET /api/appointments/{aid})로 대체 → 전송량이 데이터 양과 무관.
+  const r = await fetch(`/api/appointments/${encodeURIComponent(aid)}`);
+  if(!r.ok){ alert('예약 없음'); return; }
+  const ap = await r.json();
 
   const ev = { start: new Date(ap.start), end: new Date(ap.end), extendedProps: ap.extendedProps };
   const ep = ev.extendedProps;
@@ -3205,6 +4359,9 @@ async function openAppt(aid){
   const patient = apptPatientInfo(ep);
 
   const codes = apptTreatmentCodes(ep);
+  // 통합 저장(saveApptAll)에서 치료항목 변경 여부 판단 + 환자메모 변경감지용 스냅샷
+  window._currentApptOrigCodes = codes.slice();
+  window._currentApptPatientMemo = (patient && patient.memo) || '';
   const assignMap = {};
   (ep.assignments || []).forEach(a => { assignMap[a.treatment_code] = a.handler_id; });
 
@@ -3238,7 +4395,6 @@ async function openAppt(aid){
       ${hasManual ? renderManualAssignRow(ep, codes.filter(isManualCode)) : ''}
       ${hasEswt ? renderEswtAssignRow(assignMap[TX_META.eswt_code], codes.filter(isEswtCode)) : ''}
       ${hasDoctor ? renderDoctorAssignRows(codes, assignMap) : ''}
-      <div class="section-actions"><button class="primary" onclick="saveAssignments('${aid}')">💾 담당 배정 저장</button></div>
     </div>`;
   } else if(status === 'approved'){
     // 승인된 건은 담당자 이름만 표시
@@ -3280,9 +4436,21 @@ async function openAppt(aid){
         <label>시간 <input id="a-time" type="time" step="600" min="${CFG.openTime}" max="${CFG.closeTime}" value="${startLocal.slice(11,16)}"></label>
         <label>시간(분) <input id="a-dur" type="number" value="${ep.duration_min || 30}"></label>
       </div>
-      <div class="compact-edit-actions">
-        <button class="primary" onclick="saveApptTime('${aid}')">💾 시간 저장</button>
-      </div>
+    </div>`;
+  }
+
+  // 치료항목 변경 섹션 (예약됨 상태에서만 — 확정/취소 건은 백엔드에서 수정 차단)
+  let treatmentEditSection = '';
+  if(status === 'reserved'){
+    treatmentEditSection = `<div class="approval-section active">
+      <h4>치료항목 변경 <small class="muted">(저장 시 담당 배정이 재구성됩니다)</small></h4>
+      <details class="tx-dropdown">
+        <summary class="tx-dropdown-summary">
+          <span id="ad-tx-summary">${escapeHtml(detailTreatmentSummaryText(codes))}</span>
+          <span class="tx-dropdown-caret" aria-hidden="true">▾</span>
+        </summary>
+        <div id="ad-tx-list" class="tx-check-list tx-dropdown-panel">${renderDetailTreatmentChecks(codes)}</div>
+      </details>
     </div>`;
   }
 
@@ -3297,7 +4465,10 @@ async function openAppt(aid){
     approveSection = `<div class="approval-section done">
       <h4>치료완료 ✓</h4>
       <p class="muted">${ep.approved_at || '-'} · 치료완료 처리됨</p>
-      <button onclick="revertApprove('${aid}')">↩ 치료완료 취소</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+        <button class="primary" onclick="openChartFromAppt('${aid}','${patient.id||''}')">📝 차트 기록</button>
+        <button onclick="revertApprove('${aid}')">↩ 치료완료 취소</button>
+      </div>
     </div>`;
   }
 
@@ -3323,27 +4494,43 @@ async function openAppt(aid){
         <input type="checkbox" id="a-is-new" ${isNewNow ? 'checked' : ''} style="width:16px;height:16px;">
         <span>■ 신환 (처음 방문 환자)</span>
       </label>
-      <button class="primary" style="margin-top:8px;" onclick="saveNewPatient('${aid}')">💾 신환 여부 저장</button>
     </div>`;
   } else if(isNewNow){
     newPatientSection = `<p style="color:#059669;font-weight:600;">■ 신환</p>`;
+  }
+
+  // 당일메모 + 환자 누적 메모 수정 (예약됨 상태에서만 — 통합 저장에 포함)
+  let memoEditSection = '';
+  if(status === 'reserved'){
+    memoEditSection = `<div class="approval-section active" style="margin-top:8px;">
+      <h4 style="margin-bottom:6px;">📅 당일메모 <small class="muted">(오늘 예약에만 기록)</small></h4>
+      <textarea id="a-memo" rows="2" style="width:100%;box-sizing:border-box;" placeholder="오늘 진료/운영 관련 메모">${escapeHtml(apptMemoNote(ep.memo))}</textarea>
+      <h4 style="margin:10px 0 6px;">📌 메모 <small class="muted">(환자 누적 메모 — 다음 예약 때도 계속 표시)</small></h4>
+      <textarea id="a-patient-memo" rows="2" style="width:100%;box-sizing:border-box;" placeholder="환자 특이사항/주의사항 등 지속 메모">${escapeHtml(patient?.memo || '')}</textarea>
+    </div>`;
+  }
+
+  // 통합 저장 — 위 편집 항목(당일메모·환자메모·신환·시간·치료항목·담당 배정)을 한 번에 저장
+  let unifiedSaveSection = '';
+  if(status === 'reserved'){
+    unifiedSaveSection = `<div style="margin:14px 0 4px;">
+      <button class="primary" style="width:100%;font-size:15px;padding:11px 0;font-weight:600;" onclick="saveApptAll('${aid}','${ep.patient_id || ''}')">💾 저장</button>
+      <p class="muted" style="text-align:center;font-size:11px;margin:6px 0 0;">위 메모·신환·시간·치료항목·담당 배정을 한 번에 저장합니다</p>
+    </div>`;
   }
 
   showModal(`<div class="appointment-detail-modal"><h3>예약 상세 ${badge}</h3>
     <p><b>${patient?.name||'?'}</b> · 차트 ${patient?.chart_no||'-'} · 담당: ${therapistName}</p>
     <p>${fmtDateTime24(ev.start)} · ${ep.duration_min||30}분</p>
     <p class="tx-badges">${codeBadges}</p>
-    ${ep.memo ? `<p style="color:#555;font-size:13px;margin:4px 0;">📅 <b>당일메모:</b> ${ep.memo}</p>` : ''}
-    ${patient?.memo ? `<p style="color:#1d4ed8;font-size:13px;margin:4px 0;">📌 <b>메모:</b> ${patient.memo}</p>` : ''}
-    ${status === 'reserved' ? `
-      <div class="approval-section active" style="margin-top:8px;">
-        <h4 style="margin-bottom:6px;">📌 메모 수정 <small class="muted">(저장 시 다음 예약에도 유지)</small></h4>
-        <textarea id="a-patient-memo" rows="2" style="width:100%;box-sizing:border-box;">${patient?.memo||''}</textarea>
-        <button class="primary" style="margin-top:6px;" onclick="savePatientMemo('${ep.patient_id}')">💾 메모 저장</button>
-      </div>` : ''}
+    ${status !== 'reserved' && apptMemoNote(ep.memo) ? `<p style="color:#555;font-size:13px;margin:4px 0;">📅 <b>당일메모:</b> ${escapeHtml(apptMemoNote(ep.memo))}</p>` : ''}
+    ${status !== 'reserved' && patient?.memo ? `<p style="color:#1d4ed8;font-size:13px;margin:4px 0;">📌 <b>메모:</b> ${escapeHtml(patient.memo)}</p>` : ''}
+    ${memoEditSection}
     ${newPatientSection}
     ${editSection}
+    ${treatmentEditSection}
     ${assignSection}
+    ${unifiedSaveSection}
     ${approveSection}
     ${cancelBlock}
     <div class="modal-actions"><button onclick="closeModal()">닫기</button></div></div>`);
@@ -3510,6 +4697,142 @@ async function saveApptTime(aid){
   closeModal(); refresh();
 }
 
+// 예약 상세에서 치료항목 변경 — 백엔드 PUT 이 treatment_codes 검증 + 담당 배정 재구성.
+async function saveTreatmentCodes(aid){
+  const codes = [...document.querySelectorAll('.ad-tx-chk:checked')].map(c => c.value);
+  if(!codes.length){ alert('치료항목을 하나 이상 선택하세요'); return; }
+  const body = { treatment_codes: codes, version: window._currentApptVersion };
+  // 도수치료(치료사) 항목이 하나도 없으면 도수 담당(therapist_id)은 의미 없음 → 고아 배정/오집계 방지 위해 해제
+  if(!codes.some(isManualCode)) body.therapist_id = null;
+  // 시간(분): '예약 시간 수정'의 a-dur 를 정본으로 사용.
+  //   항목 변경 시 onDetailTxChange 가 자동 합산해 a-dur 갱신, 미변경 시 기존(수동조정 포함) 유지 → 덮어쓰기 방지.
+  const dur = parseInt(_v('a-dur'), 10);
+  if(Number.isFinite(dur) && dur > 0){
+    const time = _v('a-time');
+    if(time){
+      const startMin = _tm(time);
+      const endMin = startMin + dur;
+      const openMin = _tm(CFG.openTime), closeMin = _tm(CFG.closeTime);
+      if(startMin < openMin || endMin > closeMin){
+        alert(`변경 후 예약 시간(${dur}분)이 운영시간(${CFG.openTime}~${CFG.closeTime})을 벗어납니다.\n'예약 시간 수정'에서 시간을 조정하세요.`);
+        return;
+      }
+      if(_isLunchOverlap(startMin, endMin)){
+        alert(`변경 후 예약(${dur}분)이 점심시간(${CFG.lunchStart}~${CFG.lunchEnd})과 겹칩니다.`);
+        return;
+      }
+    }
+    body.duration_min = dur;
+  }
+  const r = await fetch(`/api/appointments/${aid}`, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if(r.status === 409){ await handleConflict(r, aid); return; }
+  if(!r.ok){ alert('치료항목 변경 실패\n' + await r.text()); return; }
+  // 새 항목(주사/체외충격파 등)의 담당 배정을 바로 할 수 있도록 갱신 후 모달 재오픈
+  closeModal();
+  await refresh();
+  try { await openAppt(aid); } catch(e){}
+}
+
+// 통합 저장 — 예약 상세의 모든 편집 항목(당일메모·환자메모·신환·시간·치료항목·담당 배정)을
+// 한 번의 PUT(+환자메모 PATCH)으로 저장. 개별 저장 버튼 5개를 하나로 합친 것.
+async function saveApptAll(aid, pid){
+  // 1) 치료항목
+  const codes = [...document.querySelectorAll('.ad-tx-chk:checked')].map(c => c.value);
+  if(!codes.length){ alert('치료항목을 하나 이상 선택하세요'); return; }
+
+  // 2) 시간 — 운영시간/점심 검증 (saveApptTime 과 동일 규칙)
+  const dateEl = document.getElementById('a-date');
+  const timeEl = document.getElementById('a-time');
+  const durEl = document.getElementById('a-dur');
+  const date = dateEl ? dateEl.value : '';
+  const time = timeEl ? timeEl.value : '';
+  const dur = durEl ? (parseInt(durEl.value, 10) || 30) : 30;
+  if(!date || !time){ alert('날짜/시간을 입력하세요'); return; }
+  const openMin = _tm(CFG.openTime), closeMin = _tm(CFG.closeTime);
+  const startMin = _tm(time), endMin = startMin + dur;
+  if(startMin < openMin || endMin > closeMin){
+    alert(`예약 가능 시간은 운영시간(${CFG.openTime}~${CFG.closeTime}) 내여야 합니다.`);
+    return;
+  }
+  if(_isLunchOverlap(startMin, endMin)){
+    alert(`점심시간(${CFG.lunchStart}~${CFG.lunchEnd})에는 예약을 잡을 수 없습니다.`);
+    return;
+  }
+
+  // 3) 본문 구성 (PUT 하나에 모아서 전송)
+  const body = {
+    treatment_codes: codes,
+    start_at: `${date}T${time}:00`,
+    duration_min: dur,
+    version: window._currentApptVersion,
+  };
+
+  // 당일메모 — 현재 치료항목 기준으로 [치료항목] 접두어를 다시 붙여 신규 예약과 동일 형식 유지
+  const memoEl = document.getElementById('a-memo');
+  if(memoEl){
+    const note = (memoEl.value || '').trim();
+    const trNames = codes.map(c => txName(c)).join(', ');
+    body.memo = (`[${trNames}] ${note}`).trim();
+  }
+
+  // 신환 여부
+  const newEl = document.getElementById('a-is-new');
+  if(newEl) body.is_new_patient = !!newEl.checked;
+
+  // 도수치료 담당(therapist_id): 도수 항목 없으면 해제, 있고 드롭다운이 보이면 그 값
+  const manualSel = document.getElementById('a-manual-tid');
+  if(!codes.some(isManualCode)){
+    body.therapist_id = null;
+  } else if(manualSel){
+    body.therapist_id = manualSel.value || null;
+  }
+
+  // 담당 배정(체외충격파/의사) — 현재 모달에 보이는 드롭다운 기준.
+  //   비어 있으면 보내지 않음 → 백엔드가 새로 추가된 코드에 빈 배정행을 자동 생성(codes_changed 경로).
+  const assignments = [];
+  const eswtSel = document.getElementById('a-eswt-tid');
+  if(eswtSel && TX_META.eswt_code){
+    assignments.push({ treatment_code: TX_META.eswt_code, handler_id: eswtSel.value || null });
+  }
+  document.querySelectorAll('[id^="a-doc-"]').forEach(sel => {
+    assignments.push({ treatment_code: sel.id.substring('a-doc-'.length), handler_id: sel.value || null });
+  });
+  if(assignments.length) body.assignments = assignments;
+
+  // 4) 예약 PUT
+  const r = await fetch(`/api/appointments/${aid}`, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if(r.status === 409){ await handleConflict(r, aid); return; }
+  if(!r.ok){ alert('저장 실패\n' + await r.text()); return; }
+  try { const j = await r.json(); if(typeof j.version === 'number') window._currentApptVersion = j.version; } catch(e){}
+
+  // 5) 환자 누적 메모 — 변경된 경우에만 별도 PATCH (감사로그/동기화 불필요한 쓰기 방지)
+  const pmEl = document.getElementById('a-patient-memo');
+  if(pmEl && pid && (pmEl.value || '') !== (window._currentApptPatientMemo || '')){
+    await fetch(`/api/patients/${pid}/memo`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ memo: pmEl.value }),
+    });
+  }
+
+  // 6) 치료항목이 바뀌었으면 새 담당 배정 드롭다운을 띄우기 위해 모달 재오픈, 아니면 닫기
+  const orig = (window._currentApptOrigCodes || []).slice().sort().join(',');
+  const now = codes.slice().sort().join(',');
+  closeModal();
+  await refresh();
+  if(orig !== now){
+    try { await openAppt(aid); } catch(e){}
+  }
+}
+
 async function approveAppt(aid){
   const ok = await confirmBlock('치료완료 처리하시겠습니까?<br><small>완료 카운트가 자동으로 증가합니다.</small>');
   if(!ok) return;
@@ -3592,8 +4915,11 @@ function _formatPhone(digits){
 
 function _autoFormatInput(el){
   // [패치] 검색용 input 은 자동 포맷 대상에서 제외 (한글 입력 보장)
+  // ch-search: placeholder 에 '생년월일' 이 들어가 birth 포맷으로 오인 → 한글 검색어가
+  // 숫자만 남기며 지워지던 버그. 검색창이므로 포맷 제외.
   const elId = el.id || '';
-  if(elId === 'pqs-input' || elId === 'pm-search' || elId === 'f-pid-search') return;
+  if(elId === 'pqs-input' || elId === 'pm-search' || elId === 'f-pid-search'
+     || elId === 'ch-search') return;
 
   // 자동 분류: id 또는 placeholder 또는 data-fmt 로 판단
   const id = elId.toLowerCase();
@@ -3852,9 +5178,33 @@ let _pmState = { q: '', type: 'name', hits: [], total: 0, offset: 0 };
 let _pmTimer = null;
 
 function _pmDoneCompact(p){
-  const items = (p.counts_show || []);
+  // 완료 횟수는 치료항목 기준 실제 완료(done_count>0)된 항목만 표시.
+  const items = (p.counts_show || []).filter(c => (c.done_count || 0) > 0);
   if(!items.length) return '-';
-  return items.map(c => `${c.short} ${c.done_count||0}`).join(' · ');
+  return items.map(c => `${c.short} ${c.done_count}`).join(' · ');
+}
+
+// 환자탭 메모 셀 — 기본은 1줄 말줄임, 클릭하면 펼쳐 전체 표시(다시 클릭하면 접기). 환자탭만.
+function _pmMemoCell(memo){
+  const m = (memo || '').trim();
+  if(!m) return '<td class="muted">-</td>';
+  return `<td class="muted pm-memo-cell" onclick="pmToggleMemo(this, event)" title="클릭하면 메모 펼치기/접기">${escapeHtml(m)}</td>`;
+}
+function pmToggleMemo(td, ev){
+  if(ev) ev.stopPropagation();   // 환자 행 클릭(치료이력 펼침)과 분리
+  if(td) td.classList.toggle('expanded');
+}
+
+// 환자탭 → 그 환자의 차트기록(치료내역) 탭으로 이동. (이름으로 검색 + 치료내역 자동 로드)
+function pmOpenCharting(pid){
+  if(!pid) return;
+  const p = PATIENTS_BY_ID.get(pid) || (_pmState.hits || []).find(x => x.id === pid)
+            || _pmLoadRecentPatients().find(x => x.id === pid);
+  CH_STATE.pid = pid;            // switchTab→loadChartingTab 이 이 환자 치료내역을 로드
+  CH_STATE.type = 'name';
+  if(p && p.name){ CH_STATE.pname = p.name; CH_STATE.q = p.name; }
+  const btn = document.getElementById('tab-btn-charting');
+  if(btn) switchTab('tab-charting', btn);
 }
 
 function pmSearchDebounced(){
@@ -3924,14 +5274,15 @@ function _pmRenderEmpty(skipValidate){
         <td>${escapeHtml(p.chart_no||'-')}</td>
         <td><b>${escapeHtml(p.name||'')}</b></td>
         <td style="text-align:center;">${gtag}</td>
-        <td>${escapeHtml(p.phone||'-')}</td>
-        <td>${escapeHtml(p.birth_date||'-')}</td>
-        <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.memo||'-')}</td>
+        <td style="white-space:nowrap">${escapeHtml(p.phone||'-')}</td>
+        <td style="white-space:nowrap">${escapeHtml(p.birth_date||'-')}</td>
+        ${_pmMemoCell(p.memo)}
         <td class="tx-done-compact">${escapeHtml(_pmDoneCompact(p))}</td>
         <td>${lastStr}</td>
         <td onclick="event.stopPropagation()">
           <button class="mini" onclick="editPatientById('${p.id}')">수정</button>
           <button class="mini" onclick="quickCreateFor('${p.id}')">예약</button>
+          <button class="mini" onclick="pmOpenCharting('${p.id}')">차트기록</button>
           <button class="mini danger" onclick="delPatient('${p.id}')">삭제</button>
         </td></tr>`;
       const historyRow = isOpen ? `<tr class="pm-history-row"><td colspan="9">
@@ -4008,14 +5359,15 @@ function _pmRender(){
       <td>${p.chart_no||'-'}</td>
       <td><b>${p.name}</b></td>
       <td style="text-align:center;">${gtag}</td>
-      <td>${p.phone||'-'}</td>
-      <td>${p.birth_date||'-'}</td>
-      <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.memo||'-'}</td>
+      <td style="white-space:nowrap">${p.phone||'-'}</td>
+      <td style="white-space:nowrap">${p.birth_date||'-'}</td>
+      ${_pmMemoCell(p.memo)}
       <td class="tx-done-compact">${_pmDoneCompact(p)}</td>
       <td>${lastStr}</td>
       <td onclick="event.stopPropagation()">
         <button class="mini" onclick="editPatientById('${p.id}')">수정</button>
         <button class="mini" onclick="quickCreateFor('${p.id}')">예약</button>
+        <button class="mini" onclick="pmOpenCharting('${p.id}')">차트기록</button>
         <button class="mini danger" onclick="delPatient('${p.id}')">삭제</button>
       </td></tr>`;
     const historyRow = isOpen ? `<tr class="pm-history-row"><td colspan="9">
@@ -4475,12 +5827,6 @@ function initEmpSortable(){
   });
 }
 
-function boolSelectValue(v){
-  if(v === true) return 'true';
-  if(v === false) return 'false';
-  return '';
-}
-
 function readBoolSelect(id){
   const v = document.getElementById(id)?.value;
   if(v === 'true') return true;
@@ -4609,36 +5955,89 @@ async function deleteEmployeeCategory(cid){
   await loadTreatmentMeta();
 }
 
-// ─────── 재고 관리 (과별 품목 + 동적 관리 열) ───────
+// ─────── 재고 관리 (과 선택 + 동적 관리 열, 엑셀형 시트) ───────
 
 let INVENTORY_DATA = null;
-const INVENTORY_COLLAPSED_KEY = 'inventory_collapsed_categories';
-let INVENTORY_COLLAPSED = {};
+let INVENTORY_ACTIVE_CATEGORY = '';
+let INVENTORY_SEARCH = '';
 
-try {
-  INVENTORY_COLLAPSED = JSON.parse(localStorage.getItem(INVENTORY_COLLAPSED_KEY) || '{}') || {};
-} catch(e) {
-  INVENTORY_COLLAPSED = {};
+function selectInventoryCategory(categoryId){
+  if(categoryId !== INVENTORY_ACTIVE_CATEGORY && inventoryHasUnsaved()){
+    if(!confirm('저장하지 않은 변경이 있습니다.\n저장하지 않고 다른 과로 이동할까요?')) return;
+  }
+  INVENTORY_ACTIVE_CATEGORY = categoryId || '';
+  INVENTORY_SEARCH = '';
+  renderInventorySheet(INVENTORY_DATA);
 }
 
-function inventoryIsCollapsed(categoryId){
-  return !!INVENTORY_COLLAPSED[categoryId];
+function filterInventoryItems(query){
+  INVENTORY_SEARCH = query || '';
+  const q = (query || '').trim().toLowerCase();
+  const rows = document.querySelectorAll('#inventory-list .inventory-table tbody tr');
+  rows.forEach(tr => {
+    if(!tr.dataset.itemName && !tr.dataset.itemUnit) return;
+    const name = (tr.dataset.itemName || '').toLowerCase();
+    const unit = (tr.dataset.itemUnit || '').toLowerCase();
+    tr.style.display = (!q || name.includes(q) || unit.includes(q)) ? '' : 'none';
+  });
 }
 
-function saveInventoryCollapsed(){
-  try { localStorage.setItem(INVENTORY_COLLAPSED_KEY, JSON.stringify(INVENTORY_COLLAPSED)); } catch(e) {}
+function markInventoryDirty(input){
+  const changed = (input.dataset.savedValue || '') !== (input.value || '');
+  input.classList.toggle('dirty', changed);
+  updateInventorySaveButton();
 }
 
-function toggleInventoryCategory(categoryId){
-  INVENTORY_COLLAPSED[categoryId] = !inventoryIsCollapsed(categoryId);
-  saveInventoryCollapsed();
-  const card = document.getElementById(`inv-card-${categoryId}`);
-  const collapsed = inventoryIsCollapsed(categoryId);
-  if(card) card.classList.toggle('collapsed', collapsed);
-  const btn = document.getElementById(`inv-collapse-${categoryId}`);
-  if(btn){
-    btn.textContent = collapsed ? '▸' : '▾';
-    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+function inventoryHasUnsaved(){
+  return document.querySelectorAll('#inventory-list .inventory-cell-input.dirty').length > 0;
+}
+
+function updateInventorySaveButton(){
+  const btn = document.getElementById('inventory-save-btn');
+  if(!btn) return;
+  const n = document.querySelectorAll('#inventory-list .inventory-cell-input.dirty').length;
+  btn.textContent = n ? `저장 (${n})` : '저장';
+  btn.disabled = n === 0;
+  btn.classList.toggle('has-changes', n > 0);
+}
+
+async function saveInventoryChanges(categoryId){
+  const dirty = Array.from(document.querySelectorAll('#inventory-list .inventory-cell-input.dirty'));
+  if(!dirty.length) return;
+  const btn = document.getElementById('inventory-save-btn');
+  if(btn){ btn.disabled = true; btn.textContent = '저장 중...'; }
+  const results = await Promise.all(dirty.map(async input => {
+    input.classList.add('saving');
+    try {
+      const r = await adminFetch('/api/inventory/values', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          item_id: input.dataset.itemId,
+          field_id: input.dataset.fieldId,
+          value: input.value || '',
+          author: inventoryAuthor(categoryId),
+        }),
+      });
+      if(!r.ok) throw new Error(await _apiErrorText(r));
+      input.dataset.savedValue = input.value || '';
+      input.classList.remove('dirty');
+      return true;
+    } catch(e){
+      return false;
+    } finally {
+      input.classList.remove('saving');
+    }
+  }));
+  const fail = results.filter(x => !x).length;
+  const ok = results.length - fail;
+  updateInventorySaveButton();
+  if(fail){
+    alert(`저장 완료 ${ok}건, 실패 ${fail}건.\n실패한 칸은 노란색으로 남아 있습니다.`);
+  } else if(btn){
+    btn.textContent = '저장됨 ✓';
+    btn.disabled = true;
+    setTimeout(updateInventorySaveButton, 1500);
   }
 }
 
@@ -4669,11 +6068,13 @@ function inventoryInputType(field){
 }
 
 async function loadInventorySheet(){
+  if(inventoryHasUnsaved() && !confirm('저장하지 않은 변경이 있습니다.\n새로고침하면 변경 내용이 사라집니다. 계속할까요?')) return;
   const box = document.getElementById('inventory-list');
   if(!box) return;
   box.innerHTML = '<p class="muted" style="padding:12px">불러오는 중...</p>';
   try {
-    const r = await fetch('/api/inventory');
+    // adminFetch 로 토큰 동봉 — 관리자만 관리자 전용 칸을 받는다 (미인증 응답엔 그 칸/값이 없음).
+    const r = await adminFetch('/api/inventory');
     const data = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(data.detail || r.statusText);
     INVENTORY_DATA = data;
@@ -4686,14 +6087,42 @@ async function loadInventorySheet(){
 }
 
 function renderInventorySheet(data){
+  const subtabs = document.getElementById('inventory-subtabs');
   const box = document.getElementById('inventory-list');
+  const titleEl = document.getElementById('inventory-title');
   if(!box) return;
-  const sections = data.categories || [];
+  const sections = (data && data.categories) || [];
   if(!sections.length){
+    if(subtabs) subtabs.innerHTML = '';
+    if(titleEl) titleEl.textContent = '▧ 재고관리';
     box.innerHTML = '<p class="muted" style="padding:12px">직원 탭에서 과를 먼저 추가하세요.</p>';
     return;
   }
-  box.innerHTML = `<div class="inventory-stack">${sections.map(renderInventoryCategory).join('')}</div>`;
+  if(!sections.some(s => (s.category || {}).id === INVENTORY_ACTIVE_CATEGORY)){
+    INVENTORY_ACTIVE_CATEGORY = (sections[0].category || {}).id || '';
+  }
+  const section = sections.find(s => (s.category || {}).id === INVENTORY_ACTIVE_CATEGORY) || sections[0];
+  if(subtabs){
+    subtabs.innerHTML = sections.map(s => {
+      const c = s.category || {};
+      const active = c.id === INVENTORY_ACTIVE_CATEGORY;
+      const count = (s.items || []).length;
+      return `<div class="inventory-subtab-wrap ${active ? 'active' : ''}">
+        <button type="button" class="inventory-subtab" onclick="selectInventoryCategory('${c.id}')">
+          <span class="color-dot" style="background:${escapeAttr(c.color || '#9CA3AF')}"></span>
+          <span>${escapeHtml(c.name || '')}</span>
+          <em class="inventory-subtab-count">${count}</em>
+        </button>
+      </div>`;
+    }).join('');
+  }
+  if(titleEl){
+    const cName = (section.category || {}).name || '';
+    titleEl.textContent = cName ? `▧ ${cName} 재고` : '▧ 재고관리';
+  }
+  box.innerHTML = renderInventoryCategory(section);
+  filterInventoryItems(INVENTORY_SEARCH);
+  updateInventorySaveButton();
 }
 
 function renderInventoryCategory(section){
@@ -4702,32 +6131,36 @@ function renderInventoryCategory(section){
   const fields = section.fields || [];
   const items = section.items || [];
   const colCount = 3 + fields.length;
-  const fieldHeads = fields.map(field => `
-    <th class="inventory-field-head">
-      <span>${escapeHtml(field.name || '')}</span>
+  const fieldHeads = fields.map(field => {
+    const lock = field.admin_only ? '<span class="inventory-lock" title="관리자 전용 칸">🔒</span> ' : '';
+    return `
+    <th class="inventory-field-head ${field.admin_only ? 'inventory-admin-head' : ''}">
+      <span class="inventory-field-name">${lock}${escapeHtml(field.name || '')}</span>
       <span class="inventory-field-actions">
         <button type="button" class="inventory-icon-btn" onclick='editInventoryField("${c.id}", ${JSON.stringify(field).replace(/'/g,"&#39;")})' title="관리 열 수정" aria-label="관리 열 수정">✎</button>
         <button type="button" class="inventory-icon-btn inventory-icon-btn-danger" onclick="deleteInventoryField('${field.id}', '${c.id}')" title="관리 열 삭제" aria-label="관리 열 삭제">×</button>
       </span>
-    </th>`).join('');
+    </th>`;
+  }).join('');
   const rows = items.map(item => {
     const valueCells = fields.map(field => {
       const v = (item.values || {})[field.id] || '';
-      return `<td>
+      const adminOnly = !!field.admin_only;
+      return `<td class="inventory-value-cell ${adminOnly ? 'inventory-admin-cell' : ''}">
         <input class="inventory-cell-input" type="${inventoryInputType(field)}"
                value="${escapeAttr(v)}"
                data-item-id="${item.id}"
                data-field-id="${field.id}"
                data-category-id="${c.id}"
                data-saved-value="${escapeAttr(v)}"
-               onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
-               onblur="saveInventoryValue(this)">
+               oninput="markInventoryDirty(this)"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
       </td>`;
     }).join('');
     const inactive = item.active === false ? '<span class="badge gray">비활성</span>' : '';
-    return `<tr>
-      <td><b>${escapeHtml(item.name || '')}</b> ${inactive}</td>
-      <td>${escapeHtml(item.unit || '')}</td>
+    return `<tr data-item-name="${escapeAttr(item.name || '')}" data-item-unit="${escapeAttr(item.unit || '')}">
+      <td class="inventory-item-cell"><b>${escapeHtml(item.name || '')}</b> ${inactive}</td>
+      <td class="inventory-unit-cell">${escapeHtml(item.unit || '')}</td>
       ${valueCells}
       <td class="inventory-row-actions">
         <button type="button" class="inventory-icon-btn" onclick='editInventoryItem("${c.id}", ${JSON.stringify(item).replace(/'/g,"&#39;")})' title="품목 수정" aria-label="품목 수정">✎</button>
@@ -4736,31 +6169,32 @@ function renderInventoryCategory(section){
     </tr>`;
   }).join('');
   const emptyRow = `<tr><td colspan="${colCount}" class="muted" style="text-align:left;padding:14px">등록된 품목 없음</td></tr>`;
-  const collapsed = inventoryIsCollapsed(c.id);
-  return `<div id="inv-card-${escapeAttr(c.id)}" class="inventory-category-card ${collapsed ? 'collapsed' : ''}">
+  return `<div class="inventory-category-card">
     <div class="inventory-category-head">
-      <div>
-        <div class="inventory-category-title">
-          <button class="inventory-collapse-btn" id="inv-collapse-${escapeAttr(c.id)}"
-                  onclick="toggleInventoryCategory('${c.id}')"
-                  aria-expanded="${collapsed ? 'false' : 'true'}"
-                  title="과 접기/펼치기">${collapsed ? '▸' : '▾'}</button>
-          <h3><span class="color-dot" style="background:${c.color || '#9CA3AF'}"></span> ${escapeHtml(c.name || '')}</h3>
-        </div>
-        <div class="inventory-author-row">
-          <label>마지막 작성자
-            <input id="inv-author-${c.id}" value="${escapeAttr(state.last_author || '')}" placeholder="작성자 이름">
-          </label>
-          <button class="mini" onclick="saveInventoryAuthor('${c.id}')">작성자 저장</button>
-          <span class="muted">${state.last_author ? '최근 기록 ' + escapeHtml(inventoryDateLabel(state.last_written_at)) : '작성자 기록 없음'}</span>
-        </div>
+      <div class="inventory-author-row">
+        <label>마지막 작성자
+          <input id="inv-author-${c.id}" value="${escapeAttr(state.last_author || '')}" placeholder="작성자 이름">
+        </label>
+        <button class="mini" onclick="saveInventoryAuthor('${c.id}')">작성자 저장</button>
+        <span class="muted">${state.last_author ? '최근 기록 ' + escapeHtml(inventoryDateLabel(state.last_written_at)) : '작성자 기록 없음'}</span>
       </div>
       <div class="sheet-toolbar inventory-category-actions">
         <button class="small inventory-action-btn" onclick="editInventoryItem('${c.id}', null)">+ 품목 추가</button>
         <button class="small inventory-action-btn" onclick="editInventoryField('${c.id}', null)">+ 관리 열 추가</button>
       </div>
     </div>
-    <div class="inventory-category-body" style="overflow-x:auto;">
+    <div class="inventory-toolbar">
+      <div class="inventory-search-box">
+        <span class="inventory-search-icon" aria-hidden="true">🔍</span>
+        <input class="inventory-search" id="inventory-search" type="text"
+               placeholder="품목·단위 검색"
+               value="${escapeAttr(INVENTORY_SEARCH)}"
+               oninput="filterInventoryItems(this.value)">
+      </div>
+      <button class="primary inventory-save-btn" id="inventory-save-btn"
+              onclick="saveInventoryChanges('${c.id}')" disabled>저장</button>
+    </div>
+    <div class="inventory-category-body">
       <table class="data-table inventory-table">
         <thead><tr>
           <th class="inventory-item-col">품목</th>
@@ -4812,7 +6246,7 @@ async function deleteInventoryItem(itemId, categoryId){
 }
 
 function editInventoryField(categoryId, field){
-  field = field || {name:'', field_type:'text', active:true, sort_order:0};
+  field = field || {name:'', field_type:'text', active:true, sort_order:0, admin_only:false};
   showModal(`<h3>${field.id?'관리 열 수정':'관리 열 추가'}</h3>
     <label>열 이름 * <input id="inv-field-name" value="${escapeAttr(field.name || '')}" placeholder="예: 현재수량, 위치, 유통기한" autofocus></label>
     <label>입력 형태
@@ -4822,6 +6256,7 @@ function editInventoryField(categoryId, field){
         <option value="date" ${field.field_type==='date'?'selected':''}>날짜</option>
       </select>
     </label>
+    <label class="chk-item" style="margin-top:8px"><input id="inv-field-admin" type="checkbox" ${field.admin_only?'checked':''}> <span>🔒 관리자 전용 칸 (직원은 보기만, 관리자만 입력)</span></label>
     <div class="modal-actions"><button onclick="closeModal()">취소</button>
       <button class="primary" onclick="saveInventoryField('${categoryId}', '${field.id || ''}', ${Number(field.sort_order || 0)})">저장</button></div>`);
 }
@@ -4831,6 +6266,7 @@ async function saveInventoryField(categoryId, fieldId, sortOrder){
     category_id: categoryId,
     name: _v('inv-field-name'),
     field_type: _v('inv-field-type') || 'text',
+    admin_only: document.getElementById('inv-field-admin')?.checked || false,
     active: true,
     sort_order: sortOrder || 0,
     author: inventoryAuthor(categoryId),
@@ -4851,30 +6287,6 @@ async function deleteInventoryField(fieldId, categoryId){
   const r = await adminFetch(`/api/inventory/fields/${fieldId}?author=${encodeURIComponent(inventoryAuthor(categoryId))}`, {method:'DELETE'});
   if(!r.ok){ alert('삭제 실패\n' + await _apiErrorText(r)); return; }
   await loadInventorySheet();
-}
-
-async function saveInventoryValue(input){
-  const value = input.value || '';
-  if(input.dataset.savedValue === value) return;
-  input.classList.add('saving');
-  try {
-    const r = await adminFetch('/api/inventory/values', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        item_id: input.dataset.itemId,
-        field_id: input.dataset.fieldId,
-        value,
-        author: inventoryAuthor(input.dataset.categoryId),
-      }),
-    });
-    if(!r.ok){ throw new Error(await _apiErrorText(r)); }
-    input.dataset.savedValue = value;
-  } catch(e){
-    alert('셀 저장 실패: ' + (e && e.message ? e.message : e));
-  } finally {
-    input.classList.remove('saving');
-  }
 }
 
 async function saveInventoryAuthor(categoryId){
@@ -4974,23 +6386,6 @@ function editEmployee(e){
       <label>연락처 <input id="e-phone" type="tel" data-fmt="phone" maxlength="13" inputmode="tel" placeholder="01012345678 → 010-1234-5678" value="${e.phone||''}"></label>
     </div>
     <label>입사일 <input id="e-hire" type="text" data-fmt="birth" maxlength="10" inputmode="numeric" placeholder="20200101 → 2020-01-01" value="${e.hire_date||''}"></label>
-    <div class="caps-section">
-      <div class="caps-section-label">직원별 권한 override</div>
-        <label>도수치료
-          <select id="e-manual-cap">
-            <option value="" ${boolSelectValue(e.can_manual_override)===''?'selected':''}>과 기본값</option>
-            <option value="true" ${boolSelectValue(e.can_manual_override)==='true'?'selected':''}>가능</option>
-            <option value="false" ${boolSelectValue(e.can_manual_override)==='false'?'selected':''}>불가</option>
-          </select>
-        </label>
-      <label>체외충격파
-        <select id="e-eswt-cap">
-          <option value="" ${boolSelectValue(e.can_eswt_override)===''?'selected':''}>과 기본값</option>
-          <option value="true" ${boolSelectValue(e.can_eswt_override)==='true'?'selected':''}>가능</option>
-          <option value="false" ${boolSelectValue(e.can_eswt_override)==='false'?'selected':''}>불가</option>
-        </select>
-      </label>
-    </div>
     <div class="caps-section">
       <div class="caps-section-label">담당 가능 치료항목</div>
       <label class="chk-item">
@@ -5472,7 +6867,7 @@ function syncRevenueCategorySelects(categories, selectedId){
   populateRevenueCategorySelect('rev-stat-category', categories, selectedId);
 }
 
-const REVENUE_CASH_DENOMS = [50000, 10000, 5000, 1000, 500, 100, 10];
+const REVENUE_CASH_DENOMS = [50000, 10000, 5000, 1000, 500, 100, 50, 10];
 const REVENUE_PAYMENT_FIELDS = [
   {key:'total_medical_fee', label:'총진료비'},
   {key:'nhis_burden_total', label:'공단부담총액'},
@@ -6893,10 +8288,14 @@ function handleAggregateInputKeydown(event, input){
 async function saveAggregateCell(input){
   if(!input || input.disabled) return;
   normalizeAggregateInput(input);
-  const n = Math.max(0, parseInt(input.value || '0') || 0);
-  input.value = n > 0 ? String(n) : '';
-  const saveKey = `${input.dataset.date}|${input.dataset.employeeId}|${input.dataset.code}|${n}`;
-  if(input.dataset.savedKey === saveKey) return;
+  // 셀 값 = 합계(자동+수동). 저장은 자동값을 뺀 '수동 보정 델타'만 manual_counts 로.
+  const auto = Math.max(0, parseInt(input.dataset.auto || '0') || 0);
+  const entered = Math.max(0, parseInt(input.value || '0') || 0);
+  const manual = Math.max(0, entered - auto);   // 자동값 미만 입력은 자동값으로 스냅
+  const total = auto + manual;
+  input.value = total > 0 ? String(total) : '';
+  const saveKey = `${input.dataset.date}|${input.dataset.employeeId}|${input.dataset.code}|${manual}`;
+  if(input.dataset.savedKey === saveKey){ recalcAggregateTotals(); return; }
   input.dataset.savedKey = saveKey;
   input.classList.add('saving');
   try {
@@ -6907,7 +8306,7 @@ async function saveAggregateCell(input){
         date: input.dataset.date,
         therapist_id: input.dataset.employeeId,
         treatment_code: input.dataset.code,
-        count: n,
+        count: manual,
       }),
     });
     const d = await r.json().catch(() => ({}));
@@ -6978,23 +8377,36 @@ async function loadAggregate(){
     const dateLabel = `${dObj.getMonth()+1}/${dObj.getDate()} (${wd})`;
     const dateClass = wd === '일' ? 'agg-sun' : (wd === '토' ? 'agg-sat' : '');
     const cells = employees.map(e => {
-      const counts = ((row.employee_data || {})[e.id] || {}).counts || {};
+      const ed = (row.employee_data || {})[e.id] || {};
+      const counts = ed.counts || {};
+      const autos = ed.auto || {};
       return treatments.map(t => {
-        const enabled = employeeCanSelectedTreatments(e, [t.code]);
+        // 기록필요 항목은 과 기준으로만 게이팅(기록 입력/정산과 동일), 그 외는 권한 기준.
+        const enabled = t.requires_record
+          ? (!t.category_id || e.category_id === t.category_id)
+          : employeeCanSelectedTreatments(e, [t.code]);
         if(!enabled){
           return '<td class="agg-disabled-cell">-</td>';
         }
-        const v = counts[t.code] || 0;
+        const v = counts[t.code] || 0;            // 합계 (자동 + 수동)
+        const auto = Math.max(0, autos[t.code] || 0);  // 자동값 (치료완료/기록)
+        const manual = Math.max(0, v - auto);     // 수동 보정 델타
         totals[e.id][t.code] += v;
+        const srcLabel = t.requires_record ? '치료완료+기록' : '치료완료';
+        const hint = auto > 0
+          ? `자동 ${auto}건(${srcLabel})${manual > 0 ? ` + 수동 ${manual}` : ''} · 숫자를 바꾸면 walk-in 보정`
+          : '예약·기록에 없는 건 직접 입력';
         return `<td class="agg-input-cell">
-          <input class="agg-count-input" type="text" inputmode="numeric" pattern="[0-9]*"
+          <input class="agg-count-input${auto > 0 ? ' has-auto' : ''}" type="text" inputmode="numeric" pattern="[0-9]*"
                  autocomplete="off" enterkeyhint="done"
+                 title="${escapeAttr(hint)}"
                  value="${v > 0 ? v : ''}"
                  data-date="${row.date}"
                  data-employee-id="${e.id}"
                  data-treatment-id="${t.id}"
                  data-code="${t.code}"
-                 data-saved-key="${row.date}|${e.id}|${t.code}|${v}"
+                 data-auto="${auto}"
+                 data-saved-key="${row.date}|${e.id}|${t.code}|${manual}"
                  onfocus="this.select()"
                  oninput="normalizeAggregateInput(this)"
                  onkeydown="handleAggregateInputKeydown(event, this)"
@@ -7023,7 +8435,8 @@ async function loadAggregate(){
 
   if(bodyEl) bodyEl.innerHTML = `
     <div class="agg-help">
-      선택한 과의 치료항목별 횟수를 직접 입력합니다. 입력이 끝나면 상단의 정산 반영을 눌러 정산 탭에 스냅샷으로 넘깁니다.
+      치료완료(예약) · 기록에서 자동 집계됩니다. 예약·기록에 없는 건(walk-in 등)만 칸의 숫자를 바꿔 직접 더하세요.
+      (칸 위에 마우스를 올리면 자동/수동 내역이 보입니다.) 확인 후 상단의 정산 반영을 누르면 정산 탭에 스냅샷으로 넘어갑니다.
     </div>
     <div style="overflow-x:auto;margin-top:8px;">
       <table class="agg-direct-table">
@@ -7461,8 +8874,6 @@ function renderSettlement(data){
       <td>${escapeHtml(emp.category_name || '-')}</td>
       <td>${settlementTreatmentCountBadges(emp.byTreatment)}</td>
       <td>${settlementMoneyAlways(emp.incentive_total)}</td>
-      <td>${settlementMoneyAlways(emp.adjustment_total)}</td>
-      <td>${settlementMoneyAlways(emp.payment_total)}</td>
     </tr>`).join('');
   const treatmentRows = (summary.by_treatment || []).map(tx => `
     <tr>
@@ -7477,20 +8888,13 @@ function renderSettlement(data){
     <div class="settlement-note">
       집계 탭에서 정산 반영한 스냅샷 기준입니다. 이후 치료항목 수가나 인센티브 규칙을 바꿔도 기존 정산 금액은 유지됩니다.
     </div>
-    <div class="settlement-summary-grid settlement-summary-grid-wide">
-      <div class="stat-card"><div class="stat-label">기간 건수</div><div class="stat-value">${settlementQuantity(summary.quantity_total)}</div></div>
-      <div class="stat-card"><div class="stat-label">직원수</div><div class="stat-value">${settlementQuantity((summary.by_employee || []).length)}</div></div>
-      <div class="stat-card"><div class="stat-label">치료항목</div><div class="stat-value">${settlementQuantity((summary.by_treatment || []).length)}</div></div>
-      <div class="stat-card"><div class="stat-label">총 수가</div><div class="stat-value">${settlementMoneyAlways(summary.price_total)}</div></div>
-      <div class="stat-card"><div class="stat-label">세전 인센티브</div><div class="stat-value">${settlementMoneyAlways(summary.incentive_total)}</div></div>
-    </div>
     <div id="settlement-revenue-help"></div>
     <div class="settlement-summary-panels">
       <div>
         <h3 class="stats-section-title">직원별 합계</h3>
         ${employeeRows
           ? `<div style="overflow-x:auto;"><table class="settlement-summary-table settlement-report-table">
-              <thead><tr><th>직원</th><th>과</th><th>치료항목별 건수</th><th>세전 인센티브</th><th>조정금액</th><th>최종 지급액</th></tr></thead>
+              <thead><tr><th>직원</th><th>과</th><th>치료항목별 건수</th><th>세전 인센티브</th></tr></thead>
               <tbody>${employeeRows}</tbody>
             </table></div>`
           : '<p class="muted" style="margin:0;">정산 반영된 직원별 내역이 없습니다.</p>'}
@@ -8860,6 +10264,40 @@ function dcRenderResult(){
       </div>`;
   }
 
+  // 기존 환자와 겹치는 명단 (v1.3.51+) — 어떤 DB 환자와 겹쳐서 건너뛰는지 내역 표시
+  let existingTable = '';
+  if(s.existing_patients && s.existing_patients.length){
+    const eRows = s.existing_patients.map((p,i) => `<tr>
+      <td style="text-align:center;color:#4B5563;font-size:12px;">${i+1}</td>
+      <td><b>${escapeHtml(p.name||'')}</b></td>
+      <td>${escapeHtml(p.chart_no||'-')}</td>
+      <td>${escapeHtml(p.phone||'-')}</td>
+      <td>${escapeHtml(p.birth_date||'-')}</td>
+      <td class="muted" style="text-align:center;font-size:11px;">${p.row||'-'}</td>
+      <td style="text-align:center;"><span style="background:#EDE9FE;color:#6D28D9;padding:2px 8px;border-radius:10px;font-size:11px;white-space:nowrap;">${escapeHtml(p.matched_by||'')}</span></td>
+      <td style="font-size:12px;color:#4B5563;">${escapeHtml(p.db_name||'')} · ${escapeHtml(p.db_chart_no||'-')} · ${escapeHtml(p.db_birth_date||'-')}</td>
+    </tr>`).join('');
+    const dupNote = (s.dup_in_file_count||0) > 0
+      ? ` <span class="muted" style="font-weight:normal;font-size:12px;">· 파일 내부 중복 ${s.dup_in_file_count}행 별도 제외</span>` : '';
+    existingTable = `
+      <h4 style="margin:18px 0 8px;color:#7957AC;">👥 기존 환자 ${s.existing_patients.length}명${dupNote}
+        <span class="muted" style="font-weight:normal;font-size:12px;">· 이미 DB에 있어 추가하지 않는 명단</span></h4>
+      <div style="max-height:320px;overflow:auto;border:1px solid #E4DDF2;border-radius:10px;background:#FBFAFE;">
+        <table class="data-table" style="margin:0;">
+          <thead>
+            <tr>
+              <th style="width:44px;text-align:center;">#</th>
+              <th>이름</th><th>차트번호</th><th>연락처</th><th>생년월일</th>
+              <th style="width:52px;text-align:center;">행</th>
+              <th style="text-align:center;">겹침 기준</th>
+              <th>DB 기존 환자 (이름 · 차트 · 생일)</th>
+            </tr>
+          </thead>
+          <tbody>${eRows}</tbody>
+        </table>
+      </div>`;
+  }
+
   // 오류 목록 (있을 때만)
   let errBlock = '';
   if(s.errors && s.errors.length){
@@ -8881,7 +10319,7 @@ function dcRenderResult(){
     </div>
   `;
 
-  box.innerHTML = summary + newTable + reviewTable + errBlock + actions;
+  box.innerHTML = summary + newTable + reviewTable + existingTable + errBlock + actions;
 }
 
 async function dcApply(){
@@ -9079,6 +10517,29 @@ async function loadSystemForm(){
 
       <!-- (치료항목 기본 시간 카드는 관리자 탭의 "💊 치료항목" 카드로 이동됨) -->
 
+      <!-- 앱/홈페이지 이름 -->
+      <div class="settings-card">
+        <div class="settings-card-head">
+          <h3>🏷️ 앱/홈페이지 이름</h3>
+          <small class="muted">헤더 좌측 상단 + 브라우저 탭 제목에 표시</small>
+        </div>
+        <div class="settings-card-body">
+          <div class="sf-row">
+            <label class="sf-label">이름</label>
+            <input id="s-app-title" type="text" maxlength="40"
+                   value="${(cfg.app_title || '병원 예약 관리').replace(/"/g,'&quot;')}"
+                   placeholder="병원 예약 관리">
+          </div>
+          <p class="muted" style="font-size:12px">
+            예: "○○정형외과 예약", "튼튼병원 예약 관리".<br>
+            비워두면 기본값("병원 예약 관리")으로 표시됩니다. 최대 40자.
+          </p>
+          <div class="sf-actions">
+            <button class="primary" onclick="saveAppTitle()">💾 저장</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 도수치료 한도 -->
       <div class="settings-card">
         <div class="settings-card-head">
@@ -9256,6 +10717,18 @@ async function saveSystem(){
   location.reload();
 }
 
+// 앱/홈페이지 이름 저장 — 저장 후 새로고침하면 서버가 base.html 을 새 이름으로 재렌더.
+async function saveAppTitle(){
+  const v = (_v('s-app-title') || '').trim();
+  const r = await adminFetch('/api/config', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ app_title: v }),
+  });
+  if(!r.ok){ alert('저장 실패\n' + await r.text()); return; }
+  alert('저장되었습니다. 새로고침합니다.');
+  location.reload();
+}
+
 async function saveTreatmentMinutes(){
   // 더 이상 사용되지 않음 — 치료항목 카드(loadTreatmentsCard)에서 항목별 default_minutes 로 관리
   alert('이 기능은 관리자 탭의 "💊 치료항목" 카드로 이동되었습니다.');
@@ -9297,6 +10770,9 @@ async function loadTreatmentsCard(){
     const showBadge = t.show_in_patient
       ? '<span class="tx-badge tx-badge-on">표시 ON</span>'
       : '<span class="tx-badge tx-badge-off">표시 OFF</span>';
+    const recordBadge = t.requires_record
+      ? '<span class="tx-badge tx-badge-on">기록 ON</span>'
+      : '<span class="tx-badge tx-badge-off">-</span>';
     return `<tr data-id="${t.id}">
       <td class="drag-handle" title="드래그하여 순서 변경">⠿</td>
       <td>${idx+1}</td>
@@ -9308,6 +10784,7 @@ async function loadTreatmentsCard(){
       <td style="text-align:right;font-variant-numeric:tabular-nums;">${fmtPrice(t.price)}</td>
       <td style="text-align:center;">${fmtIncentive(t)}</td>
       <td>${showBadge}</td>
+      <td>${recordBadge}</td>
       <td>${activeBadge}</td>
       <td>
         <button class="mini" onclick='editTreatmentModal(${JSON.stringify(t).replace(/'/g,"&#39;")})'>수정</button>
@@ -9320,12 +10797,13 @@ async function loadTreatmentsCard(){
     <table class="data-table">
       <thead><tr>
         <th style="width:32px"></th><th>#</th><th>이름</th><th>약자</th><th>기본 시간</th><th>과</th>
-        <th>완료 +N</th><th>수가</th><th>인센티브</th><th>표 표시</th><th>상태</th><th>관리</th>
+        <th>완료 +N</th><th>수가</th><th>인센티브</th><th>표 표시</th><th>기록</th><th>상태</th><th>관리</th>
       </tr></thead>
       <tbody class="tx-sortable-body">${rows}</tbody>
     </table>
     <p class="muted" style="font-size:12px;margin-top:10px">
       • <b>표 표시 ON</b>: 환자 관리 표·편집 모달에서 처방/완료 카운트 입력란 노출<br>
+      • <b>기록 ON</b>: '기록' 탭에 이 항목 탭이 생기고, 집계 수치는 치료완료(예약)가 아니라 기록 건수에서 자동 반영됩니다<br>
       • <b>과</b>: 선택한 과의 직원과 예약/집계 화면에서 연결됩니다<br>
       • <b>체외충격파(eswt)</b>는 별도 공용 열 유지 (코드 변경 불가)<br>
       • <b>수가</b>: 통계 "분석"의 매출 계산에 사용 (예약 건수 × 수가)<br>
@@ -9342,7 +10820,7 @@ function editTreatmentModal(t){
   t = t || {
     code:'', name:'', short:'', category_id:firstCat.id||'', default_minutes:30, role:'therapist',
     count_increment:1, show_in_patient:false, active:true, sort_order:0,
-    price:0, incentive_pct:null, incentive_amount:null,
+    price:0, incentive_pct:null, incentive_amount:null, requires_record:false,
   };
   // 기존 인센티브 값에 따라 라디오 초기 상태 결정:
   //  - 고정 금액 있음 → mode=amount
@@ -9407,6 +10885,10 @@ function editTreatmentModal(t){
       <label class="chk-label-inline">
         <input type="checkbox" id="t-show" ${t.show_in_patient?'checked':''}>
         <span>환자 관리 표·편집에 표시 (ON)</span>
+      </label>
+      <label class="chk-label-inline">
+        <input type="checkbox" id="t-record" ${t.requires_record?'checked':''}>
+        <span>기록 필요 ('기록' 탭 노출 · 집계는 기록 건수로 자동)</span>
       </label>
       <label class="chk-label-inline">
         <input type="checkbox" id="t-active" ${t.active!==false?'checked':''}>
@@ -9474,6 +10956,7 @@ async function saveTreatment(){
     role,
     count_increment: parseInt(_v('t-inc'))||1,
     show_in_patient: document.getElementById('t-show').checked,
+    requires_record: document.getElementById('t-record').checked,
     active: document.getElementById('t-active').checked,
     sort_order: parseInt(_v('t-sort'))||0,
     price: parseInt(_v('t-price'))||0,

@@ -109,6 +109,7 @@ def list_manual_treatment_rows(db: Any) -> list[Any]:
 
     NOTE: '도수치료' 의 공식 정의 (v1.2.3+) — code LIKE 'manual%' 이 *아니라*
     role 기반 판정. 새 항목 (tx_<random> 코드) 도 자동 반영.
+    v1.3.37+: requires_record(기록 필요) 항목은 기록 기반 집계 → 도수치료에서 제외.
     """
     from app.models import constants as _C
     from app.models import models as _m
@@ -118,6 +119,7 @@ def list_manual_treatment_rows(db: Any) -> list[Any]:
         .filter(
             _m.Treatment.role == "therapist",
             _m.Treatment.code != _C.ESWT_CODE,
+            _m.Treatment.requires_record == False,  # noqa: E712 — 기록필요 제외
             _m.Treatment.active == True,  # noqa: E712 — SQLAlchemy expr
         )
         .order_by(_m.Treatment.sort_order)

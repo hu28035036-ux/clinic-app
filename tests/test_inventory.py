@@ -122,3 +122,113 @@ def test_inventory_writes_require_admin(client):
         "name": "테이프",
     })
     assert resp.status_code == 401
+
+
+def test_inventory_normal_value_open_to_staff(client):
+    """일반 칸 값은 관리자 인증 없이 직원도 입력 가능."""
+    headers = _admin_headers(client)
+    category = _make_category(client, "inventory-open")
+    item = client.post("/api/inventory/items", json={
+        "category_id": category["id"], "name": "거즈",
+    }, headers=headers)
+    assert item.status_code == 200, item.text
+    field = client.post("/api/inventory/fields", json={
+        "category_id": category["id"], "name": "현재수량", "field_type": "number",
+    }, headers=headers)
+    assert field.status_code == 200, field.text
+    assert field.json()["admin_only"] is False
+
+    # 토큰 없이 값 입력 → 일반 칸이므로 허용 (직원).
+    value = client.post("/api/inventory/values", json={
+        "item_id": item.json()["id"],
+        "field_id": field.json()["id"],
+        "value": "7",
+        "author": "직원",
+    })
+    assert value.status_code == 200, value.text
+    assert value.json()["value"] == "7"
+
+
+def test_inventory_admin_only_field_blocks_staff(client):
+    """관리자 전용 칸은 직원(토큰 없음) 입력 시 401, 관리자는 허용."""
+    headers = _admin_headers(client)
+    category = _make_category(client, "inventory-adminonly")
+    item = client.post("/api/inventory/items", json={
+        "category_id": category["id"], "name": "특수약품",
+    }, headers=headers)
+    assert item.status_code == 200, item.text
+
+    field = client.post("/api/inventory/fields", json={
+        "category_id": category["id"],
+        "name": "발주승인",
+        "admin_only": True,
+    }, headers=headers)
+    assert field.status_code == 200, field.text
+    field_id = field.json()["id"]
+    assert field.json()["admin_only"] is True
+
+    # 직원(토큰 없음) → 차단.
+    blocked = client.post("/api/inventory/values", json={
+        "item_id": item.json()["id"], "field_id": field_id, "value": "승인",
+    })
+    assert blocked.status_code == 401
+
+    # 관리자 → 허용.
+    allowed = client.post("/api/inventory/values", json={
+        "item_id": item.json()["id"], "field_id": field_id, "value": "승인",
+    }, headers=headers)
+    assert allowed.status_code == 200, allowed.text
+
+
+def test_inventory_admin_only_field_sorts_after_normal(client):
+    """관리자 전용 칸은 일반 칸 뒤(관리 열 왼쪽)에 정렬된다."""
+    headers = _admin_headers(client)
+    category = _make_category(client, "inventory-sort")
+    # admin_only 칸을 먼저 만들어도 정렬상 일반 칸 뒤로 가야 한다.
+    client.post("/api/inventory/fields", json={
+        "category_id": category["id"], "name": "원가", "admin_only": True, "sort_order": 1,
+    }, headers=headers)
+    client.post("/api/inventory/fields", json={
+        "category_id": category["id"], "name": "현재수량", "admin_only": False, "sort_order": 2,
+    }, headers=headers)
+    sec = _section(client.get("/api/inventory", headers=headers).json(), category["id"])
+    names = [f["name"] for f in sec["fields"]]
+    assert names == ["현재수량", "원가"]
+    assert sec["fields"][0]["admin_only"] is False
+    assert sec["fields"][1]["admin_only"] is True
+
+
+def test_inventory_get_hides_admin_field_without_token(client):
+    """미인증 조회 시 관리자 전용 칸과 그 값이 응답에서 제외된다 (직원은 확인 불가)."""
+    headers = _admin_headers(client)
+    category = _make_category(client, "inventory-hide")
+    item = client.post("/api/inventory/items", json={
+        "category_id": category["id"], "name": "약품",
+    }, headers=headers)
+    item_id = item.json()["id"]
+    f_norm = client.post("/api/inventory/fields", json={
+        "category_id": category["id"], "name": "현재수량", "admin_only": False,
+    }, headers=headers).json()
+    f_admin = client.post("/api/inventory/fields", json={
+        "category_id": category["id"], "name": "발주", "admin_only": True,
+    }, headers=headers).json()
+    client.post("/api/inventory/values", json={
+        "item_id": item_id, "field_id": f_admin["id"], "value": "비밀",
+    }, headers=headers)
+    client.post("/api/inventory/values", json={
+        "item_id": item_id, "field_id": f_norm["id"], "value": "10",
+    }, headers=headers)
+
+    # 미인증(직원) 조회 → 관리자 전용 칸과 값 숨김
+    pub = _section(client.get("/api/inventory").json(), category["id"])
+    pub_names = [f["name"] for f in pub["fields"]]
+    assert "현재수량" in pub_names
+    assert "발주" not in pub_names
+    assert f_admin["id"] not in pub["items"][0]["values"]
+    assert pub["items"][0]["values"].get(f_norm["id"]) == "10"
+
+    # 관리자 인증 조회 → 관리자 전용 칸과 값 보임
+    adm = _section(client.get("/api/inventory", headers=headers).json(), category["id"])
+    adm_names = [f["name"] for f in adm["fields"]]
+    assert "발주" in adm_names
+    assert adm["items"][0]["values"][f_admin["id"]] == "비밀"

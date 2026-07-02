@@ -18,12 +18,15 @@ from __future__ import annotations
 
 # ──────────────── /api/data-convert/preview ────────────────
 
-# POST /api/data-convert/preview 응답 key 11개.
+# POST /api/data-convert/preview 응답 key 13개.
 # COMPAT: ``app/routers/api.py:data_convert_preview`` 의 dict 와 byte-equivalent.
+# v1.3.51+: existing_patients (기존 환자와 겹친 행 내역) / dup_in_file_count 추가.
 DATA_CONVERT_PREVIEW_RESPONSE_KEYS: frozenset[str] = frozenset({
     "total",
     "new_count",
     "existing_count",
+    "existing_patients",
+    "dup_in_file_count",
     "error_count",
     "header",
     "new_patients",

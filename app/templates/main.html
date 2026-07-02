@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block head %}
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
 <link rel="stylesheet" href="/static/css/_ai_helper.css?v={{ app_version|default('dev') }}" />
 <script defer src="/static/js/ai_helper.js?v={{ app_version|default('dev') }}"></script>
 <script defer src="/static/js/ai_leave_helper.js?v={{ app_version|default('dev') }}"></script>
@@ -30,37 +32,90 @@
 {% set _sub_ip = local_ips[0] if local_ips else '' %}
 {% if _sub_ip.startswith('127.') %}{% set _sub_ip = '' %}{% endif %}
 
-<div class="topbar-info">
-  <span>모드: <b>{% if config.mode=='main' %}🖥️ 메인(원무과){% else %}💻 서브(치료사){% endif %}</b></span>
-  {% if config.mode=='sub' %}<span> · 메인서버: <code>{{ config.main_url }}</code></span>{% endif %}
-  <span> · 노드ID: <code>{{ config.node_id }}</code></span>
+<div class="app-shell">
+  <!-- ══════════ 좌측 사이드 네비 레일 ══════════ -->
+  <nav class="nav-rail">
+    <div class="nav-brand">
+      <div class="nav-logo">{{ app_title().replace(' ', '')[:2] }}</div>
+      <div class="nav-brand-text">{{ app_title() }}</div>
+    </div>
 
-  {# 접속 주소 (이 PC 에서 / 다른 PC 에서) — v1.2.5+ #}
-  <span class="addr-chip" title="이 컴퓨터에서 사용할 주소">
-    · 메인: <code id="main-addr">127.0.0.1:{{ _port }}</code>
-  </span>
-  {% if _sub_ip %}
-  <span class="addr-chip" title="같은 네트워크의 다른 PC·휴대폰에서 사용할 주소">
-    · 서브: <code id="sub-addr">{{ _sub_ip }}:{{ _port }}</code>
-    <button class="mini" style="padding:2px 6px;margin-left:2px" onclick="copySubAddr()" title="서브 주소 복사">📋</button>
-  </span>
-  {% else %}
-  <span class="addr-chip">· 서브: <span class="muted">확인 불가</span></span>
-  {% endif %}
+    <div class="nav-menu">
+      <div class="nav-group">
+        <button class="tab-btn nav-item active" id="nav-main-reserve" onclick="switchTab('tab-reserve', this)">예약</button>
+      </div>
+      <div class="nav-group">
+        <button class="tab-btn nav-item" id="nav-main-records" onclick="switchTab('tab-records', this)">기록</button>
+      </div>
+      <div class="nav-group">
+        <button class="tab-btn nav-item" id="tab-btn-charting" onclick="switchTab('tab-charting', this)">차트기록</button>
+        <div class="nav-accordion">
+          <button class="nav-sub" data-target="charting-subtab-list" onclick="navSub('tab-charting','tab-btn-charting','charting-subtab-list')">환자 / 치료내역</button>
+          <button class="nav-sub" data-target="charting-subtab-edit" onclick="navSub('tab-charting','tab-btn-charting','charting-subtab-edit')">차트 작성</button>
+        </div>
+      </div>
+      <div class="nav-group">
+        <button class="tab-btn nav-item" id="nav-main-patients" onclick="switchTab('tab-patients', this)">환자 <span id="pm-count-badge" class="nav-count">(…)</span></button>
+      </div>
+      <div class="nav-group">
+        <button class="tab-btn nav-item" id="nav-main-therapists" onclick="switchTab('tab-therapists', this)">직원</button>
+        <div class="nav-accordion">
+          <button class="nav-sub" data-target="therapist-subtab-manage" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-manage')">직원 관리</button>
+          <button class="nav-sub" data-target="therapist-subtab-leave" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-leave')">휴무일 관리</button>
+          <button class="nav-sub" data-target="therapist-subtab-duty" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-duty')">당직 관리</button>
+        </div>
+      </div>
+      <div class="nav-group">
+        <button class="tab-btn nav-item" id="nav-main-inventory" onclick="switchTab('tab-inventory', this)">재고관리</button>
+      </div>
+      {% if config.mode=='main' %}
+      <div class="nav-group">
+        <button class="tab-btn nav-item" id="admin-tab-btn" onclick="switchTab('tab-admin', this)" style="display:none">관리자</button>
+        <div class="nav-accordion">
+          <button class="nav-sub" data-target="admin-subtab-treatments" onclick="navSub('tab-admin','admin-tab-btn','admin-subtab-treatments')">치료항목</button>
+          <button class="nav-sub" data-target="admin-subtab-aggregate" onclick="navSub('tab-admin','admin-tab-btn','admin-subtab-aggregate')">집계</button>
+          <button class="nav-sub" data-target="admin-subtab-settlement" onclick="navSub('tab-admin','admin-tab-btn','admin-subtab-settlement')">정산</button>
+          <button class="nav-sub" data-target="admin-subtab-stats" onclick="navSub('tab-admin','admin-tab-btn','admin-subtab-stats')">매출</button>
+          <button class="nav-sub" data-target="admin-subtab-system" onclick="navSub('tab-admin','admin-tab-btn','admin-subtab-system')">시스템</button>
+          <button class="nav-sub" data-target="admin-subtab-convert" onclick="navSub('tab-admin','admin-tab-btn','admin-subtab-convert')">데이터변환</button>
+        </div>
+      </div>
+      {% endif %}
+    </div>
 
-  <button onclick="syncNow()" class="mini" style="margin-left:auto">🔄 동기화</button>
-  <span id="sync-status" class="muted"></span>
-  <button class="mini" id="admin-lock-btn" onclick="adminLockClick()" title="관리자 로그인">🔒</button>
-</div>
+    <div class="nav-foot">
+      <div class="nav-foot-btns">
+        <button class="nav-sync-btn" onclick="syncNow()">동기화</button>
+        <button class="nav-admin-btn" id="admin-lock-btn" onclick="adminLockClick()" title="관리자 로그인">🔒</button>
+      </div>
+      <div class="nav-status">
+        <span class="nav-status-dot"></span>
+        <div class="nav-status-text">
+          <span id="sync-status" class="nav-sync-status"></span>
+        </div>
+      </div>
+    </div>
+  </nav>
 
-<nav class="tabs-nav">
-  <button class="tab-btn active" onclick="switchTab('tab-reserve', this)">▦ 예약</button>
-  <button class="tab-btn" onclick="switchTab('tab-records', this)">▥ 기록</button>
-  <button class="tab-btn" onclick="switchTab('tab-patients', this)">◎ 환자 <span id="pm-count-badge" class="muted" style="font-weight:400;font-size:12px;">(…)</span></button>
-  <button class="tab-btn" onclick="switchTab('tab-therapists', this)">◇ 직원</button>
-  <button class="tab-btn" onclick="switchTab('tab-inventory', this)">▧ 재고관리</button>
-  {% if config.mode=='main' %}<button class="tab-btn" id="admin-tab-btn" onclick="switchTab('tab-admin', this)" style="display:none">≡ 관리자</button>{% endif %}
-</nav>
+  <!-- ══════════ 콘텐츠 영역 ══════════ -->
+  <div class="content-col">
+    <header class="content-head">
+      <div class="content-head-title">
+        <h1>{{ app_title() }}</h1>
+        <div class="content-head-sub">예약 관리 시스템</div>
+      </div>
+      <div class="content-head-meta">
+        {% if config.mode=='sub' %}<span class="meta-pair"><span class="chip-label">메인서버</span> <code>{{ config.main_url }}</code></span>{% endif %}
+        <span class="meta-pair" title="이 컴퓨터에서 사용할 주소"><span class="chip-label">메인</span> <code id="main-addr">127.0.0.1:{{ _port }}</code></span>
+        {% if _sub_ip %}
+        <span class="meta-pair" title="같은 네트워크의 다른 PC·휴대폰에서 사용할 주소"><span class="chip-label">서브</span> <code id="sub-addr">{{ _sub_ip }}:{{ _port }}</code>
+          <button class="mini" style="padding:2px 6px;margin-left:2px" onclick="copySubAddr()" title="서브 주소 복사">📋</button></span>
+        {% else %}
+        <span class="meta-pair"><span class="chip-label">서브</span> <span class="muted">확인 불가</span></span>
+        {% endif %}
+      </div>
+    </header>
+    <div class="content-body">
 
 <section id="tab-reserve" class="tab-pane active">
   {# AI 예약 도우미 카드 — 예약관리 *내부* (§ 16.2). 전용 탭 ⊥. #}
@@ -128,6 +183,7 @@
           </label>
         </div>
       </div>
+      <div id="record-counts" class="record-counts"></div>
       <div id="record-weekdays" class="record-weekdays"></div>
       <div class="record-entry-form">
         <input id="record-chart-no" type="text" maxlength="30" placeholder="차트번호" onkeydown="recordEntryKeydown(event)">
@@ -136,7 +192,57 @@
         <button class="primary" onclick="saveRecordEntry()">추가</button>
       </div>
       <div id="record-list"></div>
-      <div id="record-counts" class="record-counts"></div>
+    </div>
+  </div>
+</section>
+
+<section id="tab-charting" class="tab-pane">
+  <div class="sub-tabs">
+    <button id="charting-subtab-list" class="sub-tab active" onclick="switchChartingTab('list', this)">◎ 환자 / 치료내역</button>
+    <button id="charting-subtab-edit" class="sub-tab" onclick="switchChartingTab('edit', this)">✎ 차트 작성</button>
+  </div>
+
+  <div id="charting-list" class="admin-pane active">
+    <div class="sheet">
+      <div class="sheet-head"><h2>✎ 차트기록 (진료기록)</h2>
+        <span class="muted">환자를 검색해 치료완료된 방문에 SOAP 진료기록을 작성합니다.</span></div>
+      <div class="ch-search-bar">
+        <select id="ch-type">
+          <option value="name">이름</option>
+          <option value="chart_no">차트번호</option>
+          <option value="phone">연락처</option>
+          <option value="birth_date">생년월일</option>
+        </select>
+        <input id="ch-search" type="text" placeholder="🔍 환자 검색 (이름/차트번호/연락처/생년월일)"
+               oninput="chSearchDebounced()" onkeydown="if(event.key==='Enter')chSearch(true)" autocomplete="off">
+        <button class="primary" onclick="chSearch(true)">검색</button>
+      </div>
+      <div class="ch-layout">
+        <div id="ch-results" class="ch-results"></div>
+        <div id="ch-detail" class="ch-detail"><div class="muted ch-empty">왼쪽에서 환자를 검색·선택하세요.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="charting-edit" class="admin-pane">
+    <div class="ch-edit-layout">
+      <aside id="ch-template-card" class="sheet ch-special-card" hidden>
+        <div class="ch-special-head">
+          <h3>ROM / MMT</h3>
+          <button type="button" class="mini" onclick="chToggleTemplateCard(false)">✕ 닫기</button>
+        </div>
+        <div id="template-area"></div>
+      </aside>
+      <aside id="ch-special-card" class="sheet ch-special-card" hidden>
+        <div class="ch-special-head">
+          <h3>스페셜테스트</h3>
+          <button type="button" class="mini" onclick="chToggleSpecialCard(false)">✕ 닫기</button>
+        </div>
+        <div id="special-test-area"></div>
+      </aside>
+      <div class="sheet ch-editor-sheet">
+        <div id="ch-editor"><div class="muted ch-empty">‹ 치료내역 탭에서 방문의 '차트 작성'을 누르면 여기에 작성 화면이 열립니다.</div></div>
+      </div>
     </div>
   </div>
 </section>
@@ -166,6 +272,7 @@
   <div class="sub-tabs">
     <button id="therapist-subtab-manage" class="sub-tab active" onclick="switchTherapistTab('manage', this)">◇ 직원 관리</button>
     <button id="therapist-subtab-leave" class="sub-tab" onclick="switchTherapistTab('leave', this)">▤ 휴무일 관리</button>
+    <button id="therapist-subtab-duty" class="sub-tab" onclick="switchTherapistTab('duty', this)">★ 당직 관리</button>
   </div>
 
   <div id="therapist-manage" class="admin-pane active">
@@ -246,18 +353,37 @@
       </div>
     </div>
   </div>
+
+  <div id="therapist-duty" class="admin-pane">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2>★ 당직 관리</h2>
+        <div class="sheet-toolbar">
+          <span class="muted">날짜를 클릭해서 당직 직원을 설정하세요</span>
+          <button class="primary" onclick="openDutyBulkAddModal()">➕ 당직 추가</button>
+        </div>
+      </div>
+      <div id="duty-cat-filter" class="duty-cat-filter"></div>
+      <div id="duty-monthly-summary" class="duty-monthly-summary"></div>
+      <div id="duty-calendar"></div>
+      <div id="duty-summary" style="margin-top:16px"></div>
+    </div>
+  </div>
 </section>
 
 <section id="tab-inventory" class="tab-pane">
-  <div class="sheet">
-    <div class="sheet-head">
-      <h2>▧ 재고관리</h2>
-      <div class="sheet-toolbar">
-        <button class="small" onclick="loadInventorySheet()">새로고침</button>
+  <div class="inventory-shell">
+    <div class="inventory-sub-tabs" id="inventory-subtabs"></div>
+    <div class="sheet inventory-sheet">
+      <div class="sheet-head">
+        <h2 id="inventory-title">▧ 재고관리</h2>
+        <div class="sheet-toolbar">
+          <button class="small" onclick="loadInventorySheet()">새로고침</button>
+        </div>
       </div>
-    </div>
-    <div id="inventory-list">
-      <p class="muted" style="padding:12px">재고 데이터를 불러오세요.</p>
+      <div id="inventory-list">
+        <p class="muted" style="padding:12px">재고 데이터를 불러오세요.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -268,13 +394,13 @@
 {% if config.mode=='main' %}
 <section id="tab-admin" class="tab-pane">
   <div class="sub-tabs">
-    <button class="sub-tab active" onclick="switchAdminTab('treatments', this)">◫ 치료항목</button>
-    <button class="sub-tab" onclick="switchAdminTab('aggregate', this)">▥ 집계</button>
-    <button class="sub-tab" onclick="switchAdminTab('settlement', this)">정산</button>
-    <button class="sub-tab" onclick="switchAdminTab('stats', this)">▣ 매출</button>
-    <button class="sub-tab" onclick="switchAdminTab('system', this)">≡ 시스템</button>
-    <button class="sub-tab" onclick="switchAdminTab('convert', this)">⇅ 데이터변환</button>
-    <button class="sub-tab" onclick="switchAdminTab('ai', this)">🤖 AI 설정</button>
+    <button class="sub-tab active" id="admin-subtab-treatments" onclick="switchAdminTab('treatments', this)">◫ 치료항목</button>
+    <button class="sub-tab" id="admin-subtab-aggregate" onclick="switchAdminTab('aggregate', this)">▥ 집계</button>
+    <button class="sub-tab" id="admin-subtab-settlement" onclick="switchAdminTab('settlement', this)">정산</button>
+    <button class="sub-tab" id="admin-subtab-stats" onclick="switchAdminTab('stats', this)">▣ 매출</button>
+    <button class="sub-tab" id="admin-subtab-system" onclick="switchAdminTab('system', this)">≡ 시스템</button>
+    <button class="sub-tab" id="admin-subtab-convert" onclick="switchAdminTab('convert', this)">⇅ 데이터변환</button>
+    <button class="sub-tab" id="admin-subtab-ai" onclick="switchAdminTab('ai', this)">🤖 AI 설정</button>
   </div>
   <div id="admin-stats" class="admin-pane">
     <div class="sheet">
@@ -380,7 +506,8 @@
           <input id="settle-to" type="date" style="width:150px">
           <select id="settle-category" onchange="loadSettlement()" style="width:150px"></select>
           <button class="primary" onclick="loadSettlement()">조회</button>
-          <button class="small" onclick="downloadSettlementXlsx()">엑셀</button>
+          {# 미완성 기능 — 엑셀 내보내기 버튼 숨김 (완성 시 복구). 함수/엔드포인트는 유지. #}
+          {# <button class="small" onclick="downloadSettlementXlsx()">엑셀</button> #}
           <button class="small" onclick="printSettlement()">인쇄</button>
           <span style="width:8px;display:inline-block;"></span>
           <button class="small" onclick="applySettlementPreset('today')">오늘</button>
@@ -454,6 +581,9 @@
   </div>
 </section>
 {% endif %}
+    </div><!-- /.content-body -->
+  </div><!-- /.content-col -->
+</div><!-- /.app-shell -->
 
 <div id="modal-bg" class="modal-bg" onmousedown="modalBgDown(event)" onmouseup="modalBgUp(event)" style="display:none">
   <div class="modal" onmousedown="event.stopPropagation()" id="modal-body"></div>
@@ -461,6 +591,8 @@
 
 <script>
 const ROLE="{{ config.mode }}"; const IS_MAIN=ROLE==="main";
+// 이 페이지가 로드된 시점의 앱 버전 — main.js 의 새 버전 감지 배너가 사용.
+window.APP_LOADED_VERSION = "{{ app_version|default('dev') }}";
 const CFG = {
   slotMinutes: {{ config.slot_minutes }},
   openTime: "{{ config.open_time }}",
@@ -473,4 +605,39 @@ const CFG = {
 };
 </script>
 <script src="/static/js/main.js?v={{ app_version|default('dev') }}"></script>
+<script>
+  // ── 좌측 사이드 네비 아코디언 ↔ 기존 서브탭 함수 연결 (디자인 개편 B) ──
+  // 메인 항목은 기존 switchTab 을 그대로 호출(계약 유지). 서브 항목은 원본 서브탭
+  // 버튼(.sub-tabs 안, CSS 로 숨김)을 대신 클릭 → switchAdminTab 등 동작 100% 동일.
+  // 레일 서브 항목의 활성 하이라이트는 원본 서브탭의 .active 를 거울처럼 반영.
+  function syncNavActive(){
+    document.querySelectorAll('.nav-sub').forEach(function(s){
+      var tgt = document.getElementById(s.dataset.target);
+      s.classList.toggle('active', !!(tgt && tgt.classList.contains('active')));
+    });
+  }
+  // 서브 항목 클릭: 해당 메인 탭이 활성 아니면 먼저 전환 후, 원본 서브탭 버튼 클릭
+  function navSub(tabId, mainBtnId, subBtnId){
+    var pane = document.getElementById(tabId);
+    var mainBtn = document.getElementById(mainBtnId);
+    if(pane && !pane.classList.contains('active') && typeof switchTab === 'function'){
+      switchTab(tabId, mainBtn);
+    }
+    var sub = document.getElementById(subBtnId);
+    if(sub) sub.click();        // 원본 핸들러(switchAdminTab 등)가 올바른 this 로 실행
+    syncNavActive();
+  }
+  window.navSub = navSub; window.syncNavActive = syncNavActive;
+  // 원본 서브탭(.active 클래스)이 바뀔 때마다 레일 하이라이트 자동 미러링.
+  // switchTab 을 래핑하지 않아 기존 함수 계약을 건드리지 않음.
+  document.addEventListener('DOMContentLoaded', function(){
+    var hosts = ['tab-charting','tab-therapists','tab-admin'];
+    var mo = new MutationObserver(function(){ syncNavActive(); });
+    hosts.forEach(function(id){
+      var host = document.getElementById(id);
+      if(host) mo.observe(host, { attributes:true, attributeFilter:['class'], subtree:true });
+    });
+    setTimeout(syncNavActive, 50);
+  });
+</script>
 {% endblock %}

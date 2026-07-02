@@ -61,15 +61,20 @@ def is_therapist_role(treatment: Any) -> bool:
 
 
 def is_manual_treatment(treatment: Any, *, eswt_code: str = DEFAULT_ESWT_CODE) -> bool:
-    """*도수치료* 정의 — ``role="therapist"`` AND ``code != eswt_code``.
+    """*도수치료* 정의 — ``role="therapist"`` AND ``code != eswt_code`` AND ``기록필요 아님``.
 
-    COMPAT: ``api.py:_get_manual_treatment_rows`` (line 3732~3749) +
-    ``_therapist_only_codes_set`` (line 163) 분기 정합.
+    COMPAT: ``api.py:_get_manual_treatment_rows`` +
+    ``_therapist_only_codes_set`` 분기 정합.
 
     NOTE: code prefix (``manual...``) 가 아니라 *role 기반 판정* — 관리자 UI 에서
     한글 이름으로 새 도수 항목 (예: ``tx_xxx``) 을 추가해도 자동 반영. spec 01 §1 정합.
+
+    v1.3.37+: ``requires_record`` (기록 필요) 항목은 기록에서 집계되는 별도 경로이므로
+    도수치료(예약 기반 카운트)에서 제외한다.
     """
     if not is_therapist_role(treatment):
+        return False
+    if getattr(treatment, "requires_record", False):
         return False
     return getattr(treatment, "code", None) != eswt_code
 

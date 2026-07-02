@@ -31,16 +31,16 @@ def update_record_tab(
     db: Session = Depends(get_db),
 ):
     try:
-        setting = service.update_tab_setting(
+        treatment = service.update_tab_setting(
             db,
             tab_key,
             label=payload.label,
             category_id=payload.category_id,
             log_callback=_log,
         )
-        audit(db, "records.tab.update", setting.id, f"tab={tab_key} label={setting.label}")
+        audit(db, "records.tab.update", treatment.id, f"tab={tab_key} label={treatment.name}")
         db.commit()
-        return service.serialize_setting(setting)
+        return service.serialize_tab(treatment)
     except ValueError as exc:
         db.rollback()
         raise _bad_request(exc) from exc

@@ -540,6 +540,7 @@ def test_treatment_meta_endpoint_still_works(client):
         "doctor_treatments", "therapist_treatments", "manual_treatments",
         "count_increment", "eswt_code",
         "treatment_price", "treatment_incentive_pct", "treatment_incentive_amount",
+        "treatment_requires_record", "record_treatments",
         "employee_categories", "all_treatments",
     }
     assert set(body.keys()) == expected_keys

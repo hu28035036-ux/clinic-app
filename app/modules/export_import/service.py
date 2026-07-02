@@ -57,16 +57,20 @@ def build_data_convert_preview_response(
     errors: list[Any],
     file_name: str | None,
     parse_info: Mapping[str, Any] | None,
+    existing_patients: list[Mapping[str, Any]] | None = None,
+    dup_in_file_count: int = 0,
 ) -> dict[str, Any]:
     """``POST /api/data-convert/preview`` 응답 dict — byte-equivalent.
 
     NOTE: ``app/routers/api.py:data_convert_preview`` 의 인라인 dict 와 byte-equivalent.
-    응답 key 11개.
+    응답 key 13개 (v1.3.51+: existing_patients / dup_in_file_count 추가).
     """
     return {
         "total": int(total),
         "new_count": int(new_count),
         "existing_count": int(existing_count),
+        "existing_patients": [dict(p) for p in (existing_patients or [])],
+        "dup_in_file_count": int(dup_in_file_count),
         "error_count": int(error_count),
         "header": list(header) if header is not None else None,
         "new_patients": [dict(p) for p in new_patients],

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import models
+from app.services import auth
 from . import service
 from .schemas import (
     InventoryCategoryStateIn,
@@ -25,8 +26,16 @@ def _require_category(db: Session, category_id: str) -> models.EmployeeCategory:
 
 
 @router.get("")
-def get_inventory(active_categories: bool = True, db: Session = Depends(get_db)):
-    return service.list_inventory(db, active_categories=active_categories)
+def get_inventory(
+    active_categories: bool = True,
+    x_admin_token: str = Header(default=""),
+    db: Session = Depends(get_db),
+):
+    return service.list_inventory(
+        db,
+        active_categories=active_categories,
+        include_admin=auth.is_valid(x_admin_token),
+    )
 
 
 @router.post("/category-state")
@@ -146,6 +155,7 @@ def create_field(
         category_id=p.category_id,
         name=name,
         field_type=p.field_type or "text",
+        admin_only=bool(p.admin_only),
         active=bool(p.active),
         sort_order=p.sort_order or (
             db.query(models.InventoryField)
@@ -180,6 +190,7 @@ def update_field(
     field.category_id = p.category_id
     field.name = name
     field.field_type = p.field_type or "text"
+    field.admin_only = bool(p.admin_only)
     field.active = bool(p.active)
     field.sort_order = p.sort_order or field.sort_order or 0
     db.flush()
@@ -215,8 +226,8 @@ def delete_field(
 @router.post("/values")
 def upsert_value(
     p: InventoryValueIn,
+    x_admin_token: str = Header(default=""),
     db: Session = Depends(get_db),
-    _: bool = Depends(require_admin),
 ):
     item = db.get(models.InventoryItem, p.item_id)
     if not item:
@@ -226,6 +237,9 @@ def upsert_value(
         raise HTTPException(404, "관리 열을 찾을 수 없습니다.")
     if item.category_id != field.category_id:
         raise HTTPException(400, "품목과 관리 열의 과가 다릅니다.")
+    # 관리자 전용 칸은 관리자 인증 시에만 입력 가능 (일반 칸은 직원도 입력).
+    if bool(field.admin_only) and not auth.is_valid(x_admin_token):
+        raise HTTPException(401, "관리자 전용 칸은 관리자만 입력할 수 있습니다.")
     value = (
         db.query(models.InventoryValue)
         .filter(

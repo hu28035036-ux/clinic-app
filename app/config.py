@@ -11,8 +11,14 @@ APP_NAME = "도수치료예약"
 # ─── 앱 버전 (배포 시 업데이트) ───
 # 이 값은 프로그램 폴더에 포함되어 교체됨. %APPDATA%\도수치료예약\ 은 유지.
 # 빌드 규칙: MAJOR.MINOR.PATCH (예: 1.2.3)
-APP_VERSION = "1.3.34"
-APP_BUILD_DATE = "2026-06-16"
+APP_VERSION = "1.3.50"
+APP_BUILD_DATE = "2026-06-29"
+
+# PyInstaller onedir/onefile 로 빌드된 실행본인지 여부.
+#   True(배포 exe): 정적 자산을 ?v= 버전으로 무효화하므로 영구 캐시(immutable) 안전.
+#   False(dev/run.py): 편집 즉시 반영되도록 캐시 끔(no-cache).
+# 정적파일 Cache-Control 분기(main.py) 에서 사용.
+IS_FROZEN = hasattr(sys, "_MEIPASS")
 
 def get_appdata_dir() -> Path:
     if sys.platform == "win32":
@@ -44,6 +50,9 @@ DEFAULT_CONFIG = {
     "sync_op_retention_days": 180,
     "slot_minutes": 30, "open_time": "08:30", "close_time": "18:30",
     "lunch_enabled": False, "lunch_start": "12:30", "lunch_end": "13:30",
+    # 헤더/브라우저 탭에 표시되는 앱(홈페이지) 이름 — 관리자 탭에서 수정.
+    # base.html 이 Jinja 전역 app_title() 로 라이브 조회 (pages.py).
+    "app_title": "병원 예약 관리",
     "host": "0.0.0.0", "port": 8000,
     # ─── 업데이트 관련 (자동업데이트 확장용 훅) ───
     # update_manifest_url: 빈 문자열이면 "업데이트 확인" 은 수동 안내만 표시.

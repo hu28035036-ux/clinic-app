@@ -2,6 +2,347 @@
   도수치료예약 - 배포 버전 기록
 ================================================================
 
+[ v1.3.50 ]  2026-06-29  (화면 정리 — 잔여 파란 chrome→틸 + 직원폼 권한 override 제거 + 메인·원무과/모드/노드 표시 제거)
+
+  주요 변경 (화면 = main.html/app.css/main.js 만, 백엔드·DB·마이그 무변경)
+  - [디자인] v1.3.48/49 가 못 잡은 잔여 하드코딩 파란 chrome 을 틸로 (app.css):
+    `--sky-400`(혼자 #4A90E2 --info 였음 → var(--primary), hover/active/focus 보더 5곳 일괄),
+    정산 .settlement-treatment-count b / .settlement-date-card hover·[open] / .settlement-date-toggle /
+    .inventory-subtab-count #0F4C81·#9BC5E6·#8BBCE0·#EAF3FD·#F8FBFF·#F3F9FF → 틸,
+    rgba(47,134,203)/rgba(15,76,129)(정산카드·primary버튼 box-shadow·모달 focus ring) → rgba(13,125,114),
+    #D7E3F0 보더 5곳 → var(--border-color). 의미색(진료 #1D4ED8·의사 legend·성별·치료/직원색) 유지.
+  - [개선] 직원 추가/수정 폼 "직원별 권한 override"(도수/체외충격파 select) 제거(main.js editEmployee)
+    + 데드 헬퍼 boolSelectValue 제거. saveEmployee 무수정(요소 없으면 readBoolSelect→null=과 기본값,
+    기존 e-doc-cap 선례 동일). 백엔드/과 기본값/담당 치료항목 섹션 유지 → 배정 로직 무손상.
+  - [정리] main.html 좌측 레일 "메인 · 원무과" 라벨 + 헤더 "모드"/"노드" 칩 제거
+    (동기화 버튼·상태점·sync-status, 접속 주소 칩은 유지). config.mode 분기 로직 자체는 유지.
+  - 검증: 전체 회귀 2,310건 + ruff + node --check + check_db_path.
+
+[ v1.3.49 ]  2026-06-29  (화면 색상 마무리 — 파란 chrome → 틸 + 병원명 하드코딩 수정)
+
+  주요 변경 (화면 = main.html/app.css 만, 백엔드·DB·마이그 무변경)
+  - [디자인] v1.3.48 토큰 리매핑이 못 잡은 하드코딩 파란 hex chrome 을 틸로 일괄 변환
+    (app.css sed): #0369A1/#3B82F6(CSS)/#0EA5E9/#1E40AF/#2563EB/#60A5FA/#6366F1/#93C5FD →
+    틸, #F0F9FF/#E0F2FE/#BAE6FD/#EFF6FF/#DBEAFE/#BBD7EE/#EEF6FC/#DCEBF8/#E0E7FF → 틸 soft,
+    #3730A3 → 틸, 파란 rgba 그림자 → 틸. 직원관리 .emp-box-head 그라데이션/제목, 미니달력
+    .day-count-badge(#1D4ED8 단독 규칙) 포함. **의미색 유지**: #1D4ED8(진료)·#3B82F6(의사
+    legend = main.html 인라인이라 CSS 무영향)·치료/직원 데이터색(인라인)·중립 슬레이트 핸들.
+  - [수정] main.html 좌측 레일 로고/브랜드 + 헤더 h1 이 시안 샘플 "바른재활 의학과의원" 으로
+    하드코딩 → `{{ app_title() }}`(로고는 `app_title().replace(' ','')[:2]` 모노그램)로 교체.
+    app_title() = pages.py Jinja 전역(config.json app_title 라이브, 관리자→시스템 편집 가능).
+  - 검증: 라이브 블루스캔 전 탭 잔여 0, app_title 변경→로고/브랜드/헤더 즉시 반영, 2310 회귀.
+
+[ v1.3.48 ]  2026-06-29  (화면 디자인 전면 개편 — 좌측 사이드 네비 + 틸 그린 + 미니달력 개선)
+
+  주요 변경 (화면 = main.html/app.css/main.js 만, 백엔드·DB·마이그 무변경)
+  - [디자인] 상단 가로탭 → 좌측 세로 사이드 네비(차트기록/직원/관리자 하위는 아코디언).
+    색상 토큰 틸 그린 + 쿨 그레이로 리매핑(app.css :root 값 교체로 자동 리스킨),
+    Pretendard, 카드/버튼/표/뱃지/모달/헤더 정리. 콘텐츠 헤더 바(모드/노드/접속주소 칩).
+    AI 예약/휴무 도우미 카드 CSS display:none(백엔드 보존). base.html 전역 topbar 는
+    body:has(.app-shell) 로 앱 화면서 숨김.
+  - 좌측 네비 메인 항목은 기존 .tab-btn + switchTab 그대로(계약 유지). 서브 아코디언은
+    원본 .sub-tabs(숨김) 버튼을 navSub 가 대신 click → switchAdminTab 등 동작 동일,
+    하이라이트는 MutationObserver 미러링. (#admin-tab-btn 인라인 display:none 유지 위해
+    .nav-item display 는 !important 금지)
+  - [수정] 회색 헤더 바: --tab-text-muted 가 헤더/표헤더 *배경*(연한)으로도 쓰이는데
+    개편 때 #52616B(그레이)로 바꿔 회색바가 됨 → #F4F8F7(연한 틸)로 복원.
+  - [미니달력] 조회 범위 표시달−7일 ~ 다음달 말일(+1달)로 확장(다음달 예약수 표시).
+    범위 기준월을 view.currentStart 로(info.start/getDate 이전달 셀 가리킴 버그 교정).
+    깨짐: .mini-cal-wrap ResizeObserver→updateSize + 탭복귀 시 updateSize. 셀마다
+    O(n²) repaint → rAF 1회. (dedup 은 stale 경합 위험으로 미적용, 항상 fresh fetch.)
+  - 검증: 2,310건 회귀 + 격리(8011) 브라우저 E2E 전반 + ruff + node.
+
+[ v1.3.47 ]  2026-06-26  (재고 관리자 전용 칸 — 미로그인 시 칸 자체 숨김)
+
+  주요 변경 (inventory service/router + main.js, DB/마이그 무변경)
+  - [개선] 관리자 전용 칸을 미인증(직원) 시 응답·화면에서 완전히 제외 (v1.3.46 은 값 보이고
+    수정만 막힘 → 이제 확인 불가). service.list_inventory(include_admin) — 미인증이면
+    admin_only 필드 필터 + 그 field_id 값 제외(visible_field_ids 가드). router get_inventory
+    `x_admin_token: Header` → `auth.is_valid` 로 include_admin 결정. 프론트 loadInventorySheet
+    `fetch` → `adminFetch`(토큰 동봉, /api/inventory 는 항상 200 이라 401 프롬프트 안 뜸).
+    applyAdminUiState 에 재고 탭 활성 시 재로드 추가 → 로그아웃 즉시 가림/로그인 즉시 표시.
+    직원은 admin 필드를 아예 안 받으므로 기존 readonly 분기는 inert(관리자만 전용 칸 받음).
+  - 검증: 전체 회귀 2,310건(inventory 미인증 숨김 신규 1 포함) + 격리 dev E2E(미인증 GET 에
+    전용칸/값 제외·관리자 GET 포함·직원 화면 칸 숨김·관리자 admin칸 저장 5000·로그아웃 즉시
+    가림·직원 일반칸 저장 77·콘솔 0) + ruff + node. 백엔드/마이그 무변경(컬럼은 v1.3.46 m042).
+
+[ v1.3.46 ]  2026-06-26  (재고관리 과 선택·엑셀형·검색·저장·관리자 전용 칸 + 예약 상세 메모/저장 통합 + 차트 카드 오른쪽)
+
+  주요 변경 — 재고관리 (main.html·main.js·app.css + 백엔드 inventory 모듈·m042)
+  - [개선] 과별 세로 나열(collapse) → 기록탭式 과 선택 하위탭(#inventory-subtabs,
+    selectInventoryCategory, INVENTORY_ACTIVE_CATEGORY). 선택 과 1개만 렌더, 제목 "▧ {과} 재고".
+  - [개선] 엑셀형 그리드(#inventory-list .inventory-table id한정 !important 로 전역 .data-table
+    패딩/폰트 덮음): 셀 사방 border #CBD5E1, 폰트 12/헤더 11px, 행 26px, 입력란 border 제거
+    셀 꽉채움(focus inset). ✎·× 아이콘 버튼 배경/테두리 제거.
+  - [신규] 품목·단위 검색(filterInventoryItems, 클라 필터) + 일괄 저장(saveInventoryChanges:
+    셀 onblur 자동저장 → oninput dirty 추적, 변경분만 POST). 미저장 시 과 이동·새로고침 confirm.
+  - [신규] 관리 열 "관리자 전용 칸"(InventoryField.admin_only, m042 ALTER). 값 입력 권한 분기:
+    일반 칸 인증불요(직원)·전용 칸 auth.is_valid 검증(upsert_value Header 수동). 전용 칸은
+    일반 칸 뒤(관리 열 왼쪽) 정렬. 직원 화면(토큰 없음)은 전용 칸 readonly + 셋업/관리 열 숨김.
+  - 검증: 전체 회귀 2,309건(inventory 권한/정렬 신규 3건 포함) + 격리 dev E2E(권한 분기
+    일반200/전용401·전용 관리자 200, 관리자 화면 정렬·자물쇠·셋업, 직원 화면 잠금·숨김·일반저장,
+    검색·dirty 저장·서버반영, 콘솔 0) + ruff + node. m042 멱등 + sync 자동 컬럼 확인.
+
+  주요 변경 — 예약/차트 (main.js·app.css, DB/마이그 무변경)
+  - [신규] 예약 상세(reserved)에 당일메모 편집 textarea(#a-memo) 추가. 기존엔 ep.memo 를
+    표시만 했음(line ~4450). 신규 헬퍼 apptMemoNote(memo) 로 레거시 "[치료항목]" 접두어를
+    떼고 사용자 메모만 편집칸에 노출, 저장 시 현재 치료항목으로 접두어 재구성(신규 예약과
+    동일 형식 유지 → apptTreatmentCodes 폴백 호환). 완료/취소 예약은 읽기전용 표시(접두어
+    제거 + escapeHtml 보강).
+  - [개선] 예약 상세 저장 버튼 5개(savePatientMemo·saveNewPatient·saveApptTime·
+    saveTreatmentCodes·saveAssignments) → 통합 saveApptAll(aid,pid) 1개. 편집 항목 전체를
+    PUT /api/appointments/{aid} 하나(treatment_codes·start_at·duration_min·memo·
+    is_new_patient·therapist_id·assignments)로 전송 + 환자메모는 변경 시에만 별도 PATCH.
+    운영시간/점심 가드는 saveApptTime 규칙 재사용. 치료항목 변경 시에만 저장 후 모달 재오픈
+    (새 담당 배정 드롭다운 노출), 그 외엔 닫기. 백엔드 PUT/스키마는 이미 모든 필드 지원 →
+    무변경. 개별 저장 함수는 호출처 제거(테스트/HTML 참조 없음 확인).
+  - [개선] 차트기록 작성 카드(#ch-template-card=ROM/MMT, #ch-special-card=스페셜테스트)를
+    왼쪽 → 오른쪽 배치. app.css `.ch-editor-sheet { order:-1 }` 로 에디터를 flex 앞으로 보내
+    카드(DOM 순서 유지, order 0)가 오른쪽에 옴. 좁은 화면 @media(max-width:860px) 세로배치는
+    `.ch-editor-sheet { order:0 }` 로 기존 적층(카드 위·에디터 아래) 유지. 토글 함수는 단순
+    hidden 토글이라 무영향. main.js 주석 3곳 '왼쪽'→'오른쪽'.
+
+  검증
+  - node --check + ruff 통과, 관련 회귀 95건(test_19_9_appointments·cache_headers·app_title)
+  - 격리 브라우저(clinic-dev-duty 8011): 저장버튼 1개·당일메모 접두어 제거·통합저장 영속
+    (memo/시간/신환/환자메모)·injection 추가 시 재오픈+a-doc-injection+시간 40 자동합산·
+    완료 예약 편집필드/저장버튼 없음·콘솔 에러 0
+  - 차트 카드: 1280px 뷰포트에서 flex row·editor order=-1·에디터 left=24(좌), ROM/MMT
+    665~945·스페셜 961~1241(우), 742px 에서 column·order 0 적층 유지(스크린샷 확인)
+
+[ v1.3.45 ]  2026-06-25  (환자탭 완료횟수 수정 + 메모 펼침 + 차트기록 버튼 + 글자 축소)
+
+  주요 변경 (api.py + main.js + app.css, DB/마이그 무변경)
+  - [수정] 환자탭 완료횟수 '-' 만 보임 — 목록 소스 search_patients/by-ids 응답에
+    counts_show 가 없어 _pmDoneCompact(p.counts_show) 가 빈값(v1.3.34 페이지검색 전환 때
+    누락). 신규 _counts_show_map(db, ids) 로 페이지 환자(≤500) IN 쿼리·표시ON·활성·done>0
+    만 첨부(대량 안정화 일관·경량) → 두 엔드포인트 item 에 counts_show. approve→done_count
+    증가 자체는 정상이었음(_bump_patient_count), 화면 미반영만 문제.
+  - [신규] 환자 행 '차트기록' 버튼(_pmRender/_pmRenderEmpty 관리셀). pmOpenCharting(pid):
+    CH_STATE.pid/pname/q(=이름)/type 설정 후 switchTab('tab-charting')→loadChartingTab 이
+    치료내역(chLoadHistory)+검색(chSearch) 자동. 관리셀 stopPropagation 으로 행클릭과 분리.
+  - [개선] 환자탭 메모 셀 _pmMemoCell(memo) 클릭 펼침(pmToggleMemo, classList toggle
+    'expanded', stopPropagation). 인라인 style→CSS #pm-results .pm-memo-cell/.expanded
+    (환자탭만). _pmRender 메모 escapeHtml 보강(기존 미escape).
+  - [디자인] #pm-results .data-table 12px·th 11px·.tx-done-compact 11px(환자탭만, !important).
+
+  검증
+  - 전체 회귀 2,306건(+test_patient_counts_show 2: approve→search/by-ids counts_show) + ruff +
+    node --check. 통합 브라우저 E2E(환자+승인 manual30 시드→환자탭: 완료횟수 '도수6 1'·
+    메모 nowrap→normal 펼침·표 12px/th11px·차트기록 버튼→charting 탭+치료내역 로드·콘솔0).
+  - 마이그레이션 변동 無(41 유지).
+
+
+[ v1.3.44 ]  2026-06-25  (차트기록 도수치료 담당치료사 자동표시 + ROM/MMT 제거)
+
+  주요 변경 (프론트 main.js 만, DB/마이그 무변경)
+  - [수정] 도수치료 템플릿 '○○ 치료사' 치환이 작성자 select(#chart-author) 선택값에만
+    의존 → 새 차트(작성자 미선택; 예약상세 '차트 기록' 버튼=openChartFromAppt→
+    openChartEditor(aid) 는 defaultAuthorId 無)면 '○○ 치료사' 잔존(사용자 증상).
+    · 신규 전역 _chEditorTherapistName — openChartEditor 가
+      vm.therapist_name || EMPLOYEES_ALL.find(e=>e.id===selAuthor).name 로 설정.
+    · _chCurrentTherapistName: 작성자 선택값 우선 → 미선택 시 _chEditorTherapistName 폴백.
+    · chRenderHistory 의 CH_VISIT_META[aid] 에 therapist_name 추가(charts/patient API 제공).
+  - [변경] TREATMENT_TEMPLATES.manual.soap.O ['MMT:','ROM:','Special test:']→['Special test:'],
+    text 폴백도 MMT/ROM 줄 삭제. 부위별 ROM/MMT 카드로 별도 입력. eswt 무변경.
+
+  검증
+  - 전체 회귀 2,304건 + ruff + node --check. vm 단위 8건(실제 main.js: 폴백치환·원장○○유지·
+    MMT/ROM제거·Special유지·작성자선택우선·이름없으면○○).
+  - 브라우저 E2E(clinic-dev): 작성자 미선택+CH_VISIT_META.therapist_name 주입 → 도수치료
+    클릭 → '○○ 원장 지시 하에 김담당치료사 치료사가…시행함'·MMT/ROM 부재·Special 유지·콘솔0.
+  - 마이그레이션 변동 無(41 유지).
+
+
+[ v1.3.43 ]  2026-06-25  (대량 데이터 안정화 + 현금기입장 50원)
+
+  주요 변경
+  - [성능/안정화] 대량(수만 건+) 데이터 대비 핫패스 정리(api.py + main.js, DB/마이그 무변경):
+    · 신규 GET /api/appointments/{aid} 단건 조회 → openAppt 가 연간 전체
+      (GET /api/appointments?start=Y-01-01&end=(Y+1), 예약 10만 시 ~58s/15MB) 받아
+      JS find 하던 것을 PK 단건(db.get, ~20ms/0.7KB)으로 대체.
+    · 신규 GET /api/patients/count → 환자 수 배지. _loadPatientsBackground 가 매 로드
+      전체 환자(light, 8만이면 11MB) 받던 것을 count 기반 + 환자수 >
+      _PATIENTS_PRELOAD_MAX(20000) 면 전체 preload 생략(이름=예약 embed, 검색=서버검색,
+      캐시=_upsertPatientCache 점진). 소규모는 기존과 동일(_PATIENTS_FULL).
+    · data-convert 중복판정 Patient.all()(전체 컬럼)×2 → query(name,birth_date,chart_no) 3컬럼.
+    · 라우트 순서: /appointments/{aid}·/patients/count 를 기존 {pid} 보다 먼저 정의(literal 우선).
+  - [현금기입장] 50원 권종 추가 — main.js REVENUE_CASH_DENOMS + revenue/service.py
+    CASH_DENOMINATIONS 양쪽(백엔드가 정규화·합계 재계산하므로 둘 다 필요), 100·10 사이.
+
+  검증
+  - 전체 회귀 2,304건(+test_perf_stabilization 3) + ruff + node --check + check_db_path.
+  - 대량 실측(격리 perf_seed.db 환자 3만/예약 10만/차트 4만, 8002): 예약상세 58.3s/15.13MB
+    → 0.02s/708B(openAppt 단건), 환자검색 54ms, 환자이력 12ms, 차트이력 13ms, 집계(월) 537ms,
+    배지=count 30,003(전체 light preload 생략을 네트워크로 확인), 콘솔0.
+  - 마이그레이션 변동 無(41 유지).
+
+
+[ v1.3.42 ]  2026-06-25  (차트기록(SOAP) 신설 + 예약 누락 표시 수정 + 부위별 ROM/MMT 좌우양쪽)
+
+  주요 변경
+  - [신규 도메인] 환자 차트기록(SOAP): PatientChart(appointment_id UNIQUE 1:1 +
+    patient_id 비정규화 + content 단일 TEXT + author/treatment_start_date/session_no).
+    m040_patient_charts + m041_chart_session_fields. app/modules/charts(schemas/service/
+    router): GET/PUT /api/charts/by-appointment/{aid}(PUT upsert, approved 아니면 400),
+    GET /api/charts/patient/{pid}. sync ENTITY_MAP "patient_chart",
+    Appointment.charts cascade(예약 삭제 시 차트 정리).
+  - [프론트] 차트기록 탭(tab-charting, 서브탭 list/edit): 환자검색→치료내역→SOAP 단일
+    textarea(SOAP_TEMPLATE 주입), 작성자·치료시작일·회차·직전회차 참고. 좌측 카드 2개:
+    · ROM/MMT 카드 — 부위별(ROM+MMT 통합) chInsertRegion + 정상 ROM·MMT 개별 버튼,
+      NORMAL_ROM(AAOS 표준값), 객관적 소견[O] 자동 분배(_chInsertIntoSectionOrCursor)
+    · 스페셜테스트 카드 — SPECIAL_TESTS(부위 8그룹) 빠른삽입 + localStorage 즐겨찾기
+    · 좌/우/양쪽 토글(_chSide, _chSides()): 양쪽=Lt·Rt 2줄(검사ROM·MMT·special test),
+      정상 ROM 참고줄은 좌우무관 1줄.
+  - [수정] 미니캘린더/예약표/금일목록 카운트 불일치: renderDayBoard 에 renderedIds Set →
+    표에 못 놓인 예약 .board-unplaced 경고(클릭 openAppt), buildGroupedHtml 빈코드
+    __nocode__ 그룹 + 비활성 치료사 폴백. 백엔드/DB 무변경(main.js+app.css).
+  - 차트기록 탭 라벨('차팅'→'차트기록'), SOAP 4컬럼→단일 content 통합.
+
+  검증
+  - 전체 회귀 2,301건(+charts 14, +chart cascade 1) + ruff + node --check + check_db_path.
+  - 격리DB 브라우저 E2E: 차트 작성·저장·불러오기, 부위별 ROM/MMT 통합 삽입, 좌/우/양쪽
+    2줄, 스페셜테스트 삽입, 콘솔에러0. vm 단위(실제 main.js 로드) 26건.
+  - 마이그레이션 39→41(m040 patient_charts, m041 chart session fields). spec 자동 글롭.
+
+
+[ v1.3.41 ]  2026-06-21  (업데이트 자동 알림 + 당직 과별 횟수 + 기록 탭 정리)
+
+  주요 변경
+  - [업데이트 캐시/알림] 정적파일에 Cache-Control 부여(main.py CachedStaticFiles):
+    빌드(frozen) + ?v= 버전 쿼리면 immutable(영구 캐시, 버전마다 URL 달라 안전),
+    dev/버전없음은 no-cache. HTML 문서(pages.py /,/setup)는 no-cache → 항상 최신 ?v=.
+    신규 GET /api/version(초경량) + main.js 60초 폴링 → 로드버전≠서버버전이면 우하단
+    "새 버전 — 새로고침" 배너(.update-banner). ※배너는 이 버전 로드 후 다음 업데이트부터.
+  - [신규] 당직 관리 상단 #duty-monthly-summary: renderDutyMonthlySummary() —
+    캘린더 currentStart 달 기준 _dutyAll 직원별 카운트, 과별 그룹(과필터 반영,
+    0회 제외, 횟수desc). datesSet(달 이동)+renderDutyEvents(필터)에서 갱신.
+  - [정리] 기록 탭 하위탭 ✎'이름 수정' 제거(라벨이 치료항목 이름서 자동). main.js
+    editRecordTabName/saveRecordTabName + 버튼 삭제, app.css .record-tab-edit-btn 정리.
+    백엔드 PUT /api/records/tabs/{key}는 과(category) 저장이 label 동봉해 계속 사용→유지.
+
+  검증
+  - 전체 회귀 2,287건 + ruff + node --check 통과. 신규 tests/test_cache_headers.py 7건
+    (/api/version·HTML no-cache·정적 dev no-cache·frozen immutable·rev= 오인방지·배너 배선).
+  - 격리DB 브라우저 E2E: 당직 과별 횟수(6월 김치료사3회/간호사1회, 0회 제외) 렌더·
+    달 이동·과필터·콘솔에러0 확인. 마이그레이션/spec 변동 無.
+
+
+[ v1.3.40 ]  2026-06-21  (화면 버튼 크기(높이) 통일)
+
+  주요 변경
+  - 가로 줄(toolbar)에 입력칸·드롭다운·주요버튼과 나란히 놓인 보조 버튼이 작아
+    높이가 어긋나던 것을 같은 높이(36px)로 맞춤. app.css 3곳:
+    · `.sheet-toolbar button.small` 30→36 (집계·정산·기록 기간/보조 버튼)
+    · `.stats-filter-bar`/`.revenue-toolbar` 의 `button.small` 36 명시 (매출·통계, 34→36)
+    · `.emp-box-head button.mini` 36 (직원 과 머리줄 — '+ 직원 추가'(primary 36)와 정렬)
+  - 색·글자 크기는 유지, 높이만 조정. 예약·환자 탭은 이미 정렬돼 변경 없음.
+    재고 탭(미선택)·매출 ✎ 인라인 편집 아이콘(all:unset 의도)은 손대지 않음.
+
+  검증
+  - 격리DB 브라우저 실측(행 단위 높이): 집계·정산·기록·직원·매출 통계 모두 한 줄
+    컨트롤 36px 정렬, 불일치 0건. 전체 회귀 통과(CSS만 변경).
+
+
+[ v1.3.39 ]  2026-06-21  (당직 관리 신설 + 환자목록/정산 화면 개선)
+
+  주요 변경
+  - [신규] 당직 관리: 직원 탭 서브탭. 휴무일 관리처럼 캘린더에서 날짜 클릭→당직 직원
+    설정, "당직 추가"로 직원 1명을 여러 날짜에 일괄 등록(직원+날짜+메모).
+    캘린더 상단 "과" 드롭다운으로 과별 보기. 모델 EmployeeDuty(m039) + sync 등록.
+  - 표 글자 줄바꿈: `.data-table th,td` 의 overflow-wrap anywhere→normal (app.css ~4810).
+    전역 `div{overflow-wrap:anywhere}` 상속+전용 표규칙으로 날짜("1954-04-02")·금액·코드가
+    글자 단위로 쪼개지던 것을 모든 .data-table(환자/치료항목/직원/통계)에서 수정.
+    환자목록 연락처/생년월일 셀엔 inline white-space:nowrap 도 유지(말줄임 컬럼 영향 없음).
+  - 환자관리 "완료 횟수": _pmDoneCompact 에서 done_count>0 항목만 표시(0 나열 제거).
+  - 정산 직원별 합계: 조정금액/최종 지급액 컬럼 제거 → 세전 인센티브만.
+  - 정산 상단 요약 카드 5개(settlement-summary-grid) 제거.
+  - 엑셀 내보내기 버튼 숨김(미완성): 정산 "엑셀"(main.html Jinja 주석), 예약현황
+    "도수치료 엑셀"(main.js HTML 주석). 함수/엔드포인트·인쇄 버튼은 유지.
+    (downloadStatsXlsx 는 이미 버튼 없음. 신환 CSV 내보내기는 보류·미결정.)
+
+  검증
+  - 당직 API 회귀 11건(test_employee_duties) + 전체 2,273건 통과, ruff·node 통과.
+  - 브라우저 스모크(격리DB): 당직 등록/과필터, 환자목록 nowrap/완료필터, 정산 렌더 확인.
+
+
+[ v1.3.38 ]  2026-06-18  (환자 엑셀 변환: 환자번호 인식 + 주민번호로 생년월일)
+
+  주요 변경
+  - 데이터변환 chart_no alias 에 환자번호/환자 번호/patient_no 등 추가 — 외부 EMR
+    내보내기의 "환자번호" 열을 차트번호로 인식 (api.py _DC_HEADER_ALIASES).
+  - 신규 _dc_birth_from_ssn(): 생년월일 비어 있을 때 주민번호(13자리, '-' 무관) 앞
+    6자리로 보완. 7번째 숫자로 세기 판별(1·2·5·6→1900, 3·4·7·8→2000, 9·0→1800),
+    6자리만 오면 연도 30 기준 폴백. 월/일 비정상이면 None(검토 필요). 생년월일 열이
+    있으면 그 값 우선(_dc_parse_excel 에서 birth 미존재 시에만 보완).
+  - 중복 판정 키 정리: 이름 기반 키를 (이름, 생일, 전화뒤4) → (이름, 생년월일) 로
+    단순화(전화 빈 행 많은 파일 대응, 생년월일은 주민번호로 항상 확보). 차트번호(환자
+    번호) 단독 매칭 유지. preview/apply/파일내 중복 3곳 일관.
+
+  검증
+  - 실제 환자목록(238명) 변환: 환자번호→차트번호, 주민번호→생년월일(세기 정확),
+    성별/휴대폰 정상. 회귀 6건 추가(test_data_convert_patient_no_ssn).
+    전체 2,262 passed + ruff. 마이그레이션 38개 변동 없음(로직만 수정).
+
+[ v1.3.37 ]  2026-06-18  (집계 자동화 + 기록 탭 치료항목화)
+
+  주요 변경
+  - 집계: 직접 입력 → 치료완료(approved 예약) + 기록(record_entries)에서 실시간 자동
+    집계. manual_counts 는 자동값 위 '수동 보정 델타'(walk-in)로 의미 전환.
+    direct-aggregate 응답 셀에 counts(합계)/auto/manual 동봉.
+  - 기록 탭: 고정 3탭(RECORD_TABS) 제거 → Treatment.requires_record 켠 항목으로 동적
+    구성. record_entries.treatment_id 신규, tab_key=치료항목 code 로 통일.
+  - 항목별 경로 분리: 기록필요=기록, 그 외=치료완료. 한 코드 한 소스 → 이중집계 X.
+  - 정산: _mirror_manual_count 제거(정산→집계 역미러 차단). 정산 반영은 집계 합계의
+    단방향 스냅샷으로 유지.
+  - m038: requires_record/treatment_id 컬럼 추가 + 레거시 탭→치료항목 이전(동일 이름
+    활성 치료항목 있으면 재사용, 없으면 rec_<tab> 생성) + record_entries 백필(비파괴).
+
+  버그 수정
+  - 도수치료 정의(role=therapist && code!=eswt)에 requires_record 제외 추가 — 기록용
+    항목이 통계/B-2 한도에 오집계되던 것 방지(api.py 3곳 + rules/repository 모듈 일관).
+
+  검증
+  - 전체 2,256 passed + ruff + node, 브라우저 스모크(격리DB), 업그레이드 마이그레이션
+    데모(기록 자동 이전 4건 + 동일이름 C-Arm 재사용) 확인.
+
+[ v1.3.36 ]  2026-06-17  (예약 상세에서 치료항목 변경 — 취소·재예약 없이)
+
+  주요 변경
+  - 예약 후 치료항목 변경 시 취소+재예약하던 것을 예약 상세 모달에서 인플레이스 변경으로
+    대체. 백엔드 PUT /api/appointments/{id} 가 이미 treatment_codes 검증 + 담당배정
+    재구성 지원 → 프론트(main.js)만 수정.
+  - 항목 많아 모달이 길어지지 않게 <details> 드롭다운(요약+스크롤 패널)으로 정리
+  - 치료항목 변경 시 시간(분) 자동 합산 — TX_META.treatment_minutes(=DB default_minutes)
+    기준, 하드코딩(||30) 제거
+  - 변경한 항목에 맞춰 담당 배정 자동 재구성
+
+  버그 수정
+  - 도수(치료사) 코드 전부 제거 시 therapist_id 잔존 → 통계(new_patient_counts)가
+    코드 무관 therapist_id 로 집계해 신환 오집계 → 도수 없으면 therapist_id 자동 해제
+  - 항목 미변경 저장 시 매번 재합산해 수동조정 시간 덮어쓰기 → a-dur 정본 사용(변경 시만 갱신)
+
+  검증
+  - 브라우저(격리DB): 변경/자동합산/드롭다운/담당재구성, 45분 무변경저장 유지,
+    therapist_id 해제·보존 양방향, 콘솔에러 0
+  - 전체 회귀 2,253건 + ruff + node --check 통과
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ v1.3.35 ]  2026-06-16  (예약 현황표 좁은 화면 가로 스크롤 + 스크롤 위치 유지)
+
+  주요 변경
+  - 좁은 화면에서 예약표가 잘리고 가로로 못 넘기던 문제 → board-wrap 높이를 화면 안으로
+    제한(max-height: calc(100vh - 120px))해 표 하단 가로 스크롤바를 노출/드래그 가능하게
+  - 자동 동기화(renderDayBoard 5초) 때 표가 맨 왼쪽으로 되돌아가던 문제 → innerHTML 교체
+    전후로 .board-wrap 의 scrollLeft/scrollTop 을 저장·복원 (동기화 주기 변경 없음)
+
+  검증
+  - 브라우저(격리DB, 860×900): 가로 스크롤바 17px 노출·하단 화면 안 + 재렌더 후 위치 보존 확인
+  - UI 계약 테스트 8건 + 전체 회귀 통과
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 [ v1.3.34 ]  2026-06-16  (장기데이터 성능 보강 + 환자관리탭 마지막예약/최근목록 수정)
 
   주요 변경

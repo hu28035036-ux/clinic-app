@@ -240,6 +240,12 @@ def _employees_for_category(
 def employee_can_perform(db: Session, e: models.Employee, t: models.Treatment) -> bool:
     if not e or not t or not getattr(t, "active", False):
         return False
+    # 기록필요 항목은 과(category) 기준으로만 판정 — 기록 입력/집계와 동일 규칙.
+    # (개별 EmployeeTreatment 권한과 무관하게 같은 과 직원이면 정산 반영 가능)
+    if getattr(t, "requires_record", False):
+        if t.category_id:
+            return e.category_id == t.category_id
+        return True
     if getattr(e, "treatment_override_enabled", False):
         if e.category_id and t.category_id != e.category_id:
             return False
@@ -438,37 +444,9 @@ def _recalculate_record(rec: models.SettlementRecord):
     )
 
 
-def _mirror_manual_count(
-    db: Session,
-    performed_on: str,
-    employee_id: str,
-    treatment_code: str,
-    quantity: int,
-):
-    """Keep aggregate-tab inputs editable after settlement reflection."""
-    row = (
-        db.query(models.ManualCount)
-        .filter(
-            models.ManualCount.count_date == performed_on,
-            models.ManualCount.therapist_id == employee_id,
-            models.ManualCount.treatment_code == treatment_code,
-        )
-        .first()
-    )
-    if quantity <= 0:
-        if row:
-            db.delete(row)
-        return
-
-    if row:
-        row.count = quantity
-    else:
-        db.add(models.ManualCount(
-            count_date=performed_on,
-            therapist_id=employee_id,
-            treatment_code=treatment_code,
-            count=quantity,
-        ))
+# v1.3.37+: 집계가 실시간 계산(치료완료/기록 자동 + manual_counts 델타)으로 바뀌어
+# 정산→manual_counts 역미러는 제거됨. 남기면 manual_counts 가 '수동 보정 델타' 의미를
+# 잃고 자동 집계값과 이중으로 더해진다. 정산은 집계의 단방향 다운스트림 스냅샷이다.
 
 
 def upsert_grid(
@@ -520,13 +498,6 @@ def upsert_grid(
         )
 
         if quantity == 0:
-            _mirror_manual_count(
-                db,
-                performed_on.isoformat(),
-                employee.id,
-                treatment.code or "",
-                0,
-            )
             if existing:
                 rec_id = existing.id
                 if log_callback:
@@ -555,13 +526,6 @@ def upsert_grid(
             db.add(rec)
 
         _recalculate_record(rec)
-        _mirror_manual_count(
-            db,
-            performed_on.isoformat(),
-            employee.id,
-            treatment.code or "",
-            quantity,
-        )
         rec.updated_at = datetime.utcnow()
         db.flush()
         if log_callback:

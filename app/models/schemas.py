@@ -73,6 +73,17 @@ class EmployeeLeaveOut(EmployeeLeaveIn):
     class Config: from_attributes = True
 
 
+class EmployeeDutyIn(BaseModel):
+    employee_id: str
+    duty_date: str
+    memo: str = ""
+
+
+class EmployeeDutyOut(EmployeeDutyIn):
+    id: str
+    class Config: from_attributes = True
+
+
 # ─────── Treatment (치료항목) ───────
 
 class TreatmentIn(BaseModel):
@@ -91,6 +102,8 @@ class TreatmentIn(BaseModel):
     price: int = 0
     incentive_pct: Optional[float] = None
     incentive_amount: Optional[int] = None
+    # 기록 필요 — True 면 '기록' 탭에 노출되고 집계는 기록(record_entries) 기반.
+    requires_record: bool = False
 
 
 class TreatmentOut(BaseModel):

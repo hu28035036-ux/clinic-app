@@ -34,6 +34,7 @@ def serialize_field(field: models.InventoryField) -> dict:
         "category_id": field.category_id,
         "name": field.name,
         "field_type": field.field_type or "text",
+        "admin_only": bool(field.admin_only),
         "sort_order": field.sort_order or 0,
         "active": bool(field.active),
         "created_at": field.created_at.isoformat() if field.created_at else None,
@@ -88,7 +89,7 @@ def touch_category_state(
     return state
 
 
-def list_inventory(db: Session, active_categories: bool = True) -> dict:
+def list_inventory(db: Session, active_categories: bool = True, include_admin: bool = True) -> dict:
     q = db.query(models.EmployeeCategory)
     if active_categories:
         q = q.filter(models.EmployeeCategory.active == True)  # noqa: E712
@@ -108,17 +109,21 @@ def list_inventory(db: Session, active_categories: bool = True) -> dict:
     items_by_category = {cid: [] for cid in category_ids}
 
     if category_ids:
-        fields = (
-            db.query(models.InventoryField)
-            .filter(
-                models.InventoryField.category_id.in_(category_ids),
-                models.InventoryField.active == True,  # noqa: E712
-            )
-            .order_by(models.InventoryField.sort_order, models.InventoryField.name)
-            .all()
+        fields_q = db.query(models.InventoryField).filter(
+            models.InventoryField.category_id.in_(category_ids),
+            models.InventoryField.active == True,  # noqa: E712
         )
+        if not include_admin:
+            # 관리자 미인증 시 관리자 전용 칸은 응답에서 제외 (값도 함께 가려짐).
+            fields_q = fields_q.filter(models.InventoryField.admin_only == False)  # noqa: E712
+        fields = fields_q.order_by(
+            models.InventoryField.admin_only,
+            models.InventoryField.sort_order,
+            models.InventoryField.name,
+        ).all()
         for field in fields:
             fields_by_category.setdefault(field.category_id, []).append(field)
+        visible_field_ids = {f.id for f in fields}
 
         items = (
             db.query(models.InventoryItem)
@@ -139,7 +144,8 @@ def list_inventory(db: Session, active_categories: bool = True) -> dict:
                 .all()
             )
             for val in values:
-                values_by_item.setdefault(val.item_id, {})[val.field_id] = val.value or ""
+                if val.field_id in visible_field_ids:
+                    values_by_item.setdefault(val.item_id, {})[val.field_id] = val.value or ""
         for item in items:
             items_by_category.setdefault(item.category_id, []).append(
                 serialize_item(item, values_by_item)

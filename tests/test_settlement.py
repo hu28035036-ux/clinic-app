@@ -156,7 +156,13 @@ def test_settlement_grid_snapshot_report_update_and_delete(client):
     assert deleted.json()["summary"]["incentive_total"] == 0
 
 
-def test_settlement_reflection_remains_editable_in_direct_aggregate(client):
+def test_settlement_reflection_does_not_mirror_or_feed_aggregate(client):
+    """v1.3.37+: 집계는 정산의 업스트림(치료완료/기록/수동)이고, 정산은 단방향
+    다운스트림 스냅샷이다.
+    - 정산 반영이 ManualCount 를 만들지 않는다 (미러 제거).
+    - 집계는 정산 수량을 소스로 읽지 않는다 (예약/기록/수동 없으면 0).
+    - manual_counts(수동 보정 델타)는 집계에 그대로 더해진다.
+    """
     headers = _admin_headers(client)
     category = _make_category(client, "settle-agg-cat")
     treatment = _make_treatment(client, headers, category["id"], price=50000, incentive_amount=2500, incentive_pct=None)
@@ -176,47 +182,43 @@ def test_settlement_reflection_remains_editable_in_direct_aggregate(client):
     saved = client.post("/api/settlement/records/grid", json=payload, headers=headers)
     assert saved.status_code == 200, saved.text
 
-    aggregate = client.get(
-        "/api/stats/direct-aggregate"
-        f"?date_from=2099-08-06&date_to=2099-08-06&category_id={category['id']}"
-    )
-    assert aggregate.status_code == 200, aggregate.text
-    data = aggregate.json()
-    assert data["items"][0]["employee_data"][employee["id"]]["counts"][treatment["code"]] == 5
-
     from app.database import SessionLocal
     from app.models import models
 
     db = SessionLocal()
     try:
-        db.query(models.ManualCount).filter(
+        mirrored = db.query(models.ManualCount).filter(
             models.ManualCount.count_date == "2099-08-06",
             models.ManualCount.therapist_id == employee["id"],
             models.ManualCount.treatment_code == treatment["code"],
-        ).delete()
-        db.commit()
+        ).count()
+        assert mirrored == 0  # 미러 제거 — 정산 반영이 ManualCount 를 만들지 않는다.
     finally:
         db.close()
 
-    fallback = client.get(
+    aggregate = client.get(
         "/api/stats/direct-aggregate"
         f"?date_from=2099-08-06&date_to=2099-08-06&category_id={category['id']}"
     )
-    assert fallback.status_code == 200, fallback.text
-    fallback_data = fallback.json()
-    assert fallback_data["items"][0]["employee_data"][employee["id"]]["counts"][treatment["code"]] == 5
+    assert aggregate.status_code == 200, aggregate.text
+    cell = aggregate.json()["items"][0]["employee_data"][employee["id"]]
+    assert cell["counts"][treatment["code"]] == 0   # 정산은 집계 소스가 아니다.
+    assert cell["auto"][treatment["code"]] == 0
 
-    payload["entries"][0]["quantity"] = 0
-    deleted = client.post("/api/settlement/records/grid", json=payload, headers=headers)
-    assert deleted.status_code == 200, deleted.text
-
-    aggregate_after_delete = client.get(
+    # 수동 보정(manual_counts)은 집계에 그대로 더해진다.
+    mc = client.post("/api/manual-counts", json={
+        "date": "2099-08-06",
+        "therapist_id": employee["id"],
+        "treatment_code": treatment["code"],
+        "count": 3,
+    })
+    assert mc.status_code == 200, mc.text
+    cell2 = client.get(
         "/api/stats/direct-aggregate"
         f"?date_from=2099-08-06&date_to=2099-08-06&category_id={category['id']}"
-    )
-    assert aggregate_after_delete.status_code == 200, aggregate_after_delete.text
-    after_delete_data = aggregate_after_delete.json()
-    assert after_delete_data["items"][0]["employee_data"][employee["id"]]["counts"][treatment["code"]] == 0
+    ).json()["items"][0]["employee_data"][employee["id"]]
+    assert cell2["manual"][treatment["code"]] == 3
+    assert cell2["counts"][treatment["code"]] == 3
 
 
 def test_migration_backfills_zero_settlement_price_snapshots():

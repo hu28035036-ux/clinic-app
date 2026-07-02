@@ -46,8 +46,8 @@ def list_active_manual_treatments(
 ) -> list:
     """*활성* 도수치료 항목 — ``role="therapist" AND code != eswt_code AND active=True``.
 
-    COMPAT: ``api.py:_get_manual_treatment_rows`` (line 3732~3749) 와 byte-equivalent.
-    sort_order 정렬.
+    COMPAT: ``api.py:_get_manual_treatment_rows`` 와 byte-equivalent. sort_order 정렬.
+    v1.3.37+: requires_record(기록 필요) 항목은 도수치료에서 제외.
     """
     from app.models import models as _m
 
@@ -56,6 +56,7 @@ def list_active_manual_treatments(
         .filter(
             _m.Treatment.role == "therapist",
             _m.Treatment.code != eswt_code,
+            _m.Treatment.requires_record == False,  # noqa: E712 — 기록필요 제외
             _m.Treatment.active == True,  # noqa: E712 — SQLAlchemy 정합
         )
         .order_by(_m.Treatment.sort_order)
