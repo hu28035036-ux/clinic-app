@@ -63,12 +63,13 @@
           <button class="nav-sub" data-target="therapist-subtab-manage" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-manage')">직원 관리</button>
           <button class="nav-sub" data-target="therapist-subtab-leave" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-leave')">휴무일 관리</button>
           <button class="nav-sub" data-target="therapist-subtab-duty-morning" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-duty-morning')">아침당직</button>
+          <button class="nav-sub" data-target="therapist-subtab-duty-lunch" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-duty-lunch')">점심당직</button>
           <button class="nav-sub" data-target="therapist-subtab-duty-night" onclick="navSub('tab-therapists','nav-main-therapists','therapist-subtab-duty-night')">야간당직</button>
         </div>
       </div>
-      <div class="nav-group">
-        <button class="tab-btn nav-item" id="nav-main-inventory" onclick="switchTab('tab-inventory', this)">재고관리</button>
-      </div>
+      {# 재고관리 탭 — v1.3.54 사용자 요청으로 *UI 만* 제거.
+         백엔드 (/api/inventory*, m024/m042 테이블·데이터)와 main.js 재고 함수들은 보존.
+         재활성 필요 시 이 nav 버튼 + 아래 tab-inventory 섹션 복원. #}
       {% if config.mode=='main' %}
       <div class="nav-group">
         <button class="tab-btn nav-item" id="admin-tab-btn" onclick="switchTab('tab-admin', this)" style="display:none">관리자</button>
@@ -274,6 +275,7 @@
     <button id="therapist-subtab-manage" class="sub-tab active" onclick="switchTherapistTab('manage', this)">◇ 직원 관리</button>
     <button id="therapist-subtab-leave" class="sub-tab" onclick="switchTherapistTab('leave', this)">▤ 휴무일 관리</button>
     <button id="therapist-subtab-duty-morning" class="sub-tab" onclick="switchTherapistTab('duty-morning', this)">아침당직</button>
+    <button id="therapist-subtab-duty-lunch" class="sub-tab" onclick="switchTherapistTab('duty-lunch', this)">점심당직</button>
     <button id="therapist-subtab-duty-night" class="sub-tab" onclick="switchTherapistTab('duty-night', this)">야간당직</button>
   </div>
 
@@ -304,6 +306,8 @@
           <button class="primary" onclick="openLeaveBulkAddModal()">➕ 휴무일 추가</button>
         </div>
       </div>
+      <div id="leave-cat-filter" class="duty-cat-filter"></div>
+      <div id="leave-monthly-summary" class="duty-monthly-summary"></div>
       <div id="leave-calendar"></div>
       <div id="leave-summary" style="margin-top:16px"></div>
     </div>
@@ -369,23 +373,6 @@
       <div id="duty-monthly-summary" class="duty-monthly-summary"></div>
       <div id="duty-calendar"></div>
       <div id="duty-summary" style="margin-top:16px"></div>
-    </div>
-  </div>
-</section>
-
-<section id="tab-inventory" class="tab-pane">
-  <div class="inventory-shell">
-    <div class="inventory-sub-tabs" id="inventory-subtabs"></div>
-    <div class="sheet inventory-sheet">
-      <div class="sheet-head">
-        <h2 id="inventory-title">▧ 재고관리</h2>
-        <div class="sheet-toolbar">
-          <button class="small" onclick="loadInventorySheet()">새로고침</button>
-        </div>
-      </div>
-      <div id="inventory-list">
-        <p class="muted" style="padding:12px">재고 데이터를 불러오세요.</p>
-      </div>
     </div>
   </div>
 </section>
@@ -485,7 +472,6 @@
           <input id="agg-to" type="date" style="width:150px">
           <select id="agg-category" onchange="loadAggregate()" style="width:150px"></select>
           <button class="primary" onclick="loadAggregate()">조회</button>
-          <button class="small" onclick="applyAggregateToSettlement()">정산 반영</button>
           <span style="width:8px;display:inline-block;"></span>
           <button class="small" onclick="applyAggPreset('today')">오늘</button>
           <button class="small" onclick="applyAggPreset('week')">최근 7일</button>

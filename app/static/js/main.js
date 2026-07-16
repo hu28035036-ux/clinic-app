@@ -840,6 +840,11 @@ let RECORDS_ACTIVE_TAB = 'manual';
 let RECORDS_SELECTED_DATE = '';
 const RECORD_WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일'];
 
+document.addEventListener('click', (ev) => {
+  const dd = document.getElementById('record-tab-dropdown');
+  if(dd && dd.open && !dd.contains(ev.target)) dd.open = false;
+});
+
 function recordDateStr(d){
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -972,11 +977,23 @@ function renderRecordsSheet(){
 
   const subtabs = document.getElementById('record-subtabs');
   if(subtabs){
-    subtabs.innerHTML = (data.tabs || []).map(t => `
-      <div class="record-subtab-wrap ${t.tab_key===setting.tab_key?'active':''}">
-        <button type="button" class="record-subtab" onclick="selectRecordTab('${t.tab_key}')">${escapeHtml(t.label || '')}</button>
-      </div>
-    `).join('');
+    const options = (data.tabs || []).map(t => {
+      const dayCount = Number(((data.week_counts || {})[t.tab_key] || {})[selectedDate] || 0);
+      return `<button type="button" class="record-tab-option ${t.tab_key===setting.tab_key?'active':''}" onclick="selectRecordTab('${t.tab_key}')">
+        <span>${escapeHtml(t.label || '')}</span>
+        ${dayCount ? `<em>${dayCount}</em>` : ''}
+      </button>`;
+    }).join('');
+    subtabs.innerHTML = `
+      <details class="record-tab-dropdown" id="record-tab-dropdown">
+        <summary>
+          <span class="record-tab-name">기록 항목</span>
+          <b class="record-tab-current">${escapeHtml(setting.label || '기록')}</b>
+          <span class="record-tab-caret">▾</span>
+        </summary>
+        <div class="record-tab-panel">${options}</div>
+      </details>
+    `;
   }
 
   const catEl = document.getElementById('record-category');
@@ -1203,8 +1220,8 @@ function switchTherapistTab(name, btn){
 
   if(name === 'manage') loadTherapistsSheet();
   if(name === 'leave') loadLeaveCalendar();
-  if(name === 'duty-morning' || name === 'duty-night'){
-    _dutyType = (name === 'duty-morning') ? 'morning' : 'night';
+  if(name === 'duty-morning' || name === 'duty-lunch' || name === 'duty-night'){
+    _dutyType = {'duty-morning':'morning', 'duty-lunch':'lunch', 'duty-night':'night'}[name];
     loadDutyCalendar();
   }
 }
@@ -1434,11 +1451,11 @@ async function saveLeaveBulkAdd(){
 }
 
 // ════════════════ 당직 관리 (EmployeeDuty) ════════════════
-// 휴무일 관리와 같은 캘린더 UX. duty_type 으로 아침당직(morning)/야간당직(night)
-// 분리 — 두 하위탭이 같은 패널(therapist-duty)을 공유하고 _dutyType 만 바꿔 재렌더.
-// 정보성 기능 — 예약 차단/통계/day-board 와 무관 (당직 캘린더만 갱신).
+// 휴무일 관리와 같은 캘린더 UX. duty_type 으로 아침당직(morning)/점심당직(lunch)/
+// 야간당직(night) 분리 — 하위탭들이 같은 패널(therapist-duty)을 공유하고
+// _dutyType 만 바꿔 재렌더. 정보성 기능 — 예약 차단/통계/day-board 와 무관.
 
-const DUTY_LABEL = { morning: '아침당직', night: '야간당직' };
+const DUTY_LABEL = { morning: '아침당직', lunch: '점심당직', night: '야간당직' };
 let _dutyType = 'night';   // 현재 하위탭의 당직 유형 (기존 '당직 관리' = 야간)
 
 async function loadEmployeeDuties(date='', dutyType=''){
@@ -1450,9 +1467,15 @@ async function loadEmployeeDuties(date='', dutyType=''){
 }
 
 // 과(employee category) 필터 상태 + 캐시 — 캘린더를 과별로 볼 수 있게.
-let _dutyCatFilter = '';   // '' = 전체. 그 외엔 category_id.
+// 여러 과를 동시에 선택 가능 (체크박스 드롭다운). '전체' 보기는 없고 최소 1개 과 유지.
+let _dutyCatSel = [];      // 선택된 category_id 배열 (항상 1개 이상)
 let _dutyAll = [];         // 마지막으로 불러온 전체 당직 (필터 변경 시 재fetch 없이 재렌더)
 let _dutyCats = [];        // 활성 과 목록
+
+document.addEventListener('click', (ev) => {
+  const dd = document.getElementById('duty-cat-dropdown');
+  if(dd && dd.open && !dd.contains(ev.target)) dd.open = false;
+});
 
 async function loadDutyCalendar(){
   await loadMasters();
@@ -1489,47 +1512,80 @@ async function loadDutyCalendar(){
     window._dutyCal.render();
   }
 
-  // '전체' 보기 없음 — 항상 특정 과 하나를 선택. 미선택/삭제·비활성 과면 첫 과로.
+  // '전체' 보기 없음 — 항상 1개 이상의 과를 선택. 삭제/비활성 과는 선택에서 제거,
+  // 남는 게 없으면 첫 과 하나로 초기화.
   const activeDutyCats = (_dutyCats || []).filter(c => c.active !== false);
-  if(!_dutyCatFilter || !activeDutyCats.some(c => c.id === _dutyCatFilter)){
-    _dutyCatFilter = activeDutyCats.length ? activeDutyCats[0].id : '';
+  _dutyCatSel = _dutyCatSel.filter(id => activeDutyCats.some(c => c.id === id));
+  if(!_dutyCatSel.length && activeDutyCats.length){
+    _dutyCatSel = [activeDutyCats[0].id];
   }
 
   renderDutyCategoryFilter();
   renderDutyEvents();
 }
 
-// 캘린더 상단 과 필터 드롭다운 렌더 (활성 과들만 — '전체' 보기 없음).
+// 캘린더 상단 과 필터 렌더 — 체크박스 드롭다운 (활성 과들만, '전체' 보기 없음).
+// 여러 과를 골라 함께 볼 수 있고, 최소 1개는 항상 선택 상태를 유지한다.
+function dutyCatSummaryText(){
+  const names = (_dutyCats || [])
+    .filter(c => _dutyCatSel.includes(c.id))
+    .map(c => c.name || '');
+  if(!names.length) return '과 선택';
+  if(names.length <= 2) return names.join(' · ');
+  return `${names[0]} 외 ${names.length - 1}개`;
+}
+
 function renderDutyCategoryFilter(){
   const box = document.getElementById('duty-cat-filter');
   if(!box) return;
   const cats = (_dutyCats || []).filter(c => c.active !== false);
-  const opt = (id, label) =>
-    `<option value="${id}" ${_dutyCatFilter === id ? 'selected' : ''}>${label}</option>`;
-  box.innerHTML =
-    `<label class="duty-cat-label">과 ` +
-    `<select id="duty-cat-select" onchange="onDutyCategoryPick(this.value)">` +
-    cats.map(c => opt(c.id, c.name)).join('') +
-    `</select></label>`;
+  const wasOpen = document.getElementById('duty-cat-dropdown')?.open || false;
+  const rows = cats.map(c => `
+    <label class="duty-cat-option ${_dutyCatSel.includes(c.id) ? 'active' : ''}">
+      <input type="checkbox" value="${escapeAttr(c.id)}"
+        ${_dutyCatSel.includes(c.id) ? 'checked' : ''}
+        onchange="onDutyCategoryToggle('${c.id}', this.checked)">
+      <span>${escapeHtml(c.name || '')}</span>
+    </label>
+  `).join('');
+  box.innerHTML = `
+    <details class="duty-cat-dropdown" id="duty-cat-dropdown" ${wasOpen ? 'open' : ''}>
+      <summary>
+        <span class="duty-cat-tag">과</span>
+        <b class="duty-cat-current">${escapeHtml(dutyCatSummaryText())}</b>
+        <span class="duty-cat-caret">▾</span>
+      </summary>
+      <div class="duty-cat-panel">${rows || '<span class="muted" style="padding:6px 10px">활성 과 없음</span>'}</div>
+    </details>
+  `;
 }
 
-function onDutyCategoryPick(catId){
-  _dutyCatFilter = catId || '';
+function onDutyCategoryToggle(catId, checked){
+  if(checked){
+    if(!_dutyCatSel.includes(catId)) _dutyCatSel.push(catId);
+  } else {
+    if(_dutyCatSel.length <= 1){
+      // 최소 1개 과는 유지 — 체크 해제를 되돌림 ('전체' 보기가 없으므로)
+      renderDutyCategoryFilter();
+      return;
+    }
+    _dutyCatSel = _dutyCatSel.filter(id => id !== catId);
+  }
   renderDutyCategoryFilter();
   renderDutyEvents();
 }
 
-// 선택한 과(_dutyCatFilter)에 속한 직원의 당직만 캘린더에 렌더 + 요약 갱신.
+// 선택한 과들(_dutyCatSel)에 속한 직원의 당직만 캘린더에 렌더 + 요약 갱신.
 // 현재 하위탭 유형(_dutyType)의 당직만 표시.
 function renderDutyEvents(){
   if(!window._dutyCal) return;
 
   const grouped = {};
   _dutyAll.forEach(x => {
-    if((x.duty_type || 'night') !== _dutyType) return;  // 아침/야간 필터
+    if((x.duty_type || 'night') !== _dutyType) return;  // 아침/점심/야간 필터
     const t = EMPLOYEES_ALL.find(tt => tt.id === x.employee_id);
     if(!t) return;
-    if(_dutyCatFilter && t.category_id !== _dutyCatFilter) return;  // 과 필터
+    if(!_dutyCatSel.includes(t.category_id)) return;  // 과 필터 (다중 선택)
     if(!grouped[x.duty_date]) grouped[x.duty_date] = [];
     grouped[x.duty_date].push({
       employee_id: t.id,
@@ -1558,17 +1614,18 @@ function renderDutyEvents(){
     });
   });
 
-  const catName = _dutyCatFilter
-    ? ((_dutyCats.find(c => c.id === _dutyCatFilter) || {}).name || '')
-    : '';
+  const catNames = (_dutyCats || [])
+    .filter(c => _dutyCatSel.includes(c.id))
+    .map(c => c.name || '')
+    .join(' · ');
   document.getElementById('duty-summary').innerHTML =
-    '<p class="muted">' + (catName ? catName + ' ' : '') + DUTY_LABEL[_dutyType] + ': ' + shown + '건</p>';
+    '<p class="muted">' + escapeHtml(catNames ? catNames + ' ' : '') + DUTY_LABEL[_dutyType] + ': ' + shown + '건</p>';
 
   renderDutyMonthlySummary();
 }
 
 // 상단 '과별 당직 횟수' 요약 — 캘린더에 보이는 달 기준으로 과(category)별 직원의
-// 당직 횟수를 집계. 과 필터(_dutyCatFilter)가 걸려 있으면 그 과만 표시.
+// 당직 횟수를 집계. 선택된 과들(_dutyCatSel)만 표시 (과별 그룹 나열).
 // 0회 직원은 나열하지 않고(당직 있는 직원만), 횟수 많은 순으로 정렬.
 function renderDutyMonthlySummary(){
   const box = document.getElementById('duty-monthly-summary');
@@ -1591,7 +1648,6 @@ function renderDutyMonthlySummary(){
 
   const empById = id => EMPLOYEES_ALL.find(t => t.id === id);
   const activeCats = (_dutyCats || []).filter(c => c.active !== false);
-  const activeCatIds = new Set(activeCats.map(c => c.id));
   const dutyIds = Object.keys(countMap);
 
   const chip = (name, color, count) =>
@@ -1618,23 +1674,15 @@ function renderDutyMonthlySummary(){
     '</div>';
   };
 
-  // 표시할 과 (필터 반영). 필터 없으면 전체 과 + '미배정'(과 없음/비활성 과 직원).
-  let cats = activeCats;
-  if(_dutyCatFilter) cats = cats.filter(c => c.id === _dutyCatFilter);
+  // 표시할 과 = 선택된 과들 (항상 1개 이상 선택 — '전체'/'미배정' 그룹 없음).
+  const cats = activeCats.filter(c => _dutyCatSel.includes(c.id));
 
-  let html = cats
+  const html = cats
     .map(c => groupHtml(c.name, dutyIds.filter(id => {
       const e = empById(id);
       return e && e.category_id === c.id;
     })))
     .join('');
-
-  if(!_dutyCatFilter){
-    html += groupHtml('미배정', dutyIds.filter(id => {
-      const e = empById(id);
-      return !e || !e.category_id || !activeCatIds.has(e.category_id);
-    }));
-  }
 
   box.innerHTML =
     '<div class="duty-summary-title">' + escapeHtml(monthLabel) + ' 과별 ' + DUTY_LABEL[_dutyType] + ' 횟수</div>' +
@@ -2315,9 +2363,23 @@ async function aiLeaveSubmit(){
   }
 }
 
+// 휴무 요약/필터용 상태 — 당직(_dutyAll/_dutyCats/_dutyCatSel)과 같은 구조.
+let _leaveAll = [];      // 마지막으로 불러온 전체 휴무 (필터/달 이동 시 재fetch 없이 재집계)
+let _leaveCats = [];     // 활성 과(employee category) 목록
+let _leaveCatSel = [];   // 선택된 category_id 배열 (당직처럼 과별로 보기 — 항상 1개 이상)
+
+// 과 필터 드롭다운 바깥을 클릭하면 닫기 (당직 duty-cat-dropdown 과 동일 동작).
+document.addEventListener('click', (ev) => {
+  const dd = document.getElementById('leave-cat-dropdown');
+  if(dd && dd.open && !dd.contains(ev.target)) dd.open = false;
+});
+
 async function loadLeaveCalendar(){
   await loadMasters();
   const allLeaves = await loadTherapistLeaves();
+  _leaveAll = allLeaves;
+  try { _leaveCats = await (await fetch('/api/employee-categories?active=true')).json(); }
+  catch(e){ _leaveCats = []; }
 
   const el = document.getElementById('leave-calendar');
   if(!window._leaveCal){
@@ -2326,6 +2388,8 @@ async function loadLeaveCalendar(){
       locale:'ko',
       height:650,
       headerToolbar:{left:'prev,next today', center:'title', right:''},
+      // 달 이동(prev/next/today) 시 상단 '과별 휴무 일수' 요약을 그 달 기준으로 갱신.
+      datesSet: () => renderLeaveMonthlySummary(),
       dateClick: async (info) => {
         await openLeaveModal(info.dateStr);
       },
@@ -2341,29 +2405,47 @@ async function loadLeaveCalendar(){
     window._leaveCal.render();
   }
 
+  // '전체' 보기는 없지만 휴무는 전 직원 대상이라 기본값을 '전체 과 선택'으로 둔다
+  // (기존의 전 직원 표시 동작 보존). 삭제/비활성 과는 선택에서 제거, 남는 게 없으면
+  // 전체 과로 초기화. (당직은 첫 과 하나로 시작 — 그 점만 다르고 조작 UX 는 동일.)
+  const activeLeaveCats = (_leaveCats || []).filter(c => c.active !== false);
+  _leaveCatSel = _leaveCatSel.filter(id => activeLeaveCats.some(c => c.id === id));
+  if(!_leaveCatSel.length && activeLeaveCats.length){
+    _leaveCatSel = activeLeaveCats.map(c => c.id);
+  }
+
+  renderLeaveCategoryFilter();
+  renderLeaveEvents();
+}
+
+// 선택한 과들(_leaveCatSel)에 속한 직원의 휴무만 캘린더에 렌더 + 하단/월간 요약 갱신.
+// 당직 renderDutyEvents 와 같은 구조 — 과 필터 변경 시 재fetch 없이 이 함수만 재호출.
+function renderLeaveEvents(){
+  if(!window._leaveCal) return;
+
   const grouped = {};
-  allLeaves.forEach(x => {
-    if(!grouped[x.leave_date]) grouped[x.leave_date] = [];
-    // 휴무 등록은 전 직원(EMPLOYEES_ALL) 대상이므로 표시도 전 직원에서 찾는다.
-    // (치료사만 담는 THERAPISTS 로 찾으면 간호과/원무과 등 비치료사 휴무가 누락됨)
+  (_leaveAll || []).forEach(x => {
+    // 휴무 등록은 전 직원(EMPLOYEES_ALL) 대상 — 비치료사(간호과/원무과 등)도 찾는다.
     const t = EMPLOYEES_ALL.find(tt => tt.id === x.therapist_id);
-    if(t){
-      const typeLabel =
-        x.leave_type === 'am' ? '오전' :
-        x.leave_type === 'pm' ? '오후' : '종일';
-      const kindLabel = x.leave_kind === 'monthly' ? '월차' : '연차';
-      grouped[x.leave_date].push({
-        therapist_id: t.id,
-        name: t.name,
-        color: t.color || '#9CA3AF',
-        typeLabel: typeLabel,
-        kindLabel: kindLabel,
-      });
-    }
+    if(!t) return;
+    if(!_leaveCatSel.includes(t.category_id)) return;  // 과 필터 (다중 선택)
+    const typeLabel =
+      x.leave_type === 'am' ? '오전' :
+      x.leave_type === 'pm' ? '오후' : '종일';
+    const kindLabel = x.leave_kind === 'monthly' ? '월차' : '연차';
+    if(!grouped[x.leave_date]) grouped[x.leave_date] = [];
+    grouped[x.leave_date].push({
+      therapist_id: t.id,
+      name: t.name,
+      color: t.color || '#9CA3AF',
+      typeLabel: typeLabel,
+      kindLabel: kindLabel,
+    });
   });
 
   window._leaveCal.removeAllEvents();
 
+  let shown = 0;
   Object.entries(grouped).forEach(([date, items]) => {
     // 치료사 ID 기준 중복 제거 (같은 치료사가 같은 날 중복 등록되어 있을 경우)
     const seen = new Set();
@@ -2378,11 +2460,133 @@ async function loadLeaveCalendar(){
         borderColor: it.color,
         textColor: '#fff'
       });
+      shown++;
     });
   });
 
+  const catNames = (_leaveCats || [])
+    .filter(c => _leaveCatSel.includes(c.id))
+    .map(c => c.name || '')
+    .join(' · ');
   document.getElementById('leave-summary').innerHTML =
-    '<p class="muted">등록된 휴무: ' + allLeaves.length + '건</p>';
+    '<p class="muted">' + escapeHtml(catNames ? catNames + ' ' : '') + '휴무: ' + shown + '건</p>';
+
+  renderLeaveMonthlySummary();
+}
+
+// 캘린더 상단 과 필터 — 체크박스 드롭다운 (당직 duty-cat-filter 와 같은 UI/클래스).
+// 여러 과를 골라 함께 볼 수 있고, 최소 1개는 항상 선택 상태를 유지한다.
+function leaveCatSummaryText(){
+  const names = (_leaveCats || [])
+    .filter(c => _leaveCatSel.includes(c.id))
+    .map(c => c.name || '');
+  if(!names.length) return '과 선택';
+  if(names.length <= 2) return names.join(' · ');
+  return `${names[0]} 외 ${names.length - 1}개`;
+}
+
+function renderLeaveCategoryFilter(){
+  const box = document.getElementById('leave-cat-filter');
+  if(!box) return;
+  const cats = (_leaveCats || []).filter(c => c.active !== false);
+  const wasOpen = document.getElementById('leave-cat-dropdown')?.open || false;
+  const rows = cats.map(c => `
+    <label class="duty-cat-option ${_leaveCatSel.includes(c.id) ? 'active' : ''}">
+      <input type="checkbox" value="${escapeAttr(c.id)}"
+        ${_leaveCatSel.includes(c.id) ? 'checked' : ''}
+        onchange="onLeaveCategoryToggle('${c.id}', this.checked)">
+      <span>${escapeHtml(c.name || '')}</span>
+    </label>
+  `).join('');
+  box.innerHTML = `
+    <details class="duty-cat-dropdown" id="leave-cat-dropdown" ${wasOpen ? 'open' : ''}>
+      <summary>
+        <span class="duty-cat-tag">과</span>
+        <b class="duty-cat-current">${escapeHtml(leaveCatSummaryText())}</b>
+        <span class="duty-cat-caret">▾</span>
+      </summary>
+      <div class="duty-cat-panel">${rows || '<span class="muted" style="padding:6px 10px">활성 과 없음</span>'}</div>
+    </details>
+  `;
+}
+
+function onLeaveCategoryToggle(catId, checked){
+  if(checked){
+    if(!_leaveCatSel.includes(catId)) _leaveCatSel.push(catId);
+  } else {
+    if(_leaveCatSel.length <= 1){
+      // 최소 1개 과는 유지 — 체크 해제를 되돌림 ('전체' 보기가 없으므로)
+      renderLeaveCategoryFilter();
+      return;
+    }
+    _leaveCatSel = _leaveCatSel.filter(id => id !== catId);
+  }
+  renderLeaveCategoryFilter();
+  renderLeaveEvents();
+}
+
+// 상단 '과별 휴무 일수' 요약 — 캘린더에 보이는 달 기준으로 과(category)별 직원의
+// 휴무 일수를 집계 (당직 '과별 당직 횟수' 요약과 같은 UX). (직원,날짜) 유니크라
+// 한 직원의 하루 휴무는 1건 → 카운트가 곧 그 달 휴무 일수. 0일 직원은 나열하지
+// 않고(휴무 있는 직원만), 많은 순 정렬. 선택된 과들(_leaveCatSel)만 표시한다.
+function renderLeaveMonthlySummary(){
+  const box = document.getElementById('leave-monthly-summary');
+  if(!box) return;
+  if(!window._leaveCal || !window._leaveCal.view){ box.innerHTML = ''; return; }
+
+  // 캘린더에 표시 중인 달(currentStart = 그 달 1일) 기준 'YYYY-MM'.
+  const cs = window._leaveCal.view.currentStart;
+  const ym = cs.getFullYear() + '-' + String(cs.getMonth() + 1).padStart(2, '0');
+  const monthLabel = cs.getFullYear() + '년 ' + (cs.getMonth() + 1) + '월';
+
+  // 이번 달 직원별 휴무 일수 — leave_date 는 'YYYY-MM-DD', (직원,날짜) 유니크라 행=일수.
+  const countMap = {};
+  (_leaveAll || []).forEach(x => {
+    if((x.leave_date || '').slice(0, 7) !== ym) return;
+    countMap[x.therapist_id] = (countMap[x.therapist_id] || 0) + 1;
+  });
+
+  const empById = id => EMPLOYEES_ALL.find(t => t.id === id);
+  const activeCats = (_leaveCats || []).filter(c => c.active !== false);
+  const leaveIds = Object.keys(countMap);
+
+  const chip = (name, color, count) =>
+    '<div class="duty-count-chip">' +
+      '<span><span class="color-dot" style="background:' + escapeAttr(color || '#9CA3AF') + '"></span>' +
+      escapeHtml(name || '') + '</span>' +
+      '<b>' + count + '일</b>' +
+    '</div>';
+
+  const groupHtml = (title, ids) => {
+    const items = ids
+      .map(id => ({ emp: empById(id), count: countMap[id] }))
+      .filter(o => o.count > 0)
+      .map(o => ({
+        name: o.emp ? o.emp.name : '(알 수 없음)',
+        color: o.emp ? o.emp.color : '#9CA3AF',
+        count: o.count,
+      }))
+      .sort((a, b) => b.count - a.count || (a.name || '').localeCompare(b.name || '', 'ko'));
+    if(!items.length) return '';
+    return '<div class="duty-cat-group">' +
+      '<div class="duty-cat-name">' + escapeHtml(title) + '</div>' +
+      '<div class="duty-count-grid">' + items.map(i => chip(i.name, i.color, i.count)).join('') + '</div>' +
+    '</div>';
+  };
+
+  // 표시할 과 = 선택된 과들 (당직 요약과 동일 — '미배정' 그룹 없음).
+  const cats = activeCats.filter(c => _leaveCatSel.includes(c.id));
+
+  const html = cats
+    .map(c => groupHtml(c.name, leaveIds.filter(id => {
+      const e = empById(id);
+      return e && e.category_id === c.id;
+    })))
+    .join('');
+
+  box.innerHTML =
+    '<div class="duty-summary-title">' + escapeHtml(monthLabel) + ' 과별 휴무 일수</div>' +
+    (html || '<p class="muted" style="margin:0">이번 달 휴무 기록이 없습니다.</p>');
 }
 
 async function loadMiniCalendarData(baseDate = null){
@@ -8462,7 +8666,7 @@ async function loadAggregate(){
   if(bodyEl) bodyEl.innerHTML = `
     <div class="agg-help">
       치료완료(예약) · 기록에서 자동 집계됩니다. 예약·기록에 없는 건(walk-in 등)만 칸의 숫자를 바꿔 직접 더하세요.
-      (칸 위에 마우스를 올리면 자동/수동 내역이 보입니다.) 확인 후 상단의 정산 반영을 누르면 정산 탭에 스냅샷으로 넘어갑니다.
+      (칸 위에 마우스를 올리면 자동/수동 내역이 보입니다.) 입력한 수량은 정산 탭에서 기간을 조회하면 자동으로 반영됩니다.
     </div>
     <div style="overflow-x:auto;margin-top:8px;">
       <table class="agg-direct-table">
@@ -8492,64 +8696,39 @@ async function loadAggregate(){
   }
 }
 
-async function applyAggregateToSettlement(){
-  const fromStr = document.getElementById('agg-from').value;
-  const toStr = document.getElementById('agg-to').value;
-  const categoryId = document.getElementById('agg-category')?.value || '';
-  if(!fromStr || !toStr){ alert('기간(시작일/종료일)을 선택하세요'); return; }
-  if(fromStr > toStr){ alert('시작일이 종료일보다 클 수 없습니다.'); return; }
-
-  const inputs = [...document.querySelectorAll('#agg-body .agg-count-input')]
-    .filter(inp => inp.dataset.employeeId && inp.dataset.treatmentId && inp.dataset.date);
-  if(!inputs.length){
-    alert('먼저 집계 조회를 해서 반영할 그리드를 불러오세요.');
-    return;
-  }
-  if(!confirm('현재 집계 화면의 수량을 정산에 반영할까요? 기존 같은 날짜/직원/치료항목 정산은 현재 수량으로 갱신됩니다.')){
-    return;
-  }
-
-  const entries = inputs.map(inp => ({
-    performed_on: inp.dataset.date,
-    employee_id: inp.dataset.employeeId,
-    treatment_id: inp.dataset.treatmentId,
-    quantity: Math.max(0, parseInt(inp.value || '0') || 0),
-    memo: '',
-  }));
-
-  try {
-    inputs.forEach(inp => inp.classList.add('saving'));
-    const r = await adminFetch('/api/settlement/records/grid', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        date_from: fromStr,
-        date_to: toStr,
-        category_id: categoryId,
-        entries,
-      }),
+// 정산 자동 반영용 — 해당 기간/과의 집계(치료완료+기록+walk-in)를 fetch 해서
+// 정산 그리드 entries 로 변환한다. enabled 판정은 집계 화면(loadAggregate)과 동일
+// (기록필요=과 기준, 그 외=권한) — 백엔드 employee_can_perform 과 일치해야 400 을 피함.
+// 정산 탭에서 조회 시 호출 → 예전의 수동 '정산 반영' 버튼을 대체한다.
+async function _aggregateEntriesForSettlement(fromStr, toStr, categoryId){
+  await loadTreatmentMeta();
+  const params = new URLSearchParams({date_from: fromStr, date_to: toStr});
+  if(categoryId) params.set('category_id', categoryId);
+  const data = await fetch(`/api/stats/direct-aggregate?${params.toString()}`).then(r => r.json());
+  const employees = data.employees || [];
+  const treatments = data.treatments || [];
+  const items = data.items || [];
+  const entries = [];
+  items.forEach(row => {
+    employees.forEach(e => {
+      const ed = (row.employee_data || {})[e.id] || {};
+      const counts = ed.counts || {};
+      treatments.forEach(t => {
+        const enabled = t.requires_record
+          ? (!t.category_id || e.category_id === t.category_id)
+          : employeeCanSelectedTreatments(e, [t.code]);
+        if(!enabled) return;
+        entries.push({
+          performed_on: row.date,
+          employee_id: e.id,
+          treatment_id: t.id,
+          quantity: Math.max(0, parseInt(counts[t.code] || 0) || 0),
+          memo: '',
+        });
+      });
     });
-    const data = await r.json().catch(() => ({}));
-    if(!r.ok || data.ok === false){
-      throw new Error(data.detail || data.error || r.statusText);
-    }
-    const sf = document.getElementById('settle-from');
-    const st = document.getElementById('settle-to');
-    const sc = document.getElementById('settle-category');
-    if(sf) sf.value = fromStr;
-    if(st) st.value = toStr;
-    if(sc && categoryId) sc.value = categoryId;
-    if(document.getElementById('admin-settlement')?.classList.contains('active')){
-      await loadSettlement();
-    }
-    await loadAggregate();
-    const changed = data.changed || {};
-    alert(`정산에 반영했습니다. 저장 ${changed.upserted || 0}건, 삭제 ${changed.deleted || 0}건`);
-  } catch(e){
-    alert('정산 반영 실패: ' + (e && e.message ? e.message : e));
-  } finally {
-    inputs.forEach(inp => inp.classList.remove('saving'));
-  }
+  });
+  return { entries, categoryId: data.category_id || categoryId || '' };
 }
 
 let SETTLEMENT_GRID = null;
@@ -8717,7 +8896,7 @@ function intOrZero(v){
 
 function renderSettlementDateGroups(groups){
   if(!groups || !groups.length){
-    return '<p class="muted" style="margin:0;">집계 탭에서 정산 반영한 내역이 없습니다.</p>';
+    return '<p class="muted" style="margin:0;">이 기간에 집계된 내역이 없습니다.</p>';
   }
   return `<div class="settlement-date-groups">${groups.map(group => {
     const employees = Object.values(group.byEmployee || {})
@@ -8868,8 +9047,29 @@ async function loadSettlement(){
     if(loading) loading.style.display = 'block';
     if(bodyEl) bodyEl.innerHTML = '';
     const categoryId = document.getElementById('settle-category')?.value || '';
+    // 정산 = 집계의 최신 뷰: 조회 시 그 기간/과의 집계를 정산 스냅샷에 조용히(silent)
+    // 자동 반영한다. 예전의 수동 '정산 반영' 버튼을 대체 — 볼 때마다 최신 집계로 갱신.
+    // 실패해도(집계 fetch/반영 오류) 기존 스냅샷으로 리포트는 계속 조회한다.
+    let usedCategoryId = categoryId;
+    try {
+      const agg = await _aggregateEntriesForSettlement(fromStr, toStr, categoryId);
+      usedCategoryId = agg.categoryId || categoryId;
+      await adminFetch('/api/settlement/records/grid', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          date_from: fromStr,
+          date_to: toStr,
+          category_id: usedCategoryId,
+          entries: agg.entries,
+          silent: true,
+        }),
+      });
+    } catch(syncErr){
+      console.warn('[settlement] 집계 자동 반영 실패 — 기존 스냅샷으로 표시', syncErr);
+    }
     const params = new URLSearchParams({date_from: fromStr, date_to: toStr});
-    if(categoryId) params.set('category_id', categoryId);
+    if(usedCategoryId) params.set('category_id', usedCategoryId);
     const r = await adminFetch(`/api/settlement/reports/incentives?${params.toString()}`);
     const data = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(data.detail || r.statusText);
@@ -8912,7 +9112,7 @@ function renderSettlement(data){
 
   bodyEl.innerHTML = `
     <div class="settlement-note">
-      집계 탭에서 정산 반영한 스냅샷 기준입니다. 이후 치료항목 수가나 인센티브 규칙을 바꿔도 기존 정산 금액은 유지됩니다.
+      조회한 기간의 집계(치료완료·기록·walk-in)를 현재 수가·인센티브로 계산한 결과입니다. 기간을 조회할 때마다 최신 집계로 자동 갱신됩니다.
     </div>
     <div id="settlement-revenue-help"></div>
     <div class="settlement-summary-panels">

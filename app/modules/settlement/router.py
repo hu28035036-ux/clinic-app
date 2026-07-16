@@ -51,7 +51,12 @@ def save_records_grid(
     _: bool = Depends(require_admin),
 ):
     try:
-        changed = service.upsert_grid(db, payload, log_callback=_log, audit_callback=audit)
+        changed = service.upsert_grid(
+            db,
+            payload,
+            log_callback=None if payload.silent else _log,
+            audit_callback=None if payload.silent else audit,
+        )
         db.commit()
         data = service.get_grid(db, payload.date_from, payload.date_to, payload.category_id)
         data["ok"] = True

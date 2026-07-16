@@ -2,6 +2,76 @@
   도수치료예약 - 배포 버전 기록
 ================================================================
 
+[ v1.3.55 ]  2026-07-16  (휴무 카운트·과필터 + 집계→정산 자동반영 + 집계 칸 축소)
+
+  주요 변경 (JS·CSS·HTML + 정산 반영 API 옵션 1개 — DB/마이그레이션 무변경)
+  - [휴무] renderLeaveMonthlySummary() 신규 — 당직 renderDutyMonthlySummary 미러링
+    (보이는 달 기준, 과별 그룹 + 직원 칩, 많은 순, 0일 제외). leave-monthly-summary
+    컨테이너는 duty-monthly-summary CSS 재사용, datesSet 콜백으로 달 이동 시 갱신.
+    EmployeeLeave 는 (직원,날짜) UNIQUE(m011) 라 행 수 = 그 달 휴무 일수 → "N일" 표기.
+  - [휴무] 과 다중선택 필터 — _leaveCatSel / renderLeaveCategoryFilter /
+    onLeaveCategoryToggle 신규 + renderLeaveEvents 분리(loadLeaveCalendar 인라인
+    이벤트 렌더에서 추출 → 필터 변경 시 재fetch 없이 재렌더). duty-cat-* CSS 재사용,
+    id 만 leave-cat-*. 당직과 기본값만 다름 — 전체 과 선택(기존 전 직원 표시 보존).
+  - [정산] 수동 반영(applyAggregateToSettlement + '정산 반영' 버튼) 제거 → 정산 조회
+    시 자동 반영. loadSettlement 이 _aggregateEntriesForSettlement() 로 해당 기간/과
+    집계를 fetch → POST /api/settlement/records/grid (silent:true) → reports/incentives
+    조회. entries 의 enabled 판정은 loadAggregate 와 동일해야 함(백엔드
+    employee_can_perform 과 불일치 시 400). 자동반영 실패해도 기존 스냅샷으로 조회 진행.
+  - [정산] SettlementGridIn.silent 추가 + router 가 silent 시 log/audit callback 을
+    None 으로. 조회할 때마다 audit_logs/sync_ops 가 수십~수백 건 쌓이는 것 방지
+    (둘 다 5년 누적 위험 테이블). 검증: 조회 전후 audit 49→49, sync 128→128,
+    settlement_records 만 갱신(walk-in 5→8 반영). sync 생략은 정산이 집계의 단방향
+    파생이라 안전(원본 예약/기록/manual_counts 는 그대로 로그·동기화됨).
+  - [집계] 카운팅 칸 축소 — 셀 60×34 → 46×26, input 52×28 → 40×22, td padding 6 → 3,
+    셀 padding 2.
+    ※ CSS 명시도 함정: 전역 `.sheet table tbody td`(padding:10px 12px) 와
+      `input[type="text"]`(height:36px, font:13.5px) 가 단일 클래스 셀렉터(0,1,0)를
+      이겨 기존 .agg-* 값이 실제로는 무시되고 있었음(원래 칸이 크던 진짜 원인).
+      `.agg-direct-table` 프리픽스로 클래스 2개(0,2,0) 명시도를 확보해야 적용됨.
+  - 검증: 전체 2,318 passed + ruff + node --check + 격리 브라우저 점검
+    (휴무 요약/과 토글·최소1개 유지, 집계→정산 자동반영·silent, computed 칸 크기).
+
+[ v1.3.54 ]  2026-07-13  (재고관리 탭 UI 제거 — 데이터/백엔드 보존)
+
+  주요 변경 (main.html 만 — 백엔드·DB·JS 무변경)
+  - [정리] nav 재고관리 버튼 + tab-inventory 섹션 제거 (AI 도우미 탭 선례와
+    동일한 UI-only 제거, 복원 방법 주석 잔류). 백엔드 /api/inventory*,
+    m024/m042 테이블·데이터, main.js 재고 함수(전부 UI 에서만 호출·null-safe)
+    보존 — switchTab 'tab-inventory' 분기는 도달 불가로 무해.
+  - 검증: 전체 2,318 passed + 격리 브라우저(메뉴 6항목·타 탭 전환·콘솔 0)
+    + ruff + node --check.
+
+[ v1.3.53 ]  2026-07-13  (점심당직 + 당직 캘린더 과 다중선택)
+
+  주요 변경 (백엔드는 허용 유형 추가만 — DB·마이그 무변경)
+  - [신규] duty_type 'lunch' 추가 — 컬럼 String(10)+3컬럼 UNIQUE 그대로라
+    마이그레이션 불필요. api.py `_DUTY_TYPES=("morning","lunch","night")` + 400
+    메시지 갱신. main.html nav-sub/sub-tab 에 duty-lunch(아침·야간 사이),
+    main.js DUTY_LABEL.lunch + switchTherapistTab 맵 방식 전환.
+  - [개선] 당직 캘린더 과 필터 단일 select → 체크박스 드롭다운 다중선택.
+    `_dutyCatFilter`(문자열) → `_dutyCatSel`(배열, 항상 1개 이상 — 마지막 해제
+    시 되돌림). details#duty-cat-dropdown (기록탭 드롭다운과 같은 패턴, 체크
+    후에도 열림 유지, 바깥클릭 닫힘). summary: ≤2개 이름 나열 / 3개+ "X 외 N개".
+    renderDutyEvents/MonthlySummary 를 선택 set 필터로, '미배정' 그룹 제거
+    (항상 필터 존재). CSS .duty-cat-* 신규 (구 .duty-cat-label select 교체).
+  - 검증: 전체 2,318 passed (test_lunch_duty_type 신규, 당직 18건) + 격리
+    브라우저(점심 탭/유형 필터/2·3개 과 합산/마지막 해제 가드/야간 독립/
+    날짜클릭 모달 lunch 저장) + ruff + node --check.
+
+[ v1.3.52 ]  2026-07-13  (기록 탭 항목 선택 드롭다운화)
+
+  주요 변경 (화면 = main.js/app.css 만, 백엔드·DB·마이그 무변경)
+  - [개선] 기록 탭 상단 가로 서브탭(.record-subtab-wrap 버튼 나열) →
+    `<details id="record-tab-dropdown">` 드롭다운 (main.js renderRecordsSheet).
+    요약줄 "기록 항목 <현재탭> ▾", 패널은 absolute 오버레이(max-height 260px
+    스크롤, z-index 30). 옵션에 선택날짜 건수 배지(week_counts[tab_key][date],
+    0이면 미표시). 선택 시 rerender 로 자동 닫힘 + document click 리스너로
+    바깥클릭 닫힘. CSS 는 app.css 기존 .record-subtab* 블록을
+    .record-tab-dropdown* 로 교체 (외부 참조 없음 확인).
+  - 검증: 전체 회귀 + 격리 브라우저(clinic-dev)로 열림/전환/제목 동기/
+    바깥클릭 닫힘/배지 확인 + ruff + node --check + check_db_path.
+
 [ v1.3.51 ]  2026-07-03  (당직 관리 아침/야간 분리 — duty_type + m043)
 
   주요 변경

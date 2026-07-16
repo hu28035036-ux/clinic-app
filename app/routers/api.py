@@ -1730,17 +1730,17 @@ def bulk_add_employee_leaves(payload: dict, db: Session = Depends(get_db)):
 
 # ──────────────── 직원 당직 (EmployeeDuty) ────────────────
 # 휴무(EmployeeLeave)와 같은 캘린더 관리. duty_type 으로 아침당직(morning) /
-# 야간당직(night) 분리 — 같은 직원이 같은 날 둘 다 가능, 유형별 독립 관리.
-# 정보성 — 예약 차단/통계 로직과 무관.
+# 점심당직(lunch) / 야간당직(night) 분리 — 같은 직원이 같은 날 여러 유형 가능,
+# 유형별 독립 관리. 정보성 — 예약 차단/통계 로직과 무관.
 
-_DUTY_TYPES = ("morning", "night")
+_DUTY_TYPES = ("morning", "lunch", "night")
 
 
 def _duty_type_or_400(value: str) -> str:
     """duty_type 정규화 — 빈 값은 night(기존 당직 관리 호환), 그 외 오타는 400."""
     v = (value or "night").strip()
     if v not in _DUTY_TYPES:
-        raise HTTPException(400, "duty_type은 morning 또는 night 여야 합니다.")
+        raise HTTPException(400, "duty_type은 morning, lunch 또는 night 여야 합니다.")
     return v
 
 

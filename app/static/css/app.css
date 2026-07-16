@@ -1209,26 +1209,106 @@ input::placeholder, textarea::placeholder {
   margin-top: 6px;
 }
 
-/* 당직 관리 과(category) 필터 드롭다운 */
+/* 당직 관리 과(category) 필터 — 체크박스 드롭다운 (여러 과 동시 선택) */
 .duty-cat-filter {
   display:flex;
   align-items:center;
   margin-bottom:10px;
 }
-.duty-cat-label {
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  font-size:13px;
-  color:var(--gray-700);
+
+.duty-cat-dropdown {
+  position: relative;
+  display: inline-block;
+  min-width: 220px;
 }
-.duty-cat-label select {
-  padding:5px 10px;
-  border:1px solid var(--sky-200);
-  border-radius:8px;
-  font-size:13px;
-  background:#fff;
-  cursor:pointer;
+
+.duty-cat-dropdown > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+
+.duty-cat-dropdown > summary::-webkit-details-marker {
+  display: none;
+}
+
+.duty-cat-dropdown[open] > summary {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px rgba(13, 125, 114, .18);
+}
+
+.duty-cat-tag {
+  font-size: 12px;
+  color: var(--text-sub);
+}
+
+.duty-cat-current {
+  font-weight: 700;
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.duty-cat-caret {
+  margin-left: auto;
+  color: var(--text-sub);
+  font-size: 12px;
+  transition: transform .15s ease;
+}
+
+.duty-cat-dropdown[open] .duty-cat-caret {
+  transform: rotate(180deg);
+}
+
+.duty-cat-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .10);
+  z-index: 30;
+  padding: 4px;
+  display: grid;
+  gap: 2px;
+}
+
+.duty-cat-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.duty-cat-option:hover {
+  background: #F1F5F9;
+}
+
+.duty-cat-option.active {
+  background: rgba(13, 125, 114, .08);
+  color: var(--primary);
+}
+
+.duty-cat-option input {
+  accent-color: var(--primary);
+  cursor: pointer;
 }
 
 /* 휴무일 관리 / 당직 관리 캘린더 */
@@ -1704,34 +1784,34 @@ select option:disabled {
 .agg-direct-table td {
   border-left: 1px solid #E5E7EB;
   border-top: 1px solid #F3F4F6;
-  padding: 6px;
+  padding: 3px;
   text-align: center;
   vertical-align: middle;
 }
 
 .agg-date-head,
 .agg-date-cell {
-  min-width: 62px;
-  width: 62px;
+  min-width: 52px;
+  width: 52px;
   background: #F3F4F6;
   color: #374151;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .agg-employee-head {
-  min-width: 44px;
+  min-width: 40px;
   background: #F3F4F6;
   color: #1F2937;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .agg-treatment-head {
-  min-width: 60px;
-  width: 60px;
+  min-width: 46px;
+  width: 46px;
   background: #F9FAFB;
   color: #374151;
   font-size: 11px;
@@ -1739,19 +1819,21 @@ select option:disabled {
   white-space: nowrap;
 }
 
-.agg-input-cell,
-.agg-total-cell,
-.agg-disabled-cell {
-  width: 60px;
-  min-width: 60px;
-  height: 34px;
-  padding-left: 4px;
-  padding-right: 4px;
+/* 명시도 주의: 전역 `.sheet table tbody td`(padding:10px 12px)·`input[type=text]`
+   (height:36px 등)가 단일 클래스 셀렉터를 이기므로, `.agg-direct-table` 를 앞에
+   붙여(클래스 2개) 집계 셀·입력칸 크기를 확실히 적용한다. */
+.agg-direct-table .agg-input-cell,
+.agg-direct-table .agg-total-cell,
+.agg-direct-table .agg-disabled-cell {
+  width: 46px;
+  min-width: 46px;
+  height: 26px;
+  padding: 2px;
 }
 
-.agg-count-input {
-  width: 52px;
-  height: 28px;
+.agg-direct-table .agg-count-input {
+  width: 40px;
+  height: 22px;
   padding: 2px 2px;
   box-sizing: border-box;
   text-align: center;
@@ -6605,38 +6687,113 @@ label, .label, .form-label {
 
 .record-sub-tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   align-items: center;
 }
 
-.record-subtab-wrap {
-  display: inline-flex;
-  align-items: stretch;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
+.record-tab-dropdown {
+  position: relative;
+  display: inline-block;
+  min-width: 240px;
 }
 
-.record-subtab-wrap.active {
+.record-tab-dropdown > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+
+.record-tab-dropdown > summary::-webkit-details-marker {
+  display: none;
+}
+
+.record-tab-dropdown[open] > summary {
   border-color: var(--primary);
   box-shadow: 0 0 0 1px rgba(13, 125, 114, .18);
 }
 
-.record-subtab {
-  height: 34px;
-  border: 0;
-  background: #fff;
-  color: var(--text-main);
-  cursor: pointer;
-  min-width: 88px;
-  padding: 0 14px;
-  font-weight: 700;
+.record-tab-name {
+  font-size: 12px;
+  color: var(--text-sub);
 }
 
-.record-subtab-wrap.active .record-subtab {
+.record-tab-current {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.record-tab-caret {
+  margin-left: auto;
+  color: var(--text-sub);
+  font-size: 12px;
+  transition: transform .15s ease;
+}
+
+.record-tab-dropdown[open] .record-tab-caret {
+  transform: rotate(180deg);
+}
+
+.record-tab-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .10);
+  z-index: 30;
+  padding: 4px;
+  display: grid;
+  gap: 2px;
+}
+
+.record-tab-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0;
+  background: #fff;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.record-tab-option:hover {
+  background: #F1F5F9;
+}
+
+.record-tab-option.active {
   background: var(--primary);
+  color: #fff;
+}
+
+.record-tab-option em {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(13, 125, 114, .10);
+  color: var(--primary);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.record-tab-option.active em {
+  background: rgba(255, 255, 255, .25);
   color: #fff;
 }
 

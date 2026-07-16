@@ -17,8 +17,8 @@ def _emp(name="김테스트치료사") -> str:
 
 
 def _clear(client, date: str) -> None:
-    """해당 날짜의 모든 당직 제거 (아침/야간 각각 bulk-set 빈 items)."""
-    for t in ("morning", "night"):
+    """해당 날짜의 모든 당직 제거 (아침/점심/야간 각각 bulk-set 빈 items)."""
+    for t in ("morning", "lunch", "night"):
         client.post("/api/employee-duties/bulk-set", json={
             "duty_date": date, "duty_type": t, "items": [],
         })
@@ -278,6 +278,30 @@ def test_bulk_add_carries_duty_type(client):
     rows = _duties_on(client, date)
     assert len(rows) == 1
     assert rows[0]["duty_type"] == "morning"
+
+
+def test_lunch_duty_type(client):
+    """점심당직(lunch) — 아침/야간과 독립으로 같은 날 등록/필터/독립 삭제."""
+    date = _BASE + "16"
+    _clear(client, date)
+    emp = _emp()
+
+    for t in ("morning", "lunch", "night"):
+        r = client.post("/api/employee-duties", json={
+            "employee_id": emp, "duty_date": date, "duty_type": t,
+        })
+        assert r.status_code == 200 and r.json()["duty_type"] == t
+
+    assert len(_duties_on(client, date)) == 3
+    lunch = client.get(f"/api/employee-duties?date={date}&duty_type=lunch").json()
+    assert len(lunch) == 1 and lunch[0]["duty_type"] == "lunch"
+
+    # 점심만 비워도 아침/야간은 그대로 (유형별 독립)
+    client.post("/api/employee-duties/bulk-set", json={
+        "duty_date": date, "duty_type": "lunch", "items": [],
+    })
+    assert client.get(f"/api/employee-duties?date={date}&duty_type=lunch").json() == []
+    assert len(_duties_on(client, date)) == 2
 
 
 def test_invalid_duty_type_rejected(client):
