@@ -11,8 +11,8 @@ APP_NAME = "도수치료예약"
 # ─── 앱 버전 (배포 시 업데이트) ───
 # 이 값은 프로그램 폴더에 포함되어 교체됨. %APPDATA%\도수치료예약\ 은 유지.
 # 빌드 규칙: MAJOR.MINOR.PATCH (예: 1.2.3)
-APP_VERSION = "1.3.55"
-APP_BUILD_DATE = "2026-07-16"
+APP_VERSION = "1.3.56"
+APP_BUILD_DATE = "2026-07-24"
 
 # PyInstaller onedir/onefile 로 빌드된 실행본인지 여부.
 #   True(배포 exe): 정적 자산을 ?v= 버전으로 무효화하므로 영구 캐시(immutable) 안전.
@@ -49,6 +49,9 @@ DEFAULT_CONFIG = {
     #   → 신규/장기 오프라인 노드는 메인 PC 의 clinic.db 파일 복사로 부트스트랩.
     "sync_op_retention_days": 180,
     "slot_minutes": 30, "open_time": "08:30", "close_time": "18:30",
+    # 야간당직 기준 퇴근시간 — 이 시각 이후 실제 퇴근분을 야간당직 시간으로 집계.
+    # 운영 종료(close_time)와 별개로 관리 (관리자 설정에서 변경).
+    "duty_baseline_end_time": "18:30",
     "lunch_enabled": False, "lunch_start": "12:30", "lunch_end": "13:30",
     # 헤더/브라우저 탭에 표시되는 앱(홈페이지) 이름 — 관리자 탭에서 수정.
     # base.html 이 Jinja 전역 app_title() 로 라이브 조회 (pages.py).

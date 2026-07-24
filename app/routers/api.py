@@ -904,6 +904,7 @@ def get_config():
     cfg.setdefault("lunch_enabled", False)
     cfg.setdefault("lunch_start", "12:30")
     cfg.setdefault("lunch_end", "13:30")
+    cfg.setdefault("duty_baseline_end_time", "18:30")
     cfg.pop("admin_password_hash", None)
     cfg.pop("sync_secret", None)
     return cfg
@@ -933,6 +934,18 @@ def regenerate_sync_secret(_: bool = Depends(require_admin)):
     return {"ok": True, "sync_secret": cfg["sync_secret"]}
 
 
+def _parse_hhmm(s):
+    """"HH:MM" → 분(int). 빈 값/형식 오류면 None."""
+    try:
+        h, m = (s or "").strip().split(":")
+        h, m = int(h), int(m)
+    except (ValueError, AttributeError):
+        return None
+    if not (0 <= h < 24 and 0 <= m < 60):
+        return None
+    return h * 60 + m
+
+
 @router.post("/config")
 def update_config(payload: dict, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     # ⚠ 일반 config 갱신 경로로 sync_secret 을 덮어쓰지 못하게 차단.
@@ -960,6 +973,15 @@ def update_config(payload: dict, db: Session = Depends(get_db), _: bool = Depend
             raise HTTPException(400, "점심시간이 유효한 시각 범위를 벗어났습니다.")
         if e <= s:
             raise HTTPException(400, "점심 종료 시간은 시작 시간보다 뒤여야 합니다.")
+    # 야간당직 기준 퇴근시간 — 빈값이면 기본 18:30 복원, 그 외엔 HH:MM 형식 강제.
+    if "duty_baseline_end_time" in payload:
+        raw = (payload.get("duty_baseline_end_time") or "").strip()
+        if not raw:
+            cfg["duty_baseline_end_time"] = "18:30"
+        elif _parse_hhmm(raw) is None:
+            raise HTTPException(400, "야간당직 기준 퇴근시간 형식이 올바르지 않습니다 (HH:MM 필요).")
+        else:
+            cfg["duty_baseline_end_time"] = raw
     save_config(cfg)
     audit(db, "config.update", "", str(payload)); db.commit()
     # 응답에서 비밀 값 제거 — admin 이라도 일반 config 응답에 secret echo 안 시킴.
@@ -1744,6 +1766,54 @@ def _duty_type_or_400(value: str) -> str:
     return v
 
 
+def _norm_end_time_or_400(value: str) -> str:
+    """야간당직 퇴근시각 정규화 — 빈 값은 허용(미입력), 그 외엔 HH:MM 강제."""
+    v = (value or "").strip()
+    if v and _parse_hhmm(v) is None:
+        raise HTTPException(400, "퇴근시각 형식이 올바르지 않습니다 (HH:MM 필요).")
+    return v
+
+
+def _duty_overtime_minutes(end_time: str, baseline: str) -> int:
+    """야간당직 초과분(분) — 기준 퇴근시간(baseline)을 넘긴 시간만 집계.
+
+    - end_time 비었으면 0 (미입력/아침당직).
+    - end >= baseline             → end - baseline (같은 저녁 초과근무)
+    - end < baseline & end < 12:00 → +1440 (자정 넘겨 새벽 퇴근)
+    - end < baseline & end >= 12:00 → 0 (기준보다 이른 오후 = 오입력 방지)
+    """
+    end_min = _parse_hhmm(end_time)
+    base_min = _parse_hhmm(baseline)
+    if end_min is None or base_min is None:
+        return 0
+    diff = end_min - base_min
+    if diff >= 0:
+        return diff
+    if end_min < 12 * 60:   # 자정 넘겨 새벽 퇴근
+        return diff + 1440
+    return 0
+
+
+def _duty_baseline() -> str:
+    """config 의 야간당직 기준 퇴근시간 (없으면 18:30)."""
+    return load_config().get("duty_baseline_end_time", "18:30")
+
+
+def _duty_out(r, baseline: str) -> dict:
+    """당직 행 → API 응답 dict. overtime_minutes 는 야간당직만(아침=0)."""
+    is_night = (r.duty_type or "night") == "night"
+    ot = _duty_overtime_minutes(r.end_time or "", baseline) if is_night else 0
+    return {
+        "id": r.id,
+        "employee_id": r.employee_id,
+        "duty_date": r.duty_date,
+        "duty_type": r.duty_type or "night",
+        "end_time": r.end_time or "",
+        "overtime_minutes": ot,
+        "memo": r.memo or "",
+    }
+
+
 @router.get("/employee-duties")
 def list_employee_duties(date: str = "", duty_type: str = "", db: Session = Depends(get_db)):
     q = db.query(models.EmployeeDuty)
@@ -1752,13 +1822,8 @@ def list_employee_duties(date: str = "", duty_type: str = "", db: Session = Depe
     if duty_type:
         q = q.filter(models.EmployeeDuty.duty_type == _duty_type_or_400(duty_type))
     rows = q.order_by(models.EmployeeDuty.duty_date.asc()).all()
-    return [{
-        "id": r.id,
-        "employee_id": r.employee_id,
-        "duty_date": r.duty_date,
-        "duty_type": r.duty_type or "night",
-        "memo": r.memo or "",
-    } for r in rows]
+    baseline = _duty_baseline()
+    return [_duty_out(r, baseline) for r in rows]
 
 
 def _upsert_employee_duty_core(db: Session, p: schemas.EmployeeDutyIn) -> models.EmployeeDuty:
@@ -1771,12 +1836,20 @@ def _upsert_employee_duty_core(db: Session, p: schemas.EmployeeDutyIn) -> models
         models.EmployeeDuty.duty_date == p.duty_date,
         models.EmployeeDuty.duty_type == p.duty_type,
     ).first()
+    end_time = (p.end_time or "").strip() or None   # 빈 값은 NULL 로 보관
     if exists:
         exists.memo = p.memo
+        exists.end_time = end_time
         db.flush()
         _log(db, "employee_duty", exists.id, "upsert", exists)
         return exists
-    obj = models.EmployeeDuty(**p.model_dump())
+    obj = models.EmployeeDuty(
+        employee_id=p.employee_id,
+        duty_date=p.duty_date,
+        duty_type=p.duty_type,
+        end_time=end_time,
+        memo=p.memo,
+    )
     db.add(obj); db.flush()
     _log(db, "employee_duty", obj.id, "upsert", obj)
     return obj
@@ -1784,14 +1857,13 @@ def _upsert_employee_duty_core(db: Session, p: schemas.EmployeeDutyIn) -> models
 
 @router.post("/employee-duties")
 def create_employee_duty(p: schemas.EmployeeDutyIn, db: Session = Depends(get_db)):
-    p = p.model_copy(update={"duty_type": _duty_type_or_400(p.duty_type)})
+    p = p.model_copy(update={
+        "duty_type": _duty_type_or_400(p.duty_type),
+        "end_time": _norm_end_time_or_400(p.end_time),
+    })
     obj = _upsert_employee_duty_core(db, p)
     db.commit(); db.refresh(obj)
-    return {
-        "id": obj.id, "employee_id": obj.employee_id,
-        "duty_date": obj.duty_date, "duty_type": obj.duty_type or "night",
-        "memo": obj.memo or "",
-    }
+    return _duty_out(obj, _duty_baseline())
 
 
 @router.delete("/employee-duties/{did}")
@@ -1829,8 +1901,10 @@ def bulk_set_employee_duties(payload: dict, db: Session = Depends(get_db)):
         emp_id = item.get("employee_id") or item.get("therapist_id")  # 호환
         if not emp_id:
             continue
+        end_time = _norm_end_time_or_400(item.get("end_time", "")) or None
         db.add(models.EmployeeDuty(
-            employee_id=emp_id, duty_date=duty_date, duty_type=duty_type, memo=memo,
+            employee_id=emp_id, duty_date=duty_date, duty_type=duty_type,
+            end_time=end_time, memo=memo,
         ))
         count += 1
     db.commit()
@@ -1848,6 +1922,7 @@ def bulk_add_employee_duties(payload: dict, db: Session = Depends(get_db)):
     items = (payload or {}).get("items", [])
     default_memo = (payload or {}).get("memo", "")
     default_type = _duty_type_or_400((payload or {}).get("duty_type", ""))
+    default_end = _norm_end_time_or_400((payload or {}).get("end_time", ""))
     count = 0
     for item in items:
         emp_id = item.get("employee_id") or item.get("therapist_id")  # 호환
@@ -1858,6 +1933,7 @@ def bulk_add_employee_duties(payload: dict, db: Session = Depends(get_db)):
             employee_id=emp_id,
             duty_date=duty_date,
             duty_type=_duty_type_or_400(item.get("duty_type", default_type)),
+            end_time=_norm_end_time_or_400(item.get("end_time", default_end)),
             memo=item.get("memo", default_memo) or "",
         )
         _upsert_employee_duty_core(db, p)

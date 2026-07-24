@@ -586,6 +586,7 @@ const CFG = {
   slotMinutes: {{ config.slot_minutes }},
   openTime: "{{ config.open_time }}",
   closeTime: "{{ config.close_time }}",
+  dutyBaselineEndTime: "{{ config.duty_baseline_end_time or '18:30' }}",
   leaveAmUntil: "{{ config.leave_am_until or '14:00' }}",
   leavePmFrom: "{{ config.leave_pm_from or '13:00' }}",
   lunchEnabled: {{ 'true' if config.lunch_enabled else 'false' }},

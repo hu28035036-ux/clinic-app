@@ -1597,6 +1597,7 @@ function renderDutyEvents(){
       employee_id: t.id,
       name: t.name,
       color: t.color || '#9CA3AF',
+      end_time: x.end_time || '',
     });
   });
 
@@ -1608,10 +1609,11 @@ function renderDutyEvents(){
     items.forEach(it => {
       if(seen.has(it.employee_id)) return;
       seen.add(it.employee_id);
+      const label = (_dutyType === 'night' && it.end_time) ? `${it.name} ${it.end_time}` : it.name;
       window._dutyCal.addEvent({
         start: date,
         allDay: true,
-        title: it.name,
+        title: label,
         backgroundColor: it.color,
         borderColor: it.color,
         textColor: '#fff'
@@ -1630,8 +1632,18 @@ function renderDutyEvents(){
   renderDutyMonthlySummary();
 }
 
+// 분 → "N시간 M분" (분0이면 "N시간", 시간0이면 "M분", 0이하면 ''). 야간당직 시간 표기용.
+function _fmtDutyMinutes(min){
+  min = Math.round(min || 0);
+  if(min <= 0) return '';
+  const h = Math.floor(min / 60), m = min % 60;
+  if(h && m) return `${h}시간 ${m}분`;
+  if(h) return `${h}시간`;
+  return `${m}분`;
+}
+
 // 상단 '과별 당직 횟수' 요약 — 캘린더에 보이는 달 기준으로 과(category)별 직원의
-// 당직 횟수를 집계. 선택된 과들(_dutyCatSel)만 표시 (과별 그룹 나열).
+// 당직 횟수(야간은 초과시간도)를 집계. 선택된 과들(_dutyCatSel)만 표시 (과별 그룹 나열).
 // 0회 직원은 나열하지 않고(당직 있는 직원만), 횟수 많은 순으로 정렬.
 function renderDutyMonthlySummary(){
   const box = document.getElementById('duty-monthly-summary');
@@ -1645,38 +1657,46 @@ function renderDutyMonthlySummary(){
 
   // 이번 달 직원별 당직 횟수 — 현재 하위탭 유형(_dutyType)만 집계
   // (duty_date 는 'YYYY-MM-DD', (직원,날짜,유형) 유니크라 행=일수).
+  // countMap = 당직 횟수(회), minutesMap = 야간 초과분(분) 합계 — 서버가 계산한
+  // overtime_minutes 를 직원별로 합산만 한다 (계산 로직은 백엔드).
   const countMap = {};
+  const minutesMap = {};
   _dutyAll.forEach(x => {
     if((x.duty_type || 'night') !== _dutyType) return;
     if((x.duty_date || '').slice(0, 7) !== ym) return;
     countMap[x.employee_id] = (countMap[x.employee_id] || 0) + 1;
+    minutesMap[x.employee_id] = (minutesMap[x.employee_id] || 0) + (x.overtime_minutes || 0);
   });
 
   const empById = id => EMPLOYEES_ALL.find(t => t.id === id);
   const activeCats = (_dutyCats || []).filter(c => c.active !== false);
   const dutyIds = Object.keys(countMap);
 
-  const chip = (name, color, count) =>
-    '<div class="duty-count-chip">' +
+  // 야간당직만 시간(초과분) 병기. 아침당직/시간0 이면 '회'만 표시.
+  const chip = (name, color, count, minutes) => {
+    const timeStr = (_dutyType === 'night') ? _fmtDutyMinutes(minutes) : '';
+    return '<div class="duty-count-chip">' +
       '<span><span class="color-dot" style="background:' + escapeAttr(color || '#9CA3AF') + '"></span>' +
       escapeHtml(name || '') + '</span>' +
-      '<b>' + count + '회</b>' +
+      '<b>' + count + '회' + (timeStr ? ' · ' + timeStr : '') + '</b>' +
     '</div>';
+  };
 
   const groupHtml = (title, ids) => {
     const items = ids
-      .map(id => ({ emp: empById(id), count: countMap[id] }))
+      .map(id => ({ emp: empById(id), count: countMap[id], minutes: minutesMap[id] || 0 }))
       .filter(o => o.count > 0)
       .map(o => ({
         name: o.emp ? o.emp.name : '(알 수 없음)',
         color: o.emp ? o.emp.color : '#9CA3AF',
         count: o.count,
+        minutes: o.minutes,
       }))
       .sort((a, b) => b.count - a.count || (a.name || '').localeCompare(b.name || '', 'ko'));
     if(!items.length) return '';
     return '<div class="duty-cat-group">' +
       '<div class="duty-cat-name">' + escapeHtml(title) + '</div>' +
-      '<div class="duty-count-grid">' + items.map(i => chip(i.name, i.color, i.count)).join('') + '</div>' +
+      '<div class="duty-count-grid">' + items.map(i => chip(i.name, i.color, i.count, i.minutes)).join('') + '</div>' +
     '</div>';
   };
 
@@ -1700,6 +1720,10 @@ async function openDutyModal(dateStr){
   const duties = await loadEmployeeDuties(dateStr, _dutyType);
   const memo = duties[0]?.memo || '';
   const onDuty = new Set(duties.map(x => x.employee_id));
+  // 야간당직만 직원별 퇴근시각 입력(초과근무 집계용). 아침당직은 시간 개념 없음.
+  const isNight = _dutyType === 'night';
+  const endByEmp = {};
+  duties.forEach(x => { endByEmp[x.employee_id] = x.end_time || ''; });
 
   const rows = EMPLOYEES_ALL
   .filter(t => t.active !== false)
@@ -1712,11 +1736,13 @@ async function openDutyModal(dateStr){
           <span class="leave-name-text">${t.name}</span>
         </span>
       </label>
+      ${isNight ? `<input type="time" class="duty-end-time" data-emp="${t.id}" value="${endByEmp[t.id] || ''}" title="퇴근시각" style="margin-left:auto;width:120px">` : ''}
     </div>
   `).join('');
 
   showModal(`
     <h3>🗓️ ${dateStr} ${DUTY_LABEL[_dutyType]} 직원 설정</h3>
+    ${isNight ? `<p class="muted" style="margin:0 0 8px">🌙 기준 ${CFG.dutyBaselineEndTime} 이후 퇴근시간이 야간당직 시간으로 집계됩니다 (미입력 = 0시간).</p>` : ''}
     <div style="max-height:320px;overflow-y:auto;border:1px solid var(--sky-100);padding:10px;border-radius:8px;background:#fff">
       ${rows || '<p class="muted">직원 없음</p>'}
     </div>
@@ -1732,7 +1758,10 @@ async function openDutyModal(dateStr){
 
 async function saveDutyDay(dateStr){
   const items = Array.from(document.querySelectorAll('.duty-emp-chk:checked'))
-    .map(x => ({ employee_id: x.value }));
+    .map(x => {
+      const et = document.querySelector(`.duty-end-time[data-emp="${x.value}"]`);
+      return { employee_id: x.value, end_time: (et && et.value) || '' };
+    });
 
   const body = {
     duty_date: dateStr,
@@ -1785,6 +1814,9 @@ async function openDutyBulkAddModal(){
     <p class="muted" style="margin:10px 0 4px">달력에서 ${DUTY_LABEL[_dutyType]} 날짜를 클릭해 여러 날짜를 선택하세요.</p>
     <div id="duty-bulk-cal" style="margin-bottom:12px"></div>
     <div id="duty-bulk-list" class="leave-bulk-list"></div>
+    ${_dutyType === 'night' ? `<label>야간 퇴근시각 <span class="muted">(선택 · 선택한 모든 날짜 공통)</span>
+      <input id="duty-bulk-end" type="time">
+    </label>` : ''}
     <label>메모
       <input id="duty-bulk-memo" placeholder="(선택) 전체 날짜 공통 메모">
     </label>
@@ -1853,7 +1885,7 @@ async function saveDutyBulkAdd(){
   const r = await fetch('/api/employee-duties/bulk-add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items, duty_type: _dutyType, memo: _v('duty-bulk-memo') || '' }),
+    body: JSON.stringify({ items, duty_type: _dutyType, memo: _v('duty-bulk-memo') || '', end_time: _v('duty-bulk-end') || '' }),
   });
 
   if(!r.ok){
@@ -10714,6 +10746,11 @@ async function loadSystemForm(){
             <input id="s-close" type="time" value="${cfg.close_time}">
           </div>
           <div class="sf-row">
+            <label class="sf-label">🌙 야간당직 기준</label>
+            <input id="s-duty-baseline" type="time" value="${cfg.duty_baseline_end_time || '18:30'}"
+                   title="이 시각 이후 야간당직 퇴근시간을 초과근무로 집계">
+          </div>
+          <div class="sf-row">
             <label class="sf-label">표 슬롯</label>
             <select id="s-slot">${slotOpts}</select>
           </div>
@@ -10933,6 +10970,7 @@ async function saveSystem(){
   const body = {
     open_time: _v('s-open'),
     close_time: _v('s-close'),
+    duty_baseline_end_time: _v('s-duty-baseline') || '18:30',
     slot_minutes: parseInt(_v('s-slot')),
     leave_am_until: _v('s-leave-am') || '14:00',
     leave_pm_from: _v('s-leave-pm') || '13:00',
