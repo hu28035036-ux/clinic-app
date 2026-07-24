@@ -59,6 +59,9 @@ foreach ($n in @($notes, $mnotes)) {
 
 # ── 3. 빌드 ──
 Write-Host "[1/3] PyInstaller 빌드..." -ForegroundColor Yellow
+# 영문/비한글 콘솔(cp1252 등)에서 spec 의 post-build 한글 print 가 깨지지 않도록 UTF-8 강제.
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 $pyi = if (Test-Path "venv\Scripts\pyinstaller.exe") { "venv\Scripts\pyinstaller.exe" } else { "pyinstaller" }
 Remove-Item -Recurse -Force "build", "dist\도수치료예약" -ErrorAction SilentlyContinue
 & $pyi --noconfirm dosu_clinic.spec

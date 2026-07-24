@@ -37,6 +37,12 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # Windows 러너의 기본 stdout 인코딩(cp1252)은 한글(도수치료예약)을 못 찍어
+      # spec 의 post-build print 에서 UnicodeEncodeError → 빌드 실패한다.
+      # UTF-8 모드로 강제해 한글 경로 출력이 깨지지 않게 한다.
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
     steps:
       - name: 소스 체크아웃 (clinic-app)
         uses: actions/checkout@v4
