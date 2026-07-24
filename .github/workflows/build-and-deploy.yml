@@ -1,0 +1,169 @@
+name: 배포 (Windows 빌드 + 릴리스)
+
+# ─────────────────────────────────────────────────────────────
+#  모바일/브라우저에서 버튼 하나로 Windows 빌드 → 배포.
+#  PC 불필요 — GitHub 클라우드의 Windows VM 이 PyInstaller 로 빌드한다.
+#
+#  실행: 이 저장소 → Actions 탭 → "배포 (Windows 빌드 + 릴리스)" → Run workflow
+#
+#  입력:
+#   - version : 배포 버전 (예: 1.3.56)  — v 없이 숫자만
+#   - publish : false(기본) = ZIP 만 만들어 아티팩트로 확인(안전).
+#               true        = 실제 배포 (clinic-updates 에 Release + manifest 갱신).
+#
+#  ⚠ publish=true 는 사전 준비 필요:
+#     저장소 Settings → Secrets and variables → Actions →
+#     New repository secret 로  CLINIC_UPDATES_TOKEN  등록
+#     (clinic-updates 저장소에 쓰기 권한이 있는 PAT).
+#     이게 없으면 publish 단계에서 실패한다 (빌드/아티팩트는 정상).
+# ─────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "배포 버전 (v 없이, 예: 1.3.56)"
+        required: true
+        default: "1.3.56"
+      publish:
+        description: "실제 배포까지 진행? (체크 안 하면 ZIP 만 만들어 확인)"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 소스 체크아웃 (clinic-app)
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 설정 (기존 빌드 환경과 동일)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 의존성 설치
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 버전 표기 확인 (config.py 와 입력 버전 일치 검사)
+        shell: pwsh
+        run: |
+          $cfg = Get-Content app/config.py -Raw
+          if ($cfg -notmatch 'APP_VERSION\s*=\s*"([\d.]+)"') { throw "config.py 에서 APP_VERSION 을 찾지 못했습니다." }
+          $codeVer = $Matches[1]
+          $inputVer = "${{ inputs.version }}"
+          Write-Host "config.py APP_VERSION = $codeVer / 입력 version = $inputVer"
+          if ($codeVer -ne $inputVer) {
+            throw "버전 불일치: config.py=$codeVer, 입력=$inputVer. main 의 APP_VERSION 을 먼저 맞추세요."
+          }
+
+      - name: PyInstaller 빌드
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm dosu_clinic.spec
+          if (-not (Test-Path "dist/도수치료예약/도수치료예약.exe")) {
+            throw "빌드 산출물이 없습니다: dist/도수치료예약/도수치료예약.exe"
+          }
+
+      - name: ZIP 패키징 (동봉 파일 포함)
+        id: pack
+        shell: pwsh
+        run: |
+          $dist = "dist/도수치료예약"
+          # 동봉 파일 — 업데이트 자체는 exe+_internal 로 충분하나, 안내/이력도 함께 갱신.
+          foreach ($f in @("CHANGELOG.txt","VERSION.txt")) {
+            if (Test-Path $f) { Copy-Item $f $dist -Force }
+          }
+          Get-ChildItem -Filter *.txt | Where-Object { $_.Name -match "안내|사용법|업데이트 방법" } |
+            ForEach-Object { Copy-Item $_.FullName $dist -Force }
+          if (Test-Path "tools") { Copy-Item "tools" (Join-Path $dist "도구") -Recurse -Force }
+
+          $date = Get-Date -Format "yyyyMMdd"
+          $zipName = "dosu_clinic_v${{ inputs.version }}_$date.zip"
+          $zipPath = "dist/$zipName"
+          # Compress-Archive 에 폴더 경로를 주면 아카이브 최상위에 "도수치료예약/" 가 포함됨.
+          # → updater.bat 이 기대하는 구조( extracted\도수치료예약\도수치료예약.exe )와 일치.
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path $dist -DestinationPath $zipPath -Force
+          $sha = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+          $mb  = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
+          Write-Host "ZIP: $zipName ($mb MB)"
+          Write-Host "SHA256: $sha"
+          "zip_name=$zipName"  | Out-File $env:GITHUB_OUTPUT -Append
+          "zip_path=$zipPath"  | Out-File $env:GITHUB_OUTPUT -Append
+          "sha256=$sha"        | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: 아티팩트 업로드 (배포 전 구조 확인용)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.zip_name }}
+          path: ${{ steps.pack.outputs.zip_path }}
+          retention-days: 14
+
+      - name: 빌드 요약
+        shell: pwsh
+        run: |
+          "## 빌드 완료 ✅"                                             | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "- ZIP: ``${{ steps.pack.outputs.zip_name }}``"              | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "- SHA256: ``${{ steps.pack.outputs.sha256 }}``"            | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          if ("${{ inputs.publish }}" -ne "true") {
+            "- publish=false → **아직 배포 안 함**. 아티팩트에서 ZIP 을 내려받아 구조를 확인하세요." | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          }
+
+      # ───── 실제 배포 (publish=true 일 때만) ─────
+      - name: clinic-updates 체크아웃
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        env:
+          TOKEN: ${{ secrets.CLINIC_UPDATES_TOKEN }}
+        run: |
+          if (-not $env:TOKEN) {
+            throw "CLINIC_UPDATES_TOKEN 시크릿이 없습니다. Settings → Secrets → Actions 에서 등록 후 다시 실행하세요."
+          }
+          $updates = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) "clinic-updates"
+          if (Test-Path $updates) { Remove-Item $updates -Recurse -Force }
+          git clone "https://x-access-token:$($env:TOKEN)@github.com/hu28035036-ux/clinic-updates.git" $updates
+          git -C $updates config user.name  "clinic-deploy-bot"
+          git -C $updates config user.email "deploy@users.noreply.github.com"
+          "$updates" | Out-File $env:GITHUB_ENV -Append -Encoding utf8   # (참고용)
+          "UPDATES_DIR=$updates" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: 릴리스 노트 존재 확인
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        run: |
+          $u = $env:UPDATES_DIR
+          foreach ($f in @("release-v${{ inputs.version }}.md","manifest-notes-v${{ inputs.version }}.txt")) {
+            if (-not (Test-Path (Join-Path $u $f))) {
+              throw "clinic-updates 에 $f 가 없습니다. 먼저 릴리스 노트를 커밋하세요."
+            }
+          }
+
+      - name: 배포 (Release 업로드 + manifest 갱신)
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.CLINIC_UPDATES_TOKEN }}
+        run: |
+          $u = $env:UPDATES_DIR
+          ./scripts/publish_release.ps1 `
+            -Version "${{ inputs.version }}" `
+            -ZipPath "${{ steps.pack.outputs.zip_path }}" `
+            -NotesPath (Join-Path $u "release-v${{ inputs.version }}.md") `
+            -ManifestNotesPath (Join-Path $u "manifest-notes-v${{ inputs.version }}.txt") `
+            -UpdatesDir $u
+
+      - name: 배포 요약
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        run: |
+          "## 배포 완료 🚀"                                                   | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "- v${{ inputs.version }} 이 clinic-updates 에 배포되었습니다."      | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "- 1~2분 뒤 GitHub Pages(manifest.json) 반영 → 각 병원 PC 업데이트 확인 시 노출." | Out-File $env:GITHUB_STEP_SUMMARY -Append
