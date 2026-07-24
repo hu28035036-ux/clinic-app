@@ -542,6 +542,7 @@ class RecordEntry(Base):
     )
     chart_no = Column(String(30), nullable=False, default="")
     patient_name = Column(String(50), nullable=False, default="")
+    memo = Column(String(200), nullable=False, default="")
     employee_id = Column(String(32), nullable=False, index=True)
     employee_name_snapshot = Column(String(50), nullable=False, default="")
     employee_category_id_snapshot = Column(String(32), nullable=False, default="")

@@ -1007,6 +1007,7 @@ function renderRecordsSheet(){
       <tr>
         <td>${escapeHtml(entry.chart_no || '-')}</td>
         <td><b>${escapeHtml(entry.patient_name || '-')}</b></td>
+        <td class="record-memo-cell">${entry.memo ? escapeHtml(entry.memo) : '<span class="muted">-</span>'}</td>
         <td>${escapeHtml(entry.employee_name || '-')}</td>
         <td class="record-actions">
           <button class="mini" onclick="editRecordEntry('${entry.id}')">수정</button>
@@ -1016,7 +1017,7 @@ function renderRecordsSheet(){
     `).join('');
     list.innerHTML = rows ? `
       <table class="data-table record-table">
-        <thead><tr><th>차트번호</th><th>성함</th><th>직원</th><th>관리</th></tr></thead>
+        <thead><tr><th>차트번호</th><th>성함</th><th>메모</th><th>직원</th><th>관리</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     ` : '<div class="muted" style="padding:12px">선택한 날짜의 기록 없음</div>';
@@ -1123,6 +1124,7 @@ async function saveRecordEntry(){
     record_date: recordSelectedDate(),
     chart_no: _v('record-chart-no'),
     patient_name: _v('record-patient-name'),
+    memo: _v('record-memo'),
     employee_id: _v('record-employee'),
   };
   if(!body.chart_no && !body.patient_name){ alert('차트번호 또는 성함을 입력하세요'); return; }
@@ -1135,8 +1137,10 @@ async function saveRecordEntry(){
   if(!r.ok){ alert('저장 실패\n' + await _apiErrorText(r)); return; }
   const chart = document.getElementById('record-chart-no');
   const name = document.getElementById('record-patient-name');
+  const memo = document.getElementById('record-memo');
   if(chart) chart.value = '';
   if(name) name.value = '';
+  if(memo) memo.value = '';
   await loadRecordsSheet();
   document.getElementById('record-chart-no')?.focus();
 }
@@ -1150,6 +1154,7 @@ function editRecordEntry(entryId){
     <label>날짜 <input id="record-edit-date" type="date" value="${escapeAttr(entry.record_date || recordSelectedDate())}"></label>
     <label>차트번호 <input id="record-edit-chart-no" type="text" maxlength="30" value="${escapeAttr(entry.chart_no || '')}"></label>
     <label>성함 <input id="record-edit-patient-name" type="text" maxlength="50" value="${escapeAttr(entry.patient_name || '')}"></label>
+    <label>메모 <input id="record-edit-memo" type="text" maxlength="200" value="${escapeAttr(entry.memo || '')}"></label>
     <label>직원
       <select id="record-edit-employee">${recordEmployeeOptions(categoryId, entry.employee_id || '')}</select>
     </label>
@@ -1162,6 +1167,7 @@ async function updateRecordEntry(entryId){
     record_date: _v('record-edit-date') || recordSelectedDate(),
     chart_no: _v('record-edit-chart-no'),
     patient_name: _v('record-edit-patient-name'),
+    memo: _v('record-edit-memo'),
     employee_id: _v('record-edit-employee'),
   };
   if(!body.chart_no && !body.patient_name){ alert('차트번호 또는 성함을 입력하세요'); return; }
