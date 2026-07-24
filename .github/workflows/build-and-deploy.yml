@@ -28,6 +28,8 @@ on:
         required: true
         default: false
   push:
+    branches:
+      - "ci-deploy"   # 이 브랜치로 push → 자동 실제 배포 (버전은 config.py 에서)
     tags:
       - "deploy-v*"   # deploy-v1.3.56 → 자동 실제 배포
 
@@ -43,7 +45,10 @@ jobs:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: "utf-8"
     steps:
-      - name: 실행 파라미터 결정 (수동 입력 vs 태그)
+      - name: 소스 체크아웃 (clinic-app)
+        uses: actions/checkout@v4
+
+      - name: 실행 파라미터 결정 (수동 입력 / 태그 / ci-deploy 브랜치)
         id: params
         shell: pwsh
         run: |
@@ -51,6 +56,12 @@ jobs:
             $ver = $env:GITHUB_REF -replace '^refs/tags/deploy-v', ''
             $pub = "true"
             Write-Host "태그 트리거 → 실제 배포"
+          } elseif ($env:GITHUB_REF -eq "refs/heads/ci-deploy") {
+            $cfg = Get-Content app/config.py -Raw
+            if ($cfg -notmatch 'APP_VERSION\s*=\s*"([\d.]+)"') { throw "config.py 에서 APP_VERSION 을 못 찾음." }
+            $ver = $Matches[1]
+            $pub = "true"
+            Write-Host "ci-deploy 브랜치 트리거 → 실제 배포 (config.py 버전 $ver)"
           } else {
             $ver = "${{ inputs.version }}"
             $pub = "${{ inputs.publish }}"
@@ -60,9 +71,6 @@ jobs:
           Write-Host "version=$ver / publish=$pub"
           "version=$ver" | Out-File $env:GITHUB_OUTPUT -Append
           "publish=$pub" | Out-File $env:GITHUB_OUTPUT -Append
-
-      - name: 소스 체크아웃 (clinic-app)
-        uses: actions/checkout@v4
 
       - name: Python 3.11 설정 (기존 빌드 환경과 동일)
         uses: actions/setup-python@v5
