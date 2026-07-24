@@ -3,12 +3,13 @@ from __future__ import annotations
 import io
 import sqlite3
 import uuid
+from datetime import date, timedelta
 
 import openpyxl
 import pytest
 
 from app.migrations import m026_backfill_settlement_zero_snapshots
-from app.modules.settlement.rules import calculate_incentive_amount
+from app.modules.settlement.rules import calculate_incentive_amount, settlement_lock_before
 
 
 def _unique(prefix: str) -> str:
@@ -444,3 +445,105 @@ def test_settlement_selected_category_without_treatments_is_empty(client):
     assert data["employees"] == []
     assert data["items"] == [{"date": "2099-08-03", "employee_data": {}}]
     assert data["summary"]["record_count"] == 0
+
+
+# ──────────── 정산 확정(잠금) — 매월 1일 기준 2달 전 자동 확정 ────────────
+
+
+def test_settlement_lock_before_boundary():
+    """확정 경계 = (이번 달 1일) - 1개월. 배치 없이 날짜만으로 자동 확정된다."""
+    # 7/16 → 경계 6/1 : 5월 이하 확정, 6월(1달 전)·7월은 수정 가능
+    assert settlement_lock_before(date(2026, 7, 16)) == date(2026, 6, 1)
+    # 달이 바뀌는 순간(8/1) 6월이 자동 확정 → 경계 7/1
+    assert settlement_lock_before(date(2026, 7, 31)) == date(2026, 6, 1)
+    assert settlement_lock_before(date(2026, 8, 1)) == date(2026, 7, 1)
+    # 연초 넘김
+    assert settlement_lock_before(date(2026, 1, 5)) == date(2025, 12, 1)
+    assert settlement_lock_before(date(2026, 2, 28)) == date(2026, 1, 1)
+
+
+def test_settlement_locked_period_is_not_recalculated(client):
+    """확정 기간의 기존 스냅샷은 수량·금액이 다시 계산되지 않는다(급여 근거 보존).
+
+    단, 스냅샷이 아예 없으면 최초 1회는 생성한다 — 한 번도 조회하지 않은 과거 달이
+    확정됐다는 이유로 통째로 비어 보이는 것을 막기 위함.
+    """
+    headers = _admin_headers(client)
+    category = _make_category(client)
+    treatment = _make_treatment(client, headers, category["id"], price=80000, incentive_pct=10)
+    employee = _make_employee(client, category["id"], [treatment["id"]])
+
+    lock = settlement_lock_before()
+    locked_day = (lock - timedelta(days=1)).isoformat()  # 확정 기간 (2달 전 이하)
+    open_day = lock.isoformat()                          # 경계 당일 = 1달 전 → 수정 가능
+
+    def post(day: str, qty: int):
+        resp = client.post("/api/settlement/records/grid", json={
+            "date_from": day,
+            "date_to": day,
+            "category_id": category["id"],
+            "entries": [{
+                "performed_on": day,
+                "employee_id": employee["id"],
+                "treatment_id": treatment["id"],
+                "quantity": qty,
+            }],
+        }, headers=headers)
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    # 1) 확정 기간이라도 스냅샷이 없으면 최초 1회 생성
+    d = post(locked_day, 2)
+    assert d["changed"]["upserted"] == 1
+    assert d["summary"]["quantity_total"] == 2
+
+    # 2) 확정 기간의 기존 스냅샷은 수량이 바뀌지 않음
+    d = post(locked_day, 99)
+    assert d["changed"]["locked_skipped"] == 1
+    assert d["changed"]["upserted"] == 0
+    assert d["summary"]["quantity_total"] == 2
+
+    # 3) 확정 기간은 수량 0(삭제)도 무시
+    d = post(locked_day, 0)
+    assert d["changed"]["deleted"] == 0
+    assert d["changed"]["locked_skipped"] == 1
+    assert d["summary"]["quantity_total"] == 2
+
+    # 4) 경계 당일(1달 전)은 계속 갱신 가능
+    d = post(open_day, 3)
+    assert d["changed"]["upserted"] == 1
+    assert d["summary"]["quantity_total"] == 3
+    d = post(open_day, 5)
+    assert d["changed"]["upserted"] == 1
+    assert d["summary"]["quantity_total"] == 5
+
+
+def test_settlement_report_exposes_lock_info(client):
+    """정산 리포트가 확정 경계/상태를 내려준다 (화면 안내용, 판정은 백엔드가 단일 원천)."""
+    headers = _admin_headers(client)
+    lock = settlement_lock_before()
+    locked_day = (lock - timedelta(days=1)).isoformat()
+    open_day = lock.isoformat()
+
+    def report(date_from: str, date_to: str):
+        resp = client.get(
+            "/api/settlement/reports/incentives"
+            f"?date_from={date_from}&date_to={date_to}",
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    d = report(locked_day, locked_day)
+    assert d["lock_before"] == lock.isoformat()
+    assert d["locked"] is True
+    assert d["partially_locked"] is False
+
+    d = report(open_day, open_day)
+    assert d["locked"] is False
+    assert d["partially_locked"] is False
+
+    # 확정 기간 ~ 미확정 기간에 걸친 조회
+    d = report(locked_day, open_day)
+    assert d["locked"] is False
+    assert d["partially_locked"] is True

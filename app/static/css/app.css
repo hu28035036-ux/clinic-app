@@ -1921,6 +1921,14 @@ select option:disabled {
   line-height: 1.5;
 }
 
+/* 확정(잠금)된 정산 — 금액 고정 상태를 한눈에 구분 (앰버 톤). */
+.settlement-note.locked {
+  border-color: #FDE68A;
+  background: #FFFBEB;
+  color: #92400E;
+  font-weight: 600;
+}
+
 .revenue-sub-tabs {
   display: flex;
   flex-wrap: wrap;

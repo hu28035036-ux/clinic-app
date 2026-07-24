@@ -2,6 +2,23 @@
   도수치료예약 - 배포 버전 기록
 ================================================================
 
+[ v1.3.56 ]  2026-07-24  (정산 확정(잠금) — 지난 정산 금액 자동 고정)
+
+  주요 변경 (settlement rules/service + JS·CSS — DB/마이그레이션 무변경)
+  - [정산] settlement_lock_before(today) 신규(rules.py) — 확정 경계 = (이번 달 1일) - 1개월.
+    performed_on < 경계 이면 확정. 매월 1일에 '2달 전' 달이 배치 없이 자동 확정.
+    예) 7/16 → 경계 6/1(5월↓ 확정) / 8/1 → 경계 7/1(6월 확정). 연초 넘김 처리 포함.
+  - [정산] upsert_grid(service.py) 에 잠금 가드 — performed_on < lock_before 이면
+    기존 스냅샷 수량·금액 미변경(삭제도 안 함), changed["locked_skipped"] 집계.
+    예외: 스냅샷이 없고 quantity>0 이면 최초 1회 생성(과거 달 통째 공백 방지).
+    → v1.3.55 자동반영(조회마다 재계산)이 지난 급여 근거를 덮어쓰던 문제 해소.
+  - [정산] report_incentives 응답에 lock_before / locked(기간 전체 확정) /
+    partially_locked(일부 확정) 추가 — 화면 안내용, 판정은 백엔드가 단일 원천.
+  - [화면] renderSettlement(main.js) 이 위 플래그로 상단 안내문 분기(확정/부분확정/미확정),
+    확정 시 .settlement-note.locked 앰버 스타일(app.css). 저장/집계 로직 자체는 무변경.
+  - 테스트: test_settlement.py +3 (경계 계산 / 확정기간 미재계산 / 리포트 노출).
+    전체 2,299 passed(환경상 격리 불가 22건 제외) + ruff + node --check.
+
 [ v1.3.55 ]  2026-07-16  (휴무 카운트·과필터 + 집계→정산 자동반영 + 집계 칸 축소)
 
   주요 변경 (JS·CSS·HTML + 정산 반영 API 옵션 1개 — DB/마이그레이션 무변경)

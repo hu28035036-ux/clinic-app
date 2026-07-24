@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 
 from ...models import constants as C
 from ...models import models
-from .rules import calculate_incentive_amount, incentive_snapshot_for_treatment
+from .rules import (
+    calculate_incentive_amount,
+    incentive_snapshot_for_treatment,
+    settlement_lock_before,
+)
 from .schemas import SettlementGridIn
 
 
@@ -457,7 +461,8 @@ def upsert_grid(
 ) -> dict:
     start, end, _, _ = resolve_range(payload.date_from, payload.date_to)
     category_id = (payload.category_id or "").strip()
-    changed = {"upserted": 0, "deleted": 0}
+    lock_before = settlement_lock_before()
+    changed = {"upserted": 0, "deleted": 0, "locked_skipped": 0}
     seen = set()
 
     for entry in payload.entries:
@@ -496,6 +501,16 @@ def upsert_grid(
             )
             .first()
         )
+
+        # ── 확정(잠금) 가드 — 매월 1일 기준 2달 전 달부터 자동 확정 ──
+        #   확정 기간의 기존 스냅샷은 수량·금액을 절대 바꾸지 않는다(삭제도 안 함).
+        #   집계를 나중에 고치거나 수가를 바꿔도 이미 지급한 급여 근거가 보존된다.
+        #   예외: 스냅샷이 아예 없으면(그 달을 한 번도 조회하지 않은 경우) 최초 1회만
+        #   생성한다 — 확정됐다는 이유로 과거 정산이 통째로 비어 보이는 것을 막는다.
+        if performed_on < lock_before:
+            if existing or quantity == 0:
+                changed["locked_skipped"] += 1
+                continue
 
         if quantity == 0:
             if existing:
@@ -540,6 +555,7 @@ def upsert_grid(
 
 def report_incentives(db: Session, date_from: str, date_to: str, category_id: str = "") -> dict:
     start, end, _, range_label = resolve_range(date_from, date_to)
+    lock_before = settlement_lock_before()
     categories = _active_categories(db)
     category_id = _choose_category_id(db, category_id, categories) if categories else ""
     q = db.query(models.SettlementRecord).filter(
@@ -561,6 +577,10 @@ def report_incentives(db: Session, date_from: str, date_to: str, category_id: st
         "categories": [_serialize_category(c) for c in categories],
         "records": [_record_dict(rec) for rec in records],
         "summary": _summary(records),
+        # 확정(잠금) 정보 — 화면 안내용. 경계 이전(<)은 금액 고정.
+        "lock_before": lock_before.isoformat(),
+        "locked": end < lock_before,                     # 조회 기간 전체가 확정
+        "partially_locked": start < lock_before <= end,  # 기간 일부만 확정
     }
 
 

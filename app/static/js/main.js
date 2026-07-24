@@ -9110,9 +9110,23 @@ function renderSettlement(data){
     </tr>`).join('');
   const detailGroups = renderSettlementDateGroups(grouped.dates);
 
+  // 확정(잠금) 안내 — 매월 1일에 '2달 전' 달이 자동 확정되어 금액이 고정된다.
+  // (1달 전·이번 달은 계속 최신 집계로 갱신) 판정은 백엔드 lock_before 가 단일 원천.
+  const lockBefore = data.lock_before || '';
+  const settleNote = data.locked
+    ? '🔒 확정된 정산입니다 — 금액이 확정 당시 기준으로 고정되어 있습니다. '
+      + '집계를 수정하거나 수가를 바꿔도 이 기간 금액은 변하지 않습니다. '
+      + '(매월 1일에 2달 전 정산이 자동 확정됩니다)'
+    : data.partially_locked
+      ? '🔒 이 기간 중 <b>' + escapeHtml(lockBefore) + ' 이전</b>은 확정되어 금액이 고정됩니다. '
+        + '그 이후 기간만 최신 집계로 자동 갱신됩니다.'
+      : '조회한 기간의 집계(치료완료·기록·walk-in)를 현재 수가·인센티브로 계산한 결과입니다. '
+        + '기간을 조회할 때마다 최신 집계로 자동 갱신됩니다. '
+        + '(매월 1일에 2달 전 정산은 자동 확정되어 금액이 고정됩니다)';
+
   bodyEl.innerHTML = `
-    <div class="settlement-note">
-      조회한 기간의 집계(치료완료·기록·walk-in)를 현재 수가·인센티브로 계산한 결과입니다. 기간을 조회할 때마다 최신 집계로 자동 갱신됩니다.
+    <div class="settlement-note${data.locked ? ' locked' : ''}">
+      ${settleNote}
     </div>
     <div id="settlement-revenue-help"></div>
     <div class="settlement-summary-panels">
