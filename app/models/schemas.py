@@ -77,6 +77,7 @@ class EmployeeDutyIn(BaseModel):
     employee_id: str
     duty_date: str
     duty_type: str = "night"  # morning | lunch | night
+    end_time: str = ""        # 야간당직 실제 퇴근시각 "HH:MM" (아침당직/미입력은 빈 값)
     memo: str = ""
 
 

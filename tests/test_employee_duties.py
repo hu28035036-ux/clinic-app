@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+from app.routers.api import _duty_baseline, _duty_overtime_minutes
 from tests.harness.seed_data import get_test_therapist_id
 
 # 충분히 미래 + 당직 전용 날짜 (휴무 시드 FIXED_LEAVE_DATE 2099-06-15 와 무관)
@@ -59,9 +60,14 @@ def test_response_keys_contract(client):
     client.post("/api/employee-duties", json={"employee_id": _emp(), "duty_date": date})
     rows = _duties_on(client, date)
     assert rows, "당직 1건 이상이어야 함"
-    assert set(rows[0].keys()) == {"id", "employee_id", "duty_date", "duty_type", "memo"}
+    assert set(rows[0].keys()) == {
+        "id", "employee_id", "duty_date", "duty_type", "end_time", "overtime_minutes", "memo",
+    }
     # duty_type 미지정 생성은 야간(night) 기본 — 기존 '당직 관리' 데이터 호환
     assert rows[0]["duty_type"] == "night"
+    # end_time 미지정은 빈 문자열, 초과분 0
+    assert rows[0]["end_time"] == ""
+    assert rows[0]["overtime_minutes"] == 0
 
 
 # ──────────────────────── 2. upsert (UNIQUE 1건 유지) ────────────────────────
@@ -379,3 +385,152 @@ def test_m043_backfills_night_and_relaxes_unique():
     # 멱등 — 두 번 실행해도 안전, 데이터 유지
     m043.up(conn)
     assert conn.execute("SELECT COUNT(*) FROM employee_duties").fetchone()[0] == 2
+
+
+# ──────────────────────── 9. 야간당직 퇴근시각 / 시간 집계 (end_time) ────────────────────────
+
+
+def test_overtime_minutes_pure():
+    """초과분 계산 규칙 — 순수 함수 (기준 18:30)."""
+    b = "18:30"
+    assert _duty_overtime_minutes("21:00", b) == 150       # 같은 저녁
+    assert _duty_overtime_minutes("01:00", b) == 390       # 자정 넘김
+    assert _duty_overtime_minutes("18:30", b) == 0         # 정각 = 0
+    assert _duty_overtime_minutes("", b) == 0              # 미입력
+    assert _duty_overtime_minutes("17:00", b) == 0         # 기준 이전 오후 = 오입력
+    assert _duty_overtime_minutes("bad", b) == 0           # 형식 오류
+    assert _duty_overtime_minutes("20:00", "19:00") == 60  # 다른 기준값 반영
+
+
+def test_end_time_roundtrip_create_and_list(client):
+    date = _BASE + "20"
+    _clear(client, date)
+    emp = _emp()
+
+    r = client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "night", "end_time": "21:00",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["end_time"] == "21:00"
+    assert body["overtime_minutes"] == _duty_overtime_minutes("21:00", _duty_baseline())
+
+    rows = _duties_on(client, date)
+    assert rows[0]["end_time"] == "21:00"
+    assert rows[0]["overtime_minutes"] == _duty_overtime_minutes("21:00", _duty_baseline())
+
+
+def test_upsert_updates_end_time(client):
+    date = _BASE + "21"
+    _clear(client, date)
+    emp = _emp()
+    client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "night", "end_time": "20:00",
+    })
+    client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "night", "end_time": "22:30",
+    })
+    rows = _duties_on(client, date)
+    assert len(rows) == 1
+    assert rows[0]["end_time"] == "22:30"
+
+
+def test_bulk_set_carries_per_employee_end_time(client):
+    date = _BASE + "22"
+    _clear(client, date)
+    emp_a = _emp("김테스트치료사")
+    emp_b = _emp("이테스트치료사")
+    r = client.post("/api/employee-duties/bulk-set", json={
+        "duty_date": date, "duty_type": "night",
+        "items": [
+            {"employee_id": emp_a, "end_time": "20:00"},
+            {"employee_id": emp_b, "end_time": "23:00"},
+        ],
+    })
+    assert r.status_code == 200
+    got = {x["employee_id"]: x["end_time"] for x in _duties_on(client, date)}
+    assert got[emp_a] == "20:00"
+    assert got[emp_b] == "23:00"
+
+
+def test_bulk_add_common_end_time(client):
+    dates = [_BASE + "23", _BASE + "24"]
+    for d in dates:
+        _clear(client, d)
+    emp = _emp()
+    r = client.post("/api/employee-duties/bulk-add", json={
+        "items": [{"employee_id": emp, "duty_date": d} for d in dates],
+        "duty_type": "night", "end_time": "21:30",
+    })
+    assert r.status_code == 200
+    for d in dates:
+        rows = _duties_on(client, d)
+        assert rows[0]["end_time"] == "21:30"
+
+
+def test_morning_duty_ignores_end_time(client):
+    date = _BASE + "25"
+    _clear(client, date)
+    emp = _emp()
+    # 아침당직에 end_time 을 줘도 초과분은 0 (시간 개념 없음)
+    client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "morning", "end_time": "21:00",
+    })
+    rows = client.get(f"/api/employee-duties?date={date}&duty_type=morning").json()
+    assert rows[0]["overtime_minutes"] == 0
+
+
+def test_invalid_end_time_rejected(client):
+    date = _BASE + "26"
+    emp = _emp()
+    r = client.post("/api/employee-duties", json={
+        "employee_id": emp, "duty_date": date, "duty_type": "night", "end_time": "25:99",
+    })
+    assert r.status_code == 400
+    r = client.post("/api/employee-duties/bulk-set", json={
+        "duty_date": date, "duty_type": "night",
+        "items": [{"employee_id": emp, "end_time": "nope"}],
+    })
+    assert r.status_code == 400
+
+
+# ──────────────────────── 10. m045 마이그레이션 (end_time 컬럼) ────────────────────────
+# NOTE: v1.3.56 에서 기록탭 memo 마이그레이션이 m044 를 선점 → 야간당직 end_time 은 m045 로 재부여.
+
+
+def test_m045_adds_end_time_column_idempotent():
+    """구 스키마(end_time 없음) DB 에 m045 적용 시 컬럼 추가·데이터 보존·멱등."""
+    import sqlite3
+
+    from app.migrations import m045_duty_end_time as m044
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE employee_duties ("
+        " id VARCHAR(32) PRIMARY KEY,"
+        " employee_id VARCHAR(32) NOT NULL,"
+        " duty_date VARCHAR(10) NOT NULL,"
+        " duty_type VARCHAR(10) NOT NULL DEFAULT 'night',"
+        " memo TEXT DEFAULT '',"
+        " created_at DATETIME"
+        ")"
+    )
+    conn.execute(
+        "INSERT INTO employee_duties (id, employee_id, duty_date, duty_type, memo)"
+        " VALUES ('d1', 'e1', '2099-01-01', 'night', '기존당직')"
+    )
+    conn.commit()
+
+    m044.up(conn)
+
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(employee_duties)")}
+    assert "end_time" in cols
+    # 기존 행 보존, 새 컬럼은 NULL
+    row = conn.execute(
+        "SELECT id, memo, end_time FROM employee_duties WHERE id='d1'"
+    ).fetchone()
+    assert row == ("d1", "기존당직", None)
+
+    # 멱등 — 두 번 실행해도 안전
+    m044.up(conn)
+    assert conn.execute("SELECT COUNT(*) FROM employee_duties").fetchone()[0] == 1

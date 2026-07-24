@@ -44,6 +44,7 @@ def serialize_entry(entry: models.RecordEntry) -> dict:
         "record_date": record_date or "",
         "chart_no": entry.chart_no or "",
         "patient_name": entry.patient_name or "",
+        "memo": entry.memo or "",
         "employee_id": entry.employee_id,
         "employee_name": entry.employee_name_snapshot or "",
         "employee_category_id": entry.employee_category_id_snapshot or "",
@@ -204,8 +205,9 @@ def _validated_entry_values(
     record_date: str,
     chart_no: str,
     patient_name: str,
+    memo: str,
     employee_id: str,
-) -> tuple[str, str, str, models.Employee]:
+) -> tuple[str, str, str, str, models.Employee]:
     employee = db.get(models.Employee, employee_id)
     if not employee or not employee.active:
         raise ValueError("직원을 선택하세요.")
@@ -213,9 +215,10 @@ def _validated_entry_values(
         raise ValueError("선택한 과의 직원만 입력할 수 있습니다.")
     chart_no = (chart_no or "").strip()[:30]
     patient_name = (patient_name or "").strip()[:50]
+    memo = (memo or "").strip()[:200]
     if not chart_no and not patient_name:
         raise ValueError("차트번호 또는 성함을 입력하세요.")
-    return normalize_record_date(record_date), chart_no, patient_name, employee
+    return normalize_record_date(record_date), chart_no, patient_name, memo, employee
 
 
 def create_entry(
@@ -225,16 +228,18 @@ def create_entry(
     record_date: str,
     chart_no: str,
     patient_name: str,
+    memo: str,
     employee_id: str,
     log_callback: Callable | None = None,
 ) -> models.RecordEntry:
     treatment = _treatment_for_tab(db, tab_key)
-    record_date_str, chart_no, patient_name, employee = _validated_entry_values(
+    record_date_str, chart_no, patient_name, memo, employee = _validated_entry_values(
         db,
         treatment,
         record_date=record_date,
         chart_no=chart_no,
         patient_name=patient_name,
+        memo=memo,
         employee_id=employee_id,
     )
     entry = models.RecordEntry(
@@ -243,6 +248,7 @@ def create_entry(
         record_date=record_date_str,
         chart_no=chart_no,
         patient_name=patient_name,
+        memo=memo,
         employee_id=employee.id,
         employee_name_snapshot=employee.name,
         employee_category_id_snapshot=employee.category_id or "",
@@ -261,6 +267,7 @@ def update_entry(
     record_date: str,
     chart_no: str,
     patient_name: str,
+    memo: str,
     employee_id: str,
     log_callback: Callable | None = None,
 ) -> models.RecordEntry:
@@ -268,17 +275,19 @@ def update_entry(
     if not entry:
         raise ValueError("기록을 찾을 수 없습니다.")
     treatment = _treatment_for_entry(db, entry)
-    record_date_str, chart_no, patient_name, employee = _validated_entry_values(
+    record_date_str, chart_no, patient_name, memo, employee = _validated_entry_values(
         db,
         treatment,
         record_date=record_date,
         chart_no=chart_no,
         patient_name=patient_name,
+        memo=memo,
         employee_id=employee_id,
     )
     entry.record_date = record_date_str
     entry.chart_no = chart_no
     entry.patient_name = patient_name
+    entry.memo = memo
     entry.employee_id = employee.id
     entry.employee_name_snapshot = employee.name
     entry.employee_category_id_snapshot = employee.category_id or ""

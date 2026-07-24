@@ -6917,7 +6917,7 @@ label, .label, .form-label {
 
 .record-entry-form {
   display: grid;
-  grid-template-columns: minmax(120px, 180px) minmax(160px, 1fr) minmax(150px, 220px) auto;
+  grid-template-columns: minmax(110px, 150px) minmax(120px, 200px) minmax(160px, 1fr) minmax(140px, 200px) auto;
   gap: 8px;
   align-items: center;
   padding: 12px;
@@ -6932,6 +6932,13 @@ label, .label, .form-label {
 .record-table th,
 .record-table td {
   vertical-align: middle;
+}
+
+.record-memo-cell {
+  max-width: 260px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-soft, #475569);
 }
 
 .record-actions {

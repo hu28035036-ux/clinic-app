@@ -190,6 +190,7 @@
       <div class="record-entry-form">
         <input id="record-chart-no" type="text" maxlength="30" placeholder="차트번호" onkeydown="recordEntryKeydown(event)">
         <input id="record-patient-name" type="text" maxlength="50" placeholder="성함" onkeydown="recordEntryKeydown(event)">
+        <input id="record-memo" type="text" maxlength="200" placeholder="메모 (선택)" onkeydown="recordEntryKeydown(event)">
         <select id="record-employee"></select>
         <button class="primary" onclick="saveRecordEntry()">추가</button>
       </div>
@@ -585,6 +586,7 @@ const CFG = {
   slotMinutes: {{ config.slot_minutes }},
   openTime: "{{ config.open_time }}",
   closeTime: "{{ config.close_time }}",
+  dutyBaselineEndTime: "{{ config.duty_baseline_end_time or '18:30' }}",
   leaveAmUntil: "{{ config.leave_am_until or '14:00' }}",
   leavePmFrom: "{{ config.leave_pm_from or '13:00' }}",
   lunchEnabled: {{ 'true' if config.lunch_enabled else 'false' }},

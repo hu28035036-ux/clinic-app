@@ -105,21 +105,26 @@ def test_record_tabs_come_from_record_required_treatments(client):
         "record_date": "2026-06-12",
         "chart_no": "1001",
         "patient_name": "홍길동",
+        "memo": "우측 어깨 통증",
         "employee_id": employee["id"],
     })
     assert created.status_code == 200, created.text
     created_id = created.json()["id"]
     assert created.json()["tab_key"] == code
     assert created.json()["treatment_id"] == tx["id"]
+    # 메모(선택 입력)가 그대로 저장·반환된다.
+    assert created.json()["memo"] == "우측 어깨 통증"
 
     updated = client.put(f"/api/records/entries/{created_id}", json={
         "record_date": "2026-06-12",
         "chart_no": "1001-수정",
         "patient_name": "홍길동수정",
+        "memo": "메모 수정됨",
         "employee_id": employee["id"],
     })
     assert updated.status_code == 200, updated.text
     assert updated.json()["chart_no"] == "1001-수정"
+    assert updated.json()["memo"] == "메모 수정됨"
 
     # 다른 과 직원은 거부 (과 기준 검증).
     rejected = client.post("/api/records/entries", json={
@@ -166,5 +171,6 @@ def test_main_html_has_records_subtab_shell(client):
     assert "record-date" in html
     assert "record-chart-no" in html
     assert "record-patient-name" in html
+    assert "record-memo" in html
     assert "record-employee" in html
     assert "record-counts" in html

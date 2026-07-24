@@ -58,6 +58,7 @@ def create_record_entry(
             record_date=payload.record_date,
             chart_no=payload.chart_no,
             patient_name=payload.patient_name,
+            memo=payload.memo,
             employee_id=payload.employee_id,
             log_callback=_log,
         )
@@ -83,6 +84,7 @@ def update_record_entry(
             record_date=payload.record_date,
             chart_no=payload.chart_no,
             patient_name=payload.patient_name,
+            memo=payload.memo,
             employee_id=payload.employee_id,
             log_callback=_log,
         )

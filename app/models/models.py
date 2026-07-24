@@ -169,6 +169,9 @@ class EmployeeDuty(Base):
     employee_id = Column(String(32), ForeignKey("employees.id"), nullable=False, index=True)
     duty_date = Column(String(10), nullable=False, index=True)
     duty_type = Column(String(10), nullable=False, default="night", server_default="night")  # morning | lunch | night
+    # 야간당직 실제 퇴근시각 "HH:MM" — 기준 퇴근시간 초과분을 시간집계에 사용.
+    # 아침당직(morning)은 미사용(NULL). 빈 값/NULL 이면 시간집계 0.
+    end_time = Column(String(5), nullable=True)
     memo = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     employee = relationship("Employee")
@@ -542,6 +545,7 @@ class RecordEntry(Base):
     )
     chart_no = Column(String(30), nullable=False, default="")
     patient_name = Column(String(50), nullable=False, default="")
+    memo = Column(String(200), nullable=False, default="")
     employee_id = Column(String(32), nullable=False, index=True)
     employee_name_snapshot = Column(String(50), nullable=False, default="")
     employee_category_id_snapshot = Column(String(32), nullable=False, default="")

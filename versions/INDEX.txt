@@ -2,6 +2,29 @@
   도수치료예약 - 배포 버전 기록
 ================================================================
 
+[ v1.3.57 ]  2026-07-24  (기록 탭 메모 + 야간당직 퇴근시간·시간 집계 — memo/m044 + end_time/m045)
+
+  주요 변경
+  - [기록] record_entries.memo(String(200), 기본 "") 추가 — m044_record_entry_memo
+    (ADD COLUMN·멱등·보존). RecordEntryIn/UpdateIn.memo, service 검증(strip 200자,
+    선택 입력이라 "차트 또는 성함 필수" 규칙 유지)·serialize·create/update, router 전달.
+    프론트: 추가폼 #record-memo, 목록 표 '메모' 열, 수정 모달 #record-edit-memo, grid 4→5열.
+    sync 는 컬럼 자동 직렬화(_serialize)라 별도 코드 없음.
+  - [당직] employee_duties.end_time("HH:MM", nullable) 추가 — m045_duty_end_time
+    (부재 시에만·멱등·기존행 NULL 보존). EmployeeDutyIn.end_time. 날짜클릭 모달은 체크된
+    직원마다 time 칸(bulk-set), "야간당직 추가"는 공통 end_time(bulk-add). 아침당직 미적용.
+  - [집계] 초과분 백엔드 계산(_duty_overtime_minutes): end - baseline, end<baseline &
+    end<12:00 이면 +1440(자정 넘김), 그 외 음수 0. GET /employee-duties 응답에
+    overtime_minutes 포함 → renderDutyMonthlySummary 직원별 합산 "N회 · N시간 N분"(야간 탭만).
+    형식 검증 400. config.duty_baseline_end_time(기본 18:30) + 관리자 운영시간 카드
+    "야간당직 기준"(s-duty-baseline).
+  - [충돌정리] night 브랜치가 붙인 m044(duty end_time)를 m045 로 재부여 — 기록 메모 m044 와
+    MIGRATION_ID 중복 회피. docs/specs/05_야간당직_시간_규칙.md 신설.
+  - [번호재배정] 당초 v1.3.56 으로 준비 → 정산 확정(잠금)이 v1.3.56 으로 먼저 배포되어
+    v1.3.57 로 재배정 (내용 동일, config/문서만 재번호).
+  - 검증: 기록 메모 왕복(test_records) + 당직 end_time 왕복·초과분·마이그레이션
+    (test_employee_duties) + ruff. m044→m045 순차 적용 확인.
+
 [ v1.3.56 ]  2026-07-24  (정산 확정(잠금) — 지난 정산 금액 자동 고정)
 
   주요 변경 (settlement rules/service + JS·CSS — DB/마이그레이션 무변경)
